@@ -158,10 +158,10 @@
                 </button>
               </div>
 
-              <button id="pick-tonight" class="btn-secondary add-btn" type="button" title="Elige al azar algo de tu lista «Por ver»">🎲 ¿Qué veo hoy?</button>
-              <button id="manual-toggle" class="btn add-btn" type="button">+ Añadir manual</button>
-              <button id="export-json" class="btn-secondary add-btn" type="button" title="Descargar colección en JSON">Exportar JSON</button>
-              <button id="import-json" class="btn-secondary add-btn" type="button" title="Importar colección desde JSON">Importar JSON</button>
+              <div class="collection-actions">
+                <button id="pick-tonight" class="btn-secondary btn-sm" type="button" title="Elige al azar algo de tu lista «Por ver»">🎲 ¿Qué veo hoy?</button>
+                <button id="manual-toggle" class="btn btn-sm" type="button">+ Añadir manual</button>
+              </div>
             </div>
           </div>
         </div>
@@ -281,6 +281,5 @@
     </div>
 
     <script src="script.js" defer></script>
-    <input type="file" id="import-file" accept=".json,application/json" hidden>
   </body>
 </html>

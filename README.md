@@ -48,5 +48,3 @@ Para que se anuncie en un canal de Discord al añadir una película:
 - `GET /health`
 - `GET /api/movies` · `POST /api/movies` · `PATCH /api/movies/{id}` · `DELETE /api/movies/{id}`
 - `GET /api/search?q=...` (proxy TMDB)
-- `GET /api/export` (descarga colección en JSON)
-- `POST /api/import` (importa colección desde JSON)

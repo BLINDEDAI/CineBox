@@ -145,8 +145,6 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(200, {"ok": True, "status": "up"})
         if path == "/api/movies":
             return self._list_movies()
-        if path == "/api/export":
-            return self._export_json()
         if path == "/api/search":
             return self._search()
         if path == "/api/trending":
@@ -166,18 +164,6 @@ class Handler(SimpleHTTPRequestHandler):
             con.row_factory = sqlite3.Row
             rows = con.execute("SELECT * FROM movies ORDER BY created_at DESC").fetchall()
         self._json(200, {"ok": True, "movies": [dict(r) for r in rows]})
-
-    def _export_json(self):
-        with sqlite3.connect(DB_PATH) as con:
-            con.row_factory = sqlite3.Row
-            rows = con.execute("SELECT * FROM movies ORDER BY created_at DESC").fetchall()
-        movies = [dict(r) for r in rows]
-        self._json(200, {
-            "ok": True,
-            "exported_at": datetime.now(timezone.utc).isoformat(),
-            "count": len(movies),
-            "movies": movies,
-        })
 
     def _search(self):
         query = (self._qs().get("q", [""])[0]).strip()
@@ -283,95 +269,8 @@ class Handler(SimpleHTTPRequestHandler):
             "providers_link": providers_link,
         }})
 
-    def _import_json(self):
-        try:
-            data = self._read_json()
-        except (ValueError, json.JSONDecodeError):
-            return self._json(400, {"ok": False, "error": "JSON inválido"})
-        if not isinstance(data, dict):
-            return self._json(400, {"ok": False, "error": "El cuerpo debe ser un objeto JSON con movies"})
-        movies_list = data.get("movies")
-        if not isinstance(movies_list, list):
-            return self._json(400, {"ok": False, "error": "movies debe ser una lista"})
-
-        imported = 0
-        skipped = 0
-        errors = []
-        with sqlite3.connect(DB_PATH) as con:
-            for i, item in enumerate(movies_list):
-                if not isinstance(item, dict):
-                    errors.append(f"Item {i}: no es un objeto")
-                    skipped += 1
-                    continue
-
-                title = str(item.get("title", "")).strip()
-                if not title:
-                    errors.append(f"Item {i}: sin título")
-                    skipped += 1
-                    continue
-
-                media_type = item.get("media_type") if item.get("media_type") in ("movie", "tv") else "movie"
-                status = item.get("status") if item.get("status") in ("pendiente", "vista") else "pendiente"
-                rating = item.get("rating")
-                if rating is not None:
-                    try:
-                        rating = int(rating)
-                        if not 1 <= rating <= 5:
-                            rating = None
-                    except (TypeError, ValueError):
-                        rating = None
-
-                note = item.get("note")
-                if note is not None:
-                    note = str(note)[:500]
-
-                watched_at = item.get("watched_at")
-                if watched_at not in (None, ""):
-                    try:
-                        watched_at = parse_watched_at(watched_at)
-                    except ValueError:
-                        errors.append(f"Item {i} («{title}»): watched_at inválido")
-                        watched_at = None
-                else:
-                    watched_at = None
-
-                tmdb_id = item.get("tmdb_id")
-                if tmdb_id not in (None, ""):
-                    try:
-                        tmdb_id = int(tmdb_id)
-                    except (TypeError, ValueError):
-                        tmdb_id = None
-                else:
-                    tmdb_id = None
-
-                year = str(item.get("year", "")).strip()
-                poster_url = str(item.get("poster_url", "")).strip()
-                if tmdb_id:
-                    exists = con.execute(
-                        "SELECT 1 FROM movies WHERE tmdb_id = ? AND media_type = ?",
-                        (tmdb_id, media_type)).fetchone()
-                else:
-                    exists = con.execute(
-                        "SELECT 1 FROM movies WHERE title = ? AND year = ? AND media_type = ?",
-                        (title, year, media_type)).fetchone()
-                if exists:
-                    skipped += 1
-                    continue
-
-                con.execute(
-                    "INSERT INTO movies (tmdb_id, media_type, title, year, poster_url, status, rating, note, created_at, watched_at) "
-                    "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
-                    (tmdb_id, media_type, title, year, poster_url, status, rating, note,
-                     datetime.now(timezone.utc).isoformat(), watched_at),
-                )
-                imported += 1
-
-        self._json(200, {"ok": True, "imported": imported, "skipped": skipped, "errors": errors})
-
     # ---- POST ----
     def do_POST(self):
-        if self.path == "/api/import":
-            return self._import_json()
         if self.path != "/api/movies":
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
         try:

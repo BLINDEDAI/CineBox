@@ -548,52 +548,6 @@ el("manual-form").addEventListener("submit", (e) => {
   e.target.hidden = true;
 });
 
-el("export-json").addEventListener("click", async () => {
-  const { data } = await api("/api/export");
-  if (!data.ok) {
-    showMessage(data.error || "Error al exportar.", "error");
-    return;
-  }
-  const blob = new Blob([JSON.stringify(data, null, 2)], { type: "application/json" });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement("a");
-  a.href = url;
-  a.download = `cineteca-export-${todayIsoDate()}.json`;
-  a.click();
-  URL.revokeObjectURL(url);
-  showMessage(`Exportadas ${data.count} películas/series.`);
-});
-
-el("import-json").addEventListener("click", () => {
-  el("import-file").click();
-});
-
-el("import-file").addEventListener("change", async () => {
-  const file = el("import-file").files[0];
-  if (!file) return;
-  try {
-    const text = await file.text();
-    const payload = JSON.parse(text);
-    const { ok, data } = await api("/api/import", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-    if (ok && data.ok) {
-      let msg = `Importados: ${data.imported}`;
-      if (data.skipped) msg += `, omitidos: ${data.skipped}`;
-      if (data.errors && data.errors.length) msg += `. Errores: ${data.errors.join("; ")}`;
-      showMessage(msg);
-      await loadMovies();
-    } else {
-      showMessage(data.error || "Error al importar.", "error");
-    }
-  } catch (err) {
-    showMessage("Archivo inválido: " + err.message, "error");
-  }
-  el("import-file").value = "";
-});
-
 modalEl.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeModal(); });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
