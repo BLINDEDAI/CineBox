@@ -1,0 +1,11 @@
+# Secretos: claves de TMDB / Discord. Nunca debe subirse al repositorio.
+.env
+
+# Caché de Python: archivos compilados que se regeneran solos.
+__pycache__/
+
+# Resultados de tests (capturas, reportes): se generan al ejecutar las pruebas.
+test-results/
+
+# Base de datos local con tu colección: es tuya y cambia constantemente.
+*.sqlite
