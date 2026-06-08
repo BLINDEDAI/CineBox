@@ -10,7 +10,6 @@ Config opcional en .env:
     TMDB_API_KEY=...            (búsqueda real)
     DISCORD_WEBHOOK_URL=...     (avisos en Discord)
 """
-import base64
 import json
 import os
 import re
@@ -127,28 +126,6 @@ class Handler(SimpleHTTPRequestHandler):
     def _qs(self):
         return urllib.parse.parse_qs(self.path.split("?", 1)[1] if "?" in self.path else "")
 
-    def _authed(self):
-        # Si CINETECA_PASS está vacío -> sin puerta (uso local). Si está puesto
-        # (al exponer por túnel) -> exige clave compartida vía HTTP Basic Auth.
-        pw = os.environ.get("CINETECA_PASS", "").strip()
-        if not pw:
-            return True
-        h = self.headers.get("Authorization", "")
-        if h.startswith("Basic "):
-            try:
-                given = base64.b64decode(h[6:]).decode("utf-8", "ignore").partition(":")[2]
-                if given == pw:
-                    return True
-            except Exception:
-                pass
-        return False
-
-    def _require_auth(self):
-        self.send_response(401)
-        self.send_header("WWW-Authenticate", 'Basic realm="CINEBOX"')
-        self.send_header("Content-Length", "0")
-        self.end_headers()
-
     def _tmdb(self, path, extra=None):
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return None
@@ -161,8 +138,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- GET ----
     def do_GET(self):
-        if not self._authed():
-            return self._require_auth()
         path = self.path.split("?", 1)[0]
         decoded_path = urllib.parse.unquote(path)
         if path == "/health":
@@ -385,8 +360,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- POST ----
     def do_POST(self):
-        if not self._authed():
-            return self._require_auth()
         if self.path == "/api/import":
             return self._import_json()
         if self.path != "/api/movies":
@@ -436,8 +409,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- PATCH ----
     def do_PATCH(self):
-        if not self._authed():
-            return self._require_auth()
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -491,8 +462,6 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ---- DELETE ----
     def do_DELETE(self):
-        if not self._authed():
-            return self._require_auth()
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -513,8 +482,7 @@ def main():
     with ThreadingHTTPServer((HOST, PORT), handler) as httpd:
         tmdb = "sí" if os.environ.get("TMDB_API_KEY") else "no (modo manual)"
         hook = "sí" if (os.environ.get("DISCORD_WEBHOOK_PENDIENTE") or os.environ.get("DISCORD_WEBHOOK_VISTA") or os.environ.get("DISCORD_WEBHOOK_URL")) else "no"
-        auth = "sí (con clave)" if os.environ.get("CINETECA_PASS") else "no (abierto, solo local)"
-        print(f"Cineteca en http://{HOST}:{PORT}  ·  TMDB: {tmdb}  ·  Discord: {hook}  ·  Clave: {auth}  (Ctrl+C para parar)")
+        print(f"Cineteca en http://{HOST}:{PORT}  ·  TMDB: {tmdb}  ·  Discord: {hook}  (Ctrl+C para parar)")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
