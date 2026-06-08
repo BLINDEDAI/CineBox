@@ -262,6 +262,16 @@ async function openDetail(tmdbId, type) {
     d.cast.length ? `<p><strong>Reparto:</strong> ${d.cast.map(esc).join(", ")}</p>` : "",
   ].filter(Boolean).join("");
   const overviewHtml = d.overview ? esc(d.overview) : '<span class="muted">Sin sinopsis disponible.</span>';
+  const providers = d.providers || [];
+  const providersHtml = `
+    <div class="modal-providers">
+      <span class="providers-label">Dónde ver en España</span>
+      ${providers.length
+        ? `<div class="providers-logos">
+            ${providers.map((p) => `<img src="${esc(p.logo)}" alt="${esc(p.name)}" title="${esc(p.name)}" class="provider-logo" loading="lazy">`).join("")}
+          </div>`
+        : `<span class="providers-empty">No disponible en streaming</span>`}
+    </div>`;
   modalContent.innerHTML = `
     <div class="modal-head">
       ${m.poster_url ? `<img src="${esc(m.poster_url)}" alt="">` : ""}
@@ -277,6 +287,7 @@ async function openDetail(tmdbId, type) {
       </div>
     </div>
     ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
+    ${providersHtml}
     ${creditsHtml ? `<div class="modal-credits">${creditsHtml}</div>` : ""}
     <div class="modal-overview"><p>${overviewHtml}</p></div>`;
 }

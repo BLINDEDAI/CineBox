@@ -26,6 +26,7 @@ DB_PATH = BASE_DIR / os.environ.get("CINETECA_DB", "cineteca.sqlite")
 HOST, PORT = "127.0.0.1", 8000
 BLOCKED = (".env", ".py", ".pyc", ".sqlite")
 TMDB_IMG = "https://image.tmdb.org/t/p/w342"
+TMDB_LOGO = "https://image.tmdb.org/t/p/w45"
 
 
 def load_env():
@@ -239,7 +240,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return self._json(200, {"ok": False, "needs_key": True})
         try:
-            d = self._tmdb(f"/{mt}/{tid}", {"append_to_response": "videos,credits"})
+            d = self._tmdb(f"/{mt}/{tid}", {"append_to_response": "videos,credits,watch/providers"})
         except Exception:
             return self._json(502, {"ok": False, "error": "No se pudo consultar TMDB."})
         # Tráiler
@@ -258,6 +259,13 @@ class Handler(SimpleHTTPRequestHandler):
                          if c.get("job") == "Director"]
         # Reparto (top 6)
         cast = [c.get("name") for c in (d.get("credits", {}) or {}).get("cast", [])[:6] if c.get("name")]
+        wp_es = (d.get("watch/providers") or {}).get("results", {}).get("ES", {})
+        providers = [
+            {"name": p["provider_name"], "logo": TMDB_LOGO + p["logo_path"]}
+            for p in wp_es.get("flatrate", [])
+            if p.get("logo_path") and p.get("provider_name")
+        ]
+        providers_link = wp_es.get("link", "")
         runtime = d.get("runtime")
         if mt == "tv" and not runtime:
             ert = d.get("episode_run_time") or []
@@ -271,6 +279,8 @@ class Handler(SimpleHTTPRequestHandler):
             "dir_label": dir_label,
             "directors": directors,
             "cast": cast,
+            "providers": providers,
+            "providers_link": providers_link,
         }})
 
     def _import_json(self):
