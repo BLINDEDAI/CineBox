@@ -300,7 +300,6 @@ async function loadMovies() {
     movies = data.movies;
     renderCollection();
     renderStats();
-    renderCalendar();
     if (pickedMovie) {
       const current = movies.find((m) => m.id === pickedMovie.id);
       if (current && current.status === "pendiente") renderPickPanel(current);
@@ -553,128 +552,6 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!modalEl.hidden) closeModal();
   else if (!pickPanelEl.hidden) closePickPanel();
-});
-
-// ---- Calendario ----
-const calMonthYearEl = el("cal-month-year");
-const calGridEl = el("calendar-grid");
-const calDayDetailEl = el("cal-day-detail");
-let calYear = new Date().getFullYear();
-let calMonth = new Date().getMonth();
-
-function startOfMonthOffset(year, month) {
-  const d = new Date(year, month, 1);
-  return (d.getDay() + 6) % 7;
-}
-
-function daysInMonth(year, month) {
-  return new Date(year, month + 1, 0).getDate();
-}
-
-function monthLabel(m) {
-  return ["Enero", "Febrero", "Marzo", "Abril", "Mayo", "Junio", "Julio", "Agosto", "Septiembre", "Octubre", "Noviembre", "Diciembre"][m];
-}
-
-function moviesByDate() {
-  const map = {};
-  movies.forEach((m) => {
-    if (!m.watched_at) return;
-    const d = m.watched_at;
-    if (!map[d]) map[d] = [];
-    map[d].push(m);
-  });
-  return map;
-}
-
-function renderCalendar() {
-  if (!calGridEl) return;
-  calMonthYearEl.textContent = `${monthLabel(calMonth)} ${calYear}`;
-  calGridEl.innerHTML = "";
-  calDayDetailEl.hidden = true;
-
-  const weekdays = ["Lun", "Mar", "Mié", "Jue", "Vie", "Sáb", "Dom"];
-  weekdays.forEach((w) => {
-    const cell = document.createElement("div");
-    cell.className = "cal-weekday";
-    cell.textContent = w;
-    calGridEl.appendChild(cell);
-  });
-
-  const offset = startOfMonthOffset(calYear, calMonth);
-  const totalDays = daysInMonth(calYear, calMonth);
-  const prevTotal = daysInMonth(calYear, calMonth - 1);
-  const map = moviesByDate();
-  const today = new Date();
-  const isCurrentMonth = today.getFullYear() === calYear && today.getMonth() === calMonth;
-
-  for (let i = offset - 1; i >= 0; i--) {
-    const day = prevTotal - i;
-    const cell = document.createElement("div");
-    cell.className = "cal-day is-other-month";
-    cell.innerHTML = `<span class="cal-day-number">${day}</span>`;
-    calGridEl.appendChild(cell);
-  }
-
-  for (let day = 1; day <= totalDays; day++) {
-    const cell = document.createElement("div");
-    const classes = ["cal-day"];
-    if (isCurrentMonth && day === today.getDate()) classes.push("is-today");
-
-    const iso = `${calYear}-${String(calMonth + 1).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
-    const dayMovies = map[iso] || [];
-    if (dayMovies.length) classes.push("has-movies");
-
-    cell.className = classes.join(" ");
-    cell.dataset.date = iso;
-    let html = `<span class="cal-day-number">${day}</span>`;
-    if (dayMovies.length) {
-      html += `<div class="cal-dots">${dayMovies.map(() => `<span class="cal-dot"></span>`).join("")}</div>`;
-    }
-    cell.innerHTML = html;
-    if (dayMovies.length) {
-      cell.addEventListener("click", () => showCalDayDetail(iso, dayMovies));
-    }
-    calGridEl.appendChild(cell);
-  }
-
-  const remaining = (7 - ((offset + totalDays) % 7)) % 7;
-  for (let day = 1; day <= remaining; day++) {
-    const cell = document.createElement("div");
-    cell.className = "cal-day is-other-month";
-    cell.innerHTML = `<span class="cal-day-number">${day}</span>`;
-    calGridEl.appendChild(cell);
-  }
-}
-
-function showCalDayDetail(iso, dayMovies) {
-  const [y, m, d] = iso.split("-");
-  calDayDetailEl.hidden = false;
-  calDayDetailEl.innerHTML = `
-    <h3>📅 ${d}/${m}/${y} — ${dayMovies.length} título${dayMovies.length > 1 ? "s" : ""}</h3>
-    <div class="cal-movie-list">
-      ${dayMovies.map((m) => `
-        <div class="cal-movie-item">
-          <span class="media-badge">${mediaIcon(m.media_type)}</span>
-          <div>
-            <strong>${esc(m.title)}</strong>
-            <div style="color:var(--text-muted);font-size:.82rem">${esc(m.year) || "—"}</div>
-          </div>
-        </div>
-      `).join("")}
-    </div>`;
-  calDayDetailEl.scrollIntoView({ behavior: "smooth", block: "nearest" });
-}
-
-el("cal-prev").addEventListener("click", () => {
-  calMonth--;
-  if (calMonth < 0) { calMonth = 11; calYear--; }
-  renderCalendar();
-});
-
-el("cal-next").addEventListener("click", () => {
-  calMonth++;
-  if (calMonth > 11) { calMonth = 0; calYear++; }
-  renderCalendar();
 });
 
 document.body.dataset.activeView = "collection-view";

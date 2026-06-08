@@ -185,16 +185,6 @@ button {
   padding-top: 20px;
 }
 
-.profile {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 8px 18px;
-  border-bottom: 1px solid var(--border);
-  margin-bottom: 14px;
-}
-
-.avatar,
 .user-dot {
   display: grid;
   place-items: center;
@@ -204,63 +194,8 @@ button {
   font-weight: 900;
 }
 
-.avatar {
-  width: 44px;
-  height: 44px;
-}
-
-.profile strong,
-.profile span {
-  display: block;
-}
-
-.profile span {
-  color: var(--red);
-  font-size: 0.78rem;
-  font-weight: 800;
-}
-
 .settings {
   min-height: 46px;
-}
-
-/* Tooltip para items inactivos del sidebar */
-.side-link[data-tooltip] {
-  position: relative;
-}
-
-.side-link[data-tooltip]::after {
-  content: attr(data-tooltip);
-  position: absolute;
-  left: calc(100% + 10px);
-  top: 50%;
-  transform: translateY(-50%) scale(0.96);
-  padding: 7px 12px;
-  border-radius: var(--radius);
-  background: rgba(5, 9, 18, 0.98);
-  border: 1px solid var(--border-strong);
-  color: var(--text-soft);
-  font-size: 0.78rem;
-  font-weight: 800;
-  white-space: nowrap;
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity 160ms ease, transform 160ms ease;
-  z-index: 50;
-  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.4);
-}
-
-.side-link[data-tooltip]:hover::after {
-  opacity: 1;
-  transform: translateY(-50%) scale(1);
-}
-
-@media (max-width: 1180px) {
-  .side-link[data-tooltip]::after {
-    left: calc(100% + 8px);
-    font-size: 0.72rem;
-    padding: 5px 8px;
-  }
 }
 
 .app-shell {
@@ -1282,135 +1217,6 @@ h2 {
   color: var(--text-muted);
 }
 
-/* ---- Calendario ---- */
-.calendar-hero {
-  min-height: 220px;
-  background:
-    linear-gradient(90deg, rgba(5, 9, 20, 0.97) 0%, rgba(5, 9, 20, 0.76) 45%, rgba(5, 9, 20, 0.2) 100%),
-    radial-gradient(circle at 75% 35%, rgba(75, 134, 255, 0.28), transparent 26rem),
-    url("assets/banner-cine.jpg") center right / cover no-repeat;
-}
-
-.calendar-panel {
-  margin-top: 18px;
-}
-
-.calendar-head {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 14px;
-  margin-bottom: 18px;
-  padding: 0 8px;
-}
-
-.calendar-head h2 {
-  font-size: clamp(1.4rem, 2.2vw, 2rem);
-  text-align: center;
-  flex: 1;
-}
-
-.calendar-grid {
-  display: grid;
-  grid-template-columns: repeat(7, 1fr);
-  gap: 10px;
-}
-
-.cal-weekday {
-  text-align: center;
-  color: var(--text-muted);
-  font-size: 0.78rem;
-  font-weight: 900;
-  text-transform: uppercase;
-  padding: 8px 0;
-}
-
-.cal-day {
-  position: relative;
-  min-height: 90px;
-  padding: 10px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(10, 15, 28, 0.6);
-  color: var(--text-soft);
-  font-weight: 800;
-  cursor: default;
-  transition: background 160ms ease, border-color 160ms ease;
-}
-
-.cal-day:hover {
-  background: rgba(255, 255, 255, 0.04);
-  border-color: rgba(255, 255, 255, 0.18);
-}
-
-.cal-day.is-today {
-  border-color: rgba(255, 68, 61, 0.55);
-  box-shadow: 0 0 20px rgba(255, 68, 61, 0.12);
-}
-
-.cal-day.is-other-month {
-  opacity: 0.35;
-}
-
-.cal-day.has-movies {
-  cursor: pointer;
-  color: #fff;
-}
-
-.cal-day-number {
-  display: block;
-  font-size: 0.95rem;
-  margin-bottom: 6px;
-}
-
-.cal-dots {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin-top: auto;
-}
-
-.cal-dot {
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: var(--red-2);
-  box-shadow: 0 0 6px rgba(255, 68, 61, 0.5);
-}
-
-.cal-day-detail {
-  margin-top: 22px;
-  padding: 18px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius-lg);
-  background: linear-gradient(180deg, rgba(18, 24, 39, 0.92), rgba(7, 11, 21, 0.96));
-}
-
-.cal-day-detail h3 {
-  margin: 0 0 12px;
-  font-size: 1.15rem;
-}
-
-.cal-movie-list {
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
-}
-
-.cal-movie-item {
-  display: flex;
-  align-items: center;
-  gap: 12px;
-  padding: 10px 14px;
-  border: 1px solid var(--border);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.03);
-}
-
-.cal-movie-item .media-badge {
-  position: static;
-}
-
 @media (max-width: 1180px) {
   :root { --sidebar: 92px; }
 
@@ -1431,14 +1237,6 @@ h2 {
 
   .side-link span {
     font-size: 1.2rem;
-  }
-
-  .profile {
-    justify-content: center;
-  }
-
-  .profile div:not(.avatar) {
-    display: none;
   }
 
   .topbar {
@@ -1607,27 +1405,6 @@ h2 {
 
   .modal-trailer {
     text-align: center;
-  }
-
-  .cal-day {
-    min-height: 58px;
-    padding: 6px;
-    font-size: 0.82rem;
-  }
-
-  .cal-dot {
-    width: 5px;
-    height: 5px;
-  }
-
-  .calendar-head {
-    flex-wrap: wrap;
-    gap: 10px;
-  }
-
-  .calendar-head h2 {
-    order: -1;
-    width: 100%;
   }
 
   /* Filas de pestañas: en lugar de desbordar la página, se deslizan de lado. */
