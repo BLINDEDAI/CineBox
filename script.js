@@ -457,11 +457,8 @@ collectionEl.addEventListener("click", (e) => {
   else if (action === "date" && movie) editWatchedDate(movie);
 });
 
-el("tabs").addEventListener("click", (e) => {
-  const tab = e.target.closest(".tab");
-  if (!tab) return;
-  filter = tab.dataset.filter;
-  document.querySelectorAll("#tabs .tab").forEach((t) => t.classList.toggle("active", t === tab));
+el("status-filter").addEventListener("change", (e) => {
+  filter = e.target.value;
   renderCollection();
 });
 
@@ -473,13 +470,8 @@ el("media-filter").addEventListener("click", (e) => {
   renderResults();
 });
 
-el("collection-media-filter").addEventListener("click", (e) => {
-  const b = e.target.closest("[data-collection-media]");
-  if (!b) return;
-  collectionMediaFilter = b.dataset.collectionMedia;
-  document.querySelectorAll("#collection-media-filter .tab").forEach((x) => {
-    x.classList.toggle("active", x === b);
-  });
+el("collection-media-filter").addEventListener("change", (e) => {
+  collectionMediaFilter = e.target.value;
   renderCollection();
 });
 
@@ -500,8 +492,7 @@ function pickTonight() {
   el("search-input").value = "";
   if (filter === "vista") {
     filter = "todas";
-    document.querySelectorAll("#tabs .tab").forEach((t) =>
-      t.classList.toggle("active", t.dataset.filter === "todas"));
+    el("status-filter").value = "todas";
   }
   renderCollection();
   const card = collectionEl.querySelector(`.card[data-id="${choice.id}"]`);

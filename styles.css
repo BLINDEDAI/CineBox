@@ -203,21 +203,6 @@ button {
   padding-left: var(--sidebar);
 }
 
-.topbar {
-  position: sticky;
-  top: 0;
-  z-index: 25;
-  min-height: 82px;
-  display: grid;
-  grid-template-columns: 1fr minmax(300px, 560px) auto;
-  align-items: center;
-  gap: 20px;
-  padding: 16px 32px;
-  background: rgba(4, 8, 17, 0.78);
-  border-bottom: 1px solid var(--border);
-  backdrop-filter: blur(18px);
-}
-
 .top-tabs,
 .tabs {
   display: inline-flex;
@@ -295,26 +280,6 @@ button {
   box-shadow: inset 0 0 0 1px rgba(255, 255, 255, 0.02);
 }
 
-.topbar .search {
-  justify-self: end;
-  width: min(100%, 560px);
-}
-
-body[data-active-view="discover-view"] #search-form {
-  opacity: 0;
-  pointer-events: none;
-}
-
-body[data-active-view="discover-view"] .top-media-tabs {
-  opacity: 0;
-  pointer-events: none;
-}
-
-body[data-active-view="discover-view"] .collection-sort-wrap {
-  opacity: 0;
-  pointer-events: none;
-}
-
 .search > span {
   color: var(--text-soft);
   font-size: 1.25rem;
@@ -338,18 +303,25 @@ body[data-active-view="discover-view"] .collection-sort-wrap {
   padding: 0 14px;
 }
 
-.top-actions {
+/* Barra compacta de controles de la colección: tipo, estado, búsqueda y orden */
+.control-bar {
   display: flex;
-  align-items: center;
-  gap: 18px;
+  flex-wrap: wrap;
+  align-items: flex-end;
+  gap: 12px;
 }
 
-.collection-sort-wrap {
-  justify-self: end;
-  gap: 8px;
+.control-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
 }
 
-.sort-label {
+.control-field-search {
+  flex: 0 0 auto;
+}
+
+.control-label {
   color: var(--text-muted);
   font-size: 0.75rem;
   font-weight: 900;
@@ -357,10 +329,32 @@ body[data-active-view="discover-view"] .collection-sort-wrap {
   text-transform: uppercase;
 }
 
-.collection-sort {
-  min-width: 190px;
+/* Controles uniformes de la barra: mismos ancho, alto y tipografía */
+.control-select,
+.control-btn {
+  width: 170px;
   height: 48px;
+  min-height: 48px;
+  padding-inline: 14px;
+  font-size: 0.9rem;
+}
+
+.control-select {
   background-color: rgba(13, 18, 31, 0.94);
+}
+
+.control-btn {
+  white-space: nowrap;
+}
+
+/* "+ Añadir manual": conserva el rojo de marca pero más discreto */
+.control-btn.btn {
+  box-shadow: 0 6px 16px rgba(255, 68, 61, 0.22);
+}
+
+/* Búsqueda más corta: ancho fijo, no se estira */
+.control-search {
+  width: 240px;
 }
 
 .notification {
@@ -494,19 +488,6 @@ h1 {
   margin-top: 22px;
 }
 
-.media-tabs {
-  justify-content: center;
-  flex-wrap: nowrap;
-}
-
-.top-media-tabs {
-  justify-content: start;
-}
-
-.status-tabs {
-  flex-wrap: nowrap;
-}
-
 .btn,
 .btn-secondary,
 .select {
@@ -551,24 +532,6 @@ h1 {
   padding-inline: 22px;
   border-radius: 12px;
   white-space: nowrap;
-}
-
-.collection-actions {
-  display: flex;
-  align-items: center;
-  justify-content: flex-end;
-  flex-wrap: wrap;
-  gap: 10px;
-}
-
-.collection-actions .btn,
-.collection-actions .btn-secondary {
-  white-space: nowrap;
-}
-
-/* "+ Añadir manual": conserva el rojo de marca pero más discreto */
-.collection-actions .btn {
-  box-shadow: 0 6px 16px rgba(255, 68, 61, 0.22);
 }
 
 .btn-secondary,
@@ -1239,31 +1202,13 @@ h2 {
     font-size: 1.2rem;
   }
 
-  .topbar {
-    grid-template-columns: 1fr;
-  }
-
-  .top-actions {
-    justify-self: start;
-    width: 100%;
-  }
-
-  .collection-sort-wrap {
-    justify-content: start;
-  }
-
-  .collection-sort {
-    width: min(100%, 260px);
-  }
-
   .hero-controls {
     grid-template-columns: 1fr;
     justify-items: start;
   }
 
-  .collection-actions {
+  .control-bar {
     width: 100%;
-    justify-content: flex-start;
   }
 
   .stats {
@@ -1306,11 +1251,6 @@ h2 {
     padding-left: 0;
   }
 
-  .topbar {
-    position: static;
-    padding: 14px 16px;
-  }
-
   .content {
     padding: 0 14px 32px;
   }
@@ -1342,12 +1282,14 @@ h2 {
     padding-block: 8px;
   }
 
-  .collection-sort-wrap {
-    align-items: stretch;
-    flex-direction: column;
+  .control-field,
+  .control-field-search {
+    width: 100%;
   }
 
-  .collection-sort {
+  .control-select,
+  .control-btn,
+  .control-search {
     width: 100%;
   }
 
@@ -1409,9 +1351,7 @@ h2 {
 
   /* Filas de pestañas: en lugar de desbordar la página, se deslizan de lado. */
   .tabs,
-  .top-tabs,
-  .media-tabs,
-  .status-tabs {
+  .top-tabs {
     flex-wrap: nowrap;
     overflow-x: auto;
     padding-bottom: 4px;
@@ -1419,9 +1359,7 @@ h2 {
   }
 
   .tabs::-webkit-scrollbar,
-  .top-tabs::-webkit-scrollbar,
-  .media-tabs::-webkit-scrollbar,
-  .status-tabs::-webkit-scrollbar {
+  .top-tabs::-webkit-scrollbar {
     display: none;
   }
 

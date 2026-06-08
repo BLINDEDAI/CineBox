@@ -44,46 +44,6 @@
     </aside>
 
     <div class="app-shell">
-      <header class="topbar">
-        <div class="tabs media-tabs top-media-tabs" id="collection-media-filter" aria-label="Filtrar colección por tipo">
-          <button class="tab active" data-collection-media="todo" type="button">
-            <span class="filter-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
-            </span>
-            Películas y series
-          </button>
-          <button class="tab" data-collection-media="movie" type="button">
-            <span class="filter-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h18M3 15h18"/></svg>
-            </span>
-            Películas
-          </button>
-          <button class="tab" data-collection-media="tv" type="button">
-            <span class="filter-icon" aria-hidden="true">
-              <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m9 21 3-3 3 3M9 3l3 3 3-3"/></svg>
-            </span>
-            Series
-          </button>
-        </div>
-
-        <form class="search" id="search-form" role="search">
-          <span aria-hidden="true">⌕</span>
-          <input id="search-input" type="search" placeholder="Buscar en mi colección..." autocomplete="off">
-        </form>
-
-        <div class="top-actions collection-sort-wrap">
-          <label class="sort-label" for="collection-sort">Orden</label>
-          <select id="collection-sort" class="select collection-sort" aria-label="Ordenar colección">
-            <option value="recent">Recientes primero</option>
-            <option value="title-asc">Título A-Z</option>
-            <option value="year-desc">Año nuevo → antiguo</option>
-            <option value="rating-desc">Mejor puntuadas</option>
-            <option value="pending-first">Por ver primero</option>
-            <option value="watched-first">Vistas primero</option>
-          </select>
-        </div>
-      </header>
-
       <main class="content">
         <div id="message" class="alert" role="status" hidden></div>
 
@@ -106,30 +66,43 @@
             </div>
 
             <div class="hero-controls">
-              <div class="tabs status-tabs" id="tabs" aria-label="Filtrar colección por estado">
-                <button class="tab active" data-filter="todas" type="button">
-                  <span class="filter-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
-                  </span>
-                  Todas
-                </button>
-                <button class="tab" data-filter="pendiente" type="button">
-                  <span class="filter-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg>
-                  </span>
-                  Por ver
-                </button>
-                <button class="tab" data-filter="vista" type="button">
-                  <span class="filter-icon" aria-hidden="true">
-                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
-                  </span>
-                  Vistas
-                </button>
-              </div>
-
-              <div class="collection-actions">
-                <button id="pick-tonight" class="btn-secondary btn-sm" type="button" title="Elige al azar algo de tu lista «Por ver»">🎲 ¿Qué veo hoy?</button>
-                <button id="manual-toggle" class="btn btn-sm" type="button">+ Añadir manual</button>
+              <div class="control-bar">
+                <div class="control-field">
+                  <label class="control-label" for="collection-media-filter">Tipo</label>
+                  <select id="collection-media-filter" class="select control-select" aria-label="Filtrar colección por tipo">
+                    <option value="todo">Películas y series</option>
+                    <option value="movie">Películas</option>
+                    <option value="tv">Series</option>
+                  </select>
+                </div>
+                <div class="control-field">
+                  <label class="control-label" for="status-filter">Estado</label>
+                  <select id="status-filter" class="select control-select" aria-label="Filtrar colección por estado">
+                    <option value="todas">Todas</option>
+                    <option value="pendiente">Por ver</option>
+                    <option value="vista">Vistas</option>
+                  </select>
+                </div>
+                <div class="control-field">
+                  <label class="control-label" for="collection-sort">Orden</label>
+                  <select id="collection-sort" class="select control-select" aria-label="Ordenar colección">
+                    <option value="recent">Recientes primero</option>
+                    <option value="title-asc">Título A-Z</option>
+                    <option value="year-desc">Año nuevo → antiguo</option>
+                    <option value="rating-desc">Mejor puntuadas</option>
+                    <option value="pending-first">Por ver primero</option>
+                    <option value="watched-first">Vistas primero</option>
+                  </select>
+                </div>
+                <button id="pick-tonight" class="btn-secondary control-btn" type="button" title="Elige al azar algo de tu lista «Por ver»">🎲 ¿Qué veo hoy?</button>
+                <button id="manual-toggle" class="btn control-btn" type="button">+ Añadir manual</button>
+                <div class="control-field control-field-search">
+                  <label class="control-label" for="search-input">Buscar</label>
+                  <form class="search control-search" id="search-form" role="search">
+                    <span aria-hidden="true">⌕</span>
+                    <input id="search-input" type="search" placeholder="Buscar en mi colección..." autocomplete="off">
+                  </form>
+                </div>
               </div>
             </div>
           </div>
