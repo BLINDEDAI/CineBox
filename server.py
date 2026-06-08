@@ -23,7 +23,7 @@ from pathlib import Path
 
 BASE_DIR = Path(__file__).resolve().parent
 DB_PATH = BASE_DIR / os.environ.get("CINETECA_DB", "cineteca.sqlite")
-HOST, PORT = "127.0.0.1", 8000
+HOST, PORT = "0.0.0.0", int(os.environ.get("PORT", 8000))
 BLOCKED = (".env", ".py", ".pyc", ".sqlite")
 TMDB_IMG = "https://image.tmdb.org/t/p/w342"
 TMDB_LOGO = "https://image.tmdb.org/t/p/w45"
