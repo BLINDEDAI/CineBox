@@ -1,0 +1,2 @@
+# Sin dependencias externas: la app usa solo la librería estándar de Python.
+# Este archivo existe para que el build de Render (pip install -r) no falle.
