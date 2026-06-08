@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="es">
+  <head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>CINEBOX · Mi colección</title>
+    <link rel="stylesheet" href="styles.css">
+  </head>
+  <body>
+    <aside class="sidebar" aria-label="Navegación principal">
+      <div class="brand">
+        <span class="brand-mark" aria-hidden="true">
+          <svg viewBox="0 0 32 32">
+            <circle cx="16" cy="16" r="13"></circle>
+            <path d="M13 10.5 22 16l-9 5.5z"></path>
+          </svg>
+        </span>
+        <span>CINE<strong>BOX</strong></span>
+      </div>
+
+      <nav class="side-nav" aria-label="Secciones visuales">
+        <button class="side-link active" data-view-target="collection-view" type="button">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1.5"/><rect x="14" y="3" width="7" height="7" rx="1.5"/><rect x="3" y="14" width="7" height="7" rx="1.5"/><rect x="14" y="14" width="7" height="7" rx="1.5"/></svg>
+          </span>
+          Mi colección
+        </button>
+        <button class="side-link" data-view-target="discover-view" type="button">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m15.5 8.5-2.2 5.8-5.8 2.2 2.2-5.8Z"/></svg>
+          </span>
+          Descubrir
+        </button>
+        <button class="side-link" data-view-target="calendar-view" type="button">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><rect x="4" y="5" width="16" height="17" rx="2"/><path d="M8 3v4M16 3v4M4 10h16"/></svg>
+          </span>
+          Calendario
+        </button>
+        <button class="side-link" type="button" data-tooltip="Próximamente">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 20h18"/><rect x="6" y="10" width="2.8" height="7"/><rect x="11" y="5" width="2.8" height="12"/><rect x="16" y="8" width="2.8" height="9"/></svg>
+          </span>
+          Estadísticas
+        </button>
+        <button class="side-link" type="button" data-tooltip="Próximamente">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M9 6h12M9 12h12M9 18h12"/><circle cx="4.5" cy="6" r="1.3"/><circle cx="4.5" cy="12" r="1.3"/><circle cx="4.5" cy="18" r="1.3"/></svg>
+          </span>
+          Listas
+        </button>
+        <button class="side-link" type="button" data-tooltip="Próximamente">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><path d="M4 12.5 12.5 4H20v7.5L11.5 20Z"/><circle cx="16.5" cy="7.5" r="1.4"/></svg>
+          </span>
+          Etiquetas
+        </button>
+      </nav>
+
+      <div class="side-footer">
+        <div class="profile">
+          <div class="avatar">C</div>
+          <div>
+            <strong>Cinéfilo</strong>
+            <span>Nivel 12</span>
+          </div>
+        </div>
+        <button class="side-link settings" type="button">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2.8v3M12 18.2v3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M2.8 12h3M18.2 12h3M4.9 19.1 7 17M17 7l2.1-2.1"/></svg>
+          </span>
+          Ajustes
+        </button>
+      </div>
+    </aside>
+
+    <div class="app-shell">
+      <header class="topbar">
+        <div class="tabs media-tabs top-media-tabs" id="collection-media-filter" aria-label="Filtrar colección por tipo">
+          <button class="tab active" data-collection-media="todo" type="button">
+            <span class="filter-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+            </span>
+            Películas y series
+          </button>
+          <button class="tab" data-collection-media="movie" type="button">
+            <span class="filter-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h18M3 15h18"/></svg>
+            </span>
+            Películas
+          </button>
+          <button class="tab" data-collection-media="tv" type="button">
+            <span class="filter-icon" aria-hidden="true">
+              <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m9 21 3-3 3 3M9 3l3 3 3-3"/></svg>
+            </span>
+            Series
+          </button>
+        </div>
+
+        <form class="search" id="search-form" role="search">
+          <span aria-hidden="true">⌕</span>
+          <input id="search-input" type="search" placeholder="Buscar en mi colección..." autocomplete="off">
+        </form>
+
+        <div class="top-actions collection-sort-wrap">
+          <label class="sort-label" for="collection-sort">Orden</label>
+          <select id="collection-sort" class="select collection-sort" aria-label="Ordenar colección">
+            <option value="recent">Recientes primero</option>
+            <option value="title-asc">Título A-Z</option>
+            <option value="year-desc">Año nuevo → antiguo</option>
+            <option value="rating-desc">Mejor puntuadas</option>
+            <option value="pending-first">Por ver primero</option>
+            <option value="watched-first">Vistas primero</option>
+          </select>
+        </div>
+      </header>
+
+      <main class="content">
+        <div id="message" class="alert" role="status" hidden></div>
+
+        <section class="view is-active" id="collection-view">
+        <div class="collection-hero">
+          <div class="hero-copy">
+            <div class="hero-title-row">
+              <span class="hero-icon" aria-hidden="true">
+                <svg viewBox="0 0 48 48">
+                  <path d="M10 18h30v24H10z"></path>
+                  <path d="m8 12 30-7 3 9-30 7z"></path>
+                  <path d="m15 10 5 7M25 8l5 7M35 6l5 7M15 18v8M25 18v8M35 18v8"></path>
+                  <path d="M20 31h10l-5 6z"></path>
+                </svg>
+              </span>
+              <div>
+                <h1>Mi colección</h1>
+                <p>Tu universo cinematográfico, organizado a tu manera.</p>
+              </div>
+            </div>
+
+            <div class="hero-controls">
+              <div class="tabs status-tabs" id="tabs" aria-label="Filtrar colección por estado">
+                <button class="tab active" data-filter="todas" type="button">
+                  <span class="filter-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+                  </span>
+                  Todas
+                </button>
+                <button class="tab" data-filter="pendiente" type="button">
+                  <span class="filter-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><path d="M2.5 12s3.5-6 9.5-6 9.5 6 9.5 6-3.5 6-9.5 6-9.5-6-9.5-6Z"/><circle cx="12" cy="12" r="3"/></svg>
+                  </span>
+                  Por ver
+                </button>
+                <button class="tab" data-filter="vista" type="button">
+                  <span class="filter-icon" aria-hidden="true">
+                    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="9"/><path d="m8 12 3 3 5-6"/></svg>
+                  </span>
+                  Vistas
+                </button>
+              </div>
+
+              <button id="pick-tonight" class="btn-secondary add-btn" type="button" title="Elige al azar algo de tu lista «Por ver»">🎲 ¿Qué veo hoy?</button>
+              <button id="manual-toggle" class="btn add-btn" type="button">+ Añadir manual</button>
+              <button id="export-json" class="btn-secondary add-btn" type="button" title="Descargar colección en JSON">Exportar JSON</button>
+              <button id="import-json" class="btn-secondary add-btn" type="button" title="Importar colección desde JSON">Importar JSON</button>
+            </div>
+          </div>
+        </div>
+
+        <div class="collection-panel">
+          <div id="stats" class="stats" hidden></div>
+
+          <section id="pick-panel" class="pick-panel" aria-live="polite" hidden></section>
+
+          <form id="manual-form" class="manual" hidden>
+            <input id="manual-title" type="text" placeholder="Título" required>
+            <input id="manual-year" type="text" placeholder="Año" inputmode="numeric" maxlength="4">
+            <select id="manual-type" class="select">
+              <option value="movie">Película</option>
+              <option value="tv">Serie</option>
+            </select>
+            <button class="btn" type="submit">Añadir</button>
+          </form>
+
+          <div id="collection" class="grid"></div>
+          <p id="empty" class="empty" hidden>Aún no tienes nada. Ve a Descubrir para buscar películas o series, o añádela manualmente.</p>
+        </div>
+        </section>
+
+        <section class="view" id="discover-view" hidden>
+          <div class="collection-hero discover-hero">
+            <div class="hero-copy">
+              <div class="hero-title-row">
+                <span class="hero-icon" aria-hidden="true">◆</span>
+                <div>
+                  <h1>Descubrir</h1>
+                  <p>Busca películas y series fuera de tu colección y añádelas cuando quieras guardarlas.</p>
+                </div>
+              </div>
+
+              <form class="discover-search" id="discover-search-form" role="search">
+                <div class="search discover-search-box">
+                  <span aria-hidden="true">⌕</span>
+                  <input id="discover-search-input" type="search" placeholder="Buscar película o serie..." autocomplete="off">
+                </div>
+              </form>
+
+              <div class="hero-controls discover-controls">
+                <div class="top-tabs" id="media-filter" aria-label="Filtrar búsqueda por tipo">
+                  <button class="seg-btn top-tab active" data-media="todo" type="button">
+                    <span class="filter-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="4" y="4" width="6" height="6" rx="1"/><rect x="14" y="4" width="6" height="6" rx="1"/><rect x="4" y="14" width="6" height="6" rx="1"/><rect x="14" y="14" width="6" height="6" rx="1"/></svg>
+                    </span>
+                    Películas y series
+                  </button>
+                  <button class="seg-btn top-tab" data-media="movie" type="button">
+                    <span class="filter-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 5v14M17 5v14M3 10h18M3 15h18"/></svg>
+                    </span>
+                    Películas
+                  </button>
+                  <button class="seg-btn top-tab" data-media="tv" type="button">
+                    <span class="filter-icon" aria-hidden="true">
+                      <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="m9 21 3-3 3 3M9 3l3 3 3-3"/></svg>
+                    </span>
+                    Series
+                  </button>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <section id="results-section" class="panel" hidden>
+            <div class="section-head">
+              <div>
+                <span class="eyebrow">Descubrir</span>
+                <h2 id="results-title">Resultados</h2>
+              </div>
+              <button id="results-close" class="btn-secondary btn-sm" type="button">Cerrar</button>
+            </div>
+            <div id="results" class="grid"></div>
+          </section>
+        </section>
+
+        <section class="view" id="calendar-view" hidden>
+          <div class="collection-hero calendar-hero">
+            <div class="hero-copy">
+              <div class="hero-title-row">
+                <span class="hero-icon" aria-hidden="true">
+                  <svg viewBox="0 0 48 48"><rect x="8" y="4" width="32" height="40" rx="3"/><path d="M8 16h32M16 4v6M32 4v6M14 24h4v4h-4zM22 24h4v4h-4zM30 24h4v4h-4zM14 32h4v4h-4zM22 32h4v4h-4zM30 32h4v4h-4z"/></svg>
+                </span>
+                <div>
+                  <h1>Calendario</h1>
+                  <p>Tu historial de visionado, mes a mes.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div class="calendar-panel">
+            <div class="calendar-head">
+              <button id="cal-prev" class="btn-secondary btn-sm" type="button">← Anterior</button>
+              <h2 id="cal-month-year"></h2>
+              <button id="cal-next" class="btn-secondary btn-sm" type="button">Siguiente →</button>
+            </div>
+            <div class="calendar-grid" id="calendar-grid"></div>
+            <div id="cal-day-detail" class="cal-day-detail" hidden></div>
+          </div>
+        </section>
+
+        <footer class="app-credit" style="padding:18px 0 6px;color:var(--text-muted);font-size:.78rem">
+          Datos por <a href="https://www.themoviedb.org" target="_blank" rel="noopener" style="color:var(--text-soft)">TMDB</a>. Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.
+        </footer>
+      </main>
+    </div>
+
+    <div id="modal" class="modal" hidden>
+      <div class="modal-backdrop" data-close></div>
+      <div class="modal-card" role="dialog" aria-modal="true" aria-label="Detalle">
+        <button class="modal-close" type="button" data-close aria-label="Cerrar">✕</button>
+        <div id="modal-content"></div>
+      </div>
+    </div>
+
+    <script src="script.js" defer></script>
+    <input type="file" id="import-file" accept=".json,application/json" hidden>
+  </body>
+</html>
