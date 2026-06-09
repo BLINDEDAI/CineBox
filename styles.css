@@ -335,21 +335,12 @@ button {
   width: 170px;
   height: 48px;
   min-height: 48px;
-  padding-inline: 14px;
+  padding-inline: 16px;
   font-size: 0.9rem;
-}
-
-.control-select {
-  background-color: rgba(13, 18, 31, 0.94);
 }
 
 .control-btn {
   white-space: nowrap;
-}
-
-/* "+ Añadir manual": conserva el rojo de marca pero más discreto */
-.control-btn.btn {
-  box-shadow: 0 6px 16px rgba(255, 68, 61, 0.22);
 }
 
 /* Búsqueda más corta: ancho fijo, no se estira */
@@ -388,27 +379,30 @@ button {
 
 .collection-hero {
   position: relative;
-  min-height: 265px;
+  min-height: 330px;
   display: flex;
   align-items: flex-end;
-  padding: 48px 28px 22px;
+  padding: 0 36px 32px;
   overflow: hidden;
-  border: 1px solid rgba(255, 68, 61, 0.18);
-  border-bottom: 1px solid rgba(255, 68, 61, 0.18);
+  border: 1px solid rgba(255, 68, 61, 0.35);
   border-radius: 18px;
   background:
-    linear-gradient(90deg, rgba(5, 9, 20, 0.97) 0%, rgba(5, 9, 20, 0.76) 45%, rgba(5, 9, 20, 0.2) 100%),
-    radial-gradient(circle at 75% 35%, rgba(255, 98, 52, 0.36), transparent 26rem),
-    url("assets/banner-cine.jpg") center right / cover no-repeat;
+    linear-gradient(90deg, rgba(4, 7, 17, 0.82) 0%, rgba(4, 7, 17, 0.10) 40%, transparent 65%),
+    url("assets/banner-sincity.png") center / cover no-repeat;
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.18), 0 28px 64px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
 }
 
 .discover-hero {
   min-height: 330px;
   background:
-    linear-gradient(90deg, rgba(5, 9, 20, 0.97) 0%, rgba(5, 9, 20, 0.78) 48%, rgba(5, 9, 20, 0.18) 100%),
-    radial-gradient(circle at 73% 30%, rgba(75, 134, 255, 0.28), transparent 24rem),
-    radial-gradient(circle at 82% 55%, rgba(255, 68, 61, 0.2), transparent 24rem),
-    url("assets/banner-cine.jpg") center right / cover no-repeat;
+    linear-gradient(90deg, rgba(4, 7, 17, 0.82) 0%, rgba(4, 7, 17, 0.10) 40%, transparent 65%),
+    url("assets/banner-sincity.png") center / cover no-repeat;
+}
+
+#stats-view .collection-hero {
+  align-items: center;
+  justify-content: center;
+  text-align: center;
 }
 
 .collection-hero::after {
@@ -545,6 +539,55 @@ h1 {
   background: rgba(13, 18, 31, 0.86);
   color: var(--text);
   cursor: pointer;
+}
+
+/* Premium glow — overrides .btn-secondary/.select for control bar elements */
+.select.control-select {
+  background: rgba(8, 12, 26, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.10), 0 2px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.select.control-select:hover {
+  border-color: rgba(255, 68, 61, 0.38);
+  background: rgba(12, 16, 30, 0.88);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.22), 0 0 18px rgba(255, 68, 61, 0.14), 0 2px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07);
+}
+
+.control-bar .control-btn {
+  background: rgba(8, 12, 26, 0.75);
+  border: 1px solid rgba(255, 68, 61, 0.32);
+  border-radius: 12px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.12), 0 0 14px rgba(255, 68, 61, 0.18), 0 2px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+  transition: box-shadow 180ms ease, border-color 180ms ease, background 180ms ease;
+}
+
+.control-bar .control-btn:hover {
+  border-color: rgba(255, 68, 61, 0.65);
+  background: rgba(60, 14, 14, 0.55);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.30), 0 0 24px rgba(255, 68, 61, 0.30), 0 4px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.09);
+}
+
+.control-bar .control-search {
+  background: rgba(8, 12, 26, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.10), 0 2px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  transition: box-shadow 180ms ease, border-color 180ms ease;
+}
+
+.control-bar .control-search:hover,
+.control-bar .control-search:focus-within {
+  border-color: rgba(255, 68, 61, 0.38);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.22), 0 0 18px rgba(255, 68, 61, 0.14), 0 2px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.07);
 }
 
 .btn-sm {
@@ -1650,8 +1693,8 @@ h2 {
   }
 
   .collection-hero {
-    min-height: auto;
-    padding: 30px 18px 20px;
+    min-height: 280px;
+    padding: 0 18px 22px;
     border-radius: 0 0 18px 18px;
   }
 
