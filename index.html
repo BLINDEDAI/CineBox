@@ -31,6 +31,12 @@
           </span>
           Descubrir
         </button>
+        <button class="side-link" data-view-target="stats-view" type="button">
+          <span class="nav-icon" aria-hidden="true">
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+          </span>
+          Estadísticas
+        </button>
       </nav>
 
       <div class="side-footer">
@@ -181,6 +187,23 @@
             </div>
             <div id="results" class="grid"></div>
           </section>
+        </section>
+
+        <section class="view" id="stats-view" hidden>
+          <div class="collection-hero">
+            <div class="hero-copy">
+              <div class="hero-title-row">
+                <span class="hero-icon" aria-hidden="true">
+                  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="3" y="12" width="4" height="9" rx="1"/><rect x="10" y="7" width="4" height="14" rx="1"/><rect x="17" y="3" width="4" height="18" rx="1"/></svg>
+                </span>
+                <div>
+                  <h1>Estadísticas</h1>
+                  <p>Un vistazo a tus hábitos cinematográficos.</p>
+                </div>
+              </div>
+            </div>
+          </div>
+          <div id="stats-content" class="stats-view-content"></div>
         </section>
 
         <footer class="app-credit" style="padding:18px 0 6px;color:var(--text-muted);font-size:.78rem">

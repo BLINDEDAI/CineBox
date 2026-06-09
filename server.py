@@ -28,6 +28,19 @@ BLOCKED = (".env", ".py", ".pyc", ".sqlite")
 TMDB_IMG = "https://image.tmdb.org/t/p/w342"
 TMDB_LOGO = "https://image.tmdb.org/t/p/w45"
 
+PLATFORMS = ("Netflix", "HBO Max", "Prime Video", "Disney+", "Movistar+", "Cine", "Otra")
+
+TMDB_GENRES = {
+    28: "Acción", 12: "Aventura", 16: "Animación", 35: "Comedia",
+    80: "Crimen", 99: "Documental", 18: "Drama", 10751: "Familia",
+    14: "Fantasía", 36: "Historia", 27: "Terror", 10402: "Música",
+    9648: "Misterio", 10749: "Romance", 878: "Ciencia ficción",
+    10770: "Película de TV", 53: "Suspense", 10752: "Bélica", 37: "Western",
+    10759: "Acción y aventura", 10762: "Infantil", 10763: "Noticias",
+    10764: "Reality", 10765: "Ciencia ficción y fantasía",
+    10766: "Telenovela", 10767: "Late night", 10768: "Guerra y política",
+}
+
 
 def load_env():
     env = BASE_DIR / ".env"
@@ -71,6 +84,10 @@ def init_db():
             con.execute("ALTER TABLE movies ADD COLUMN current_season INTEGER")
         if "current_episode" not in cols:
             con.execute("ALTER TABLE movies ADD COLUMN current_episode INTEGER")
+        if "genres" not in cols:
+            con.execute("ALTER TABLE movies ADD COLUMN genres TEXT")
+        if "platform" not in cols:
+            con.execute("ALTER TABLE movies ADD COLUMN platform TEXT")
 
 
 def parse_watched_at(value):
@@ -194,6 +211,7 @@ class Handler(SimpleHTTPRequestHandler):
                     "title": m.get("title") or m.get("name") or "Sin título",
                     "year": (m.get("release_date") or m.get("first_air_date") or "")[:4],
                     "poster_url": (TMDB_IMG + poster) if poster else "",
+                    "genre_ids": m.get("genre_ids", []),
                 })
             return out
 
@@ -218,6 +236,7 @@ class Handler(SimpleHTTPRequestHandler):
                 "title": m.get("title") or m.get("name") or "Sin título",
                 "year": (m.get("release_date") or m.get("first_air_date") or "")[:4],
                 "poster_url": (TMDB_IMG + poster) if poster else "",
+                "genre_ids": m.get("genre_ids", []),
             })
             if len(results) >= 18:
                 break
@@ -304,6 +323,11 @@ class Handler(SimpleHTTPRequestHandler):
             tmdb_id = None
         year = str(data.get("year", "")).strip()
         poster = str(data.get("poster_url", "")).strip()
+        raw_ids = data.get("genre_ids") or []
+        genres = ", ".join(
+            TMDB_GENRES[gid] for gid in raw_ids
+            if isinstance(gid, int) and gid in TMDB_GENRES
+        ) or None
         with sqlite3.connect(DB_PATH) as con:
             if tmdb_id:
                 exists = con.execute(
@@ -313,10 +337,10 @@ class Handler(SimpleHTTPRequestHandler):
                     return self._json(409, {"ok": False, "duplicate": True,
                                             "error": f"«{title}» ya está en tu cineteca."})
             cur = con.execute(
-                "INSERT INTO movies (tmdb_id, media_type, title, year, poster_url, status, rating, created_at, watched_at) "
-                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+                "INSERT INTO movies (tmdb_id, media_type, title, year, poster_url, status, rating, created_at, watched_at, genres) "
+                "VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
                 (tmdb_id, media_type, title, year, poster,
-                 status, None, datetime.now(timezone.utc).isoformat(), watched_at),
+                 status, None, datetime.now(timezone.utc).isoformat(), watched_at, genres),
             )
             new_id = cur.lastrowid
         notify_discord(title, year, status, media_type, poster)
@@ -355,6 +379,11 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError as exc:
                 return self._json(400, {"ok": False, "error": str(exc)})
             fields.append("watched_at = ?"); values.append(watched_at)
+        if "platform" in data:
+            v = data["platform"]
+            if v is not None and v not in PLATFORMS:
+                return self._json(400, {"ok": False, "error": "Plataforma no válida"})
+            fields.append("platform = ?"); values.append(v)
         for field in ("current_season", "current_episode"):
             if field in data:
                 v = data[field]

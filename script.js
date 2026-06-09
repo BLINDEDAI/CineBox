@@ -25,6 +25,9 @@ let resultsMode = "search";
 let pickedMovie = null;
 let editingProgressId = null;
 let editingNoteId = null;
+let editingPlatformId = null;
+
+const PLATFORMS = ["Netflix", "HBO Max", "Prime Video", "Disney+", "Movistar+", "Cine", "Otra"];
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -150,6 +153,14 @@ function renderCollection() {
                  </div>`
               : `<button class="progress-btn ${(m.current_season || m.current_episode) ? "has-progress" : ""}" data-action="progress" type="button" title="Editar progreso">${(m.current_season || m.current_episode) ? `📍 T${m.current_season ?? "?"}  E${m.current_episode ?? "?"}` : "+ Progreso T/E"}</button>`
           ) : ""}
+          ${editingPlatformId === m.id
+            ? `<div class="platform-picker">
+                 ${PLATFORMS.map((p) => `<button class="platform-chip${m.platform === p ? " active" : ""}" data-action="platform-pick" data-platform="${esc(p)}" type="button">${esc(p)}</button>`).join("")}
+                 ${m.platform ? `<button class="platform-chip platform-chip-clear" data-action="platform-pick" data-platform="" type="button">✕ Quitar</button>` : ""}
+                 <button class="progress-cancel" data-action="platform-cancel" type="button" aria-label="Cancelar">✕</button>
+               </div>`
+            : `<button class="platform-btn${m.platform ? " has-platform" : ""}" data-action="platform-open" type="button" title="Dónde la vi">${m.platform ? `▶ ${esc(m.platform)}` : "+ Plataforma"}</button>`
+          }
         </div>
         ${editingNoteId === m.id
           ? `<div class="note-form">
@@ -175,6 +186,10 @@ function renderCollection() {
   if (editingProgressId !== null) {
     const input = collectionEl.querySelector(`.card[data-id="${editingProgressId}"] .progress-input`);
     if (input) input.focus();
+  }
+  if (editingPlatformId !== null) {
+    const chip = collectionEl.querySelector(`.card[data-id="${editingPlatformId}"] .platform-chip`);
+    if (chip) chip.focus();
   }
   if (editingNoteId !== null) {
     const ta = collectionEl.querySelector(`.card[data-id="${editingNoteId}"] .note-textarea`);
@@ -242,6 +257,7 @@ function showView(viewId) {
   });
   showMessage("");
   if (viewId === "discover-view" && !el("discover-search-input").value.trim()) loadTrending();
+  if (viewId === "stats-view") renderStatsView();
 }
 
 function renderResults() {
@@ -337,6 +353,7 @@ async function loadMovies() {
     movies = data.movies;
     renderCollection();
     renderStats();
+    renderStatsView();
     if (pickedMovie) {
       const current = movies.find((m) => m.id === pickedMovie.id);
       if (current && current.status === "pendiente") renderPickPanel(current);
@@ -400,6 +417,103 @@ async function loadTrending() {
   } else {
     showMessage(data.error || "No se pudieron cargar las tendencias.", "error");
   }
+}
+
+// ---- Estadísticas ----
+function renderStatsView() {
+  const container = el("stats-content");
+  if (!container) return;
+
+  const thisYear = new Date().getFullYear().toString();
+  const vistas = movies.filter((m) => m.status === "vista");
+  const pelisVistas = vistas.filter((m) => m.media_type !== "tv").length;
+  const seriesVistas = vistas.filter((m) => m.media_type === "tv").length;
+  const esteAnio = vistas.filter((m) => (m.watched_at || "").startsWith(thisYear)).length;
+  const pendientes = movies.filter((m) => m.status === "pendiente").length;
+  const rated = movies.filter((m) => m.rating);
+  const avgRating = rated.length
+    ? (rated.reduce((a, m) => a + m.rating, 0) / rated.length).toFixed(1)
+    : null;
+
+  // Contar géneros
+  const genreCount = {};
+  for (const m of movies) {
+    if (!m.genres) continue;
+    for (const g of m.genres.split(", ")) {
+      genreCount[g] = (genreCount[g] || 0) + 1;
+    }
+  }
+  const topGenres = Object.entries(genreCount)
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, 6);
+  const maxGenre = topGenres[0]?.[1] || 1;
+
+  const statCard = (value, label, sub = "") => `
+    <div class="scard">
+      <div class="scard-value">${value}</div>
+      <div class="scard-label">${label}</div>
+      ${sub ? `<div class="scard-sub">${sub}</div>` : ""}
+    </div>`;
+
+  const starsRow = rated.length ? [1, 2, 3, 4, 5].map((s) => {
+    const count = rated.filter((m) => m.rating === s).length;
+    const pct = Math.round((count / rated.length) * 100);
+    return `<div class="srating-row">
+      <span class="srating-star">${"★".repeat(s)}</span>
+      <div class="srating-bar-wrap"><div class="srating-bar" style="width:${pct}%"></div></div>
+      <span class="srating-count">${count}</span>
+    </div>`;
+  }).join("") : `<p class="muted" style="font-size:.82rem">Aún no has puntuado nada.</p>`;
+
+  const genresHtml = topGenres.length ? topGenres.map(([name, count]) => {
+    const pct = Math.round((count / maxGenre) * 100);
+    return `<div class="sgenre-row">
+      <span class="sgenre-name">${esc(name)}</span>
+      <div class="sgenre-bar-wrap"><div class="sgenre-bar" style="width:${pct}%"></div></div>
+      <span class="sgenre-count">${count}</span>
+    </div>`;
+  }).join("") : `<p class="muted" style="font-size:.82rem">Añade títulos desde Descubrir para ver tus géneros.</p>`;
+
+  // Contar plataformas
+  const platformCount = {};
+  for (const m of movies) {
+    if (!m.platform) continue;
+    platformCount[m.platform] = (platformCount[m.platform] || 0) + 1;
+  }
+  const topPlatforms = Object.entries(platformCount).sort((a, b) => b[1] - a[1]);
+  const maxPlatform = topPlatforms[0]?.[1] || 1;
+
+  const platformsHtml = topPlatforms.length ? topPlatforms.map(([name, count]) => {
+    const pct = Math.round((count / maxPlatform) * 100);
+    return `<div class="sgenre-row">
+      <span class="sgenre-name">${esc(name)}</span>
+      <div class="sgenre-bar-wrap"><div class="splatform-bar" style="width:${pct}%"></div></div>
+      <span class="sgenre-count">${count}</span>
+    </div>`;
+  }).join("") : `<p class="muted" style="font-size:.82rem">Aún no has marcado dónde viste ningún título.</p>`;
+
+  container.innerHTML = `
+    <div class="stats-grid">
+      ${statCard(pelisVistas, "Películas vistas")}
+      ${statCard(seriesVistas, "Series vistas")}
+      ${statCard(esteAnio, `Vistas en ${thisYear}`)}
+      ${statCard(pendientes, "Pendientes")}
+    </div>
+    <div class="stats-panels">
+      <div class="spanel">
+        <h3 class="spanel-title">Valoraciones</h3>
+        ${avgRating ? `<div class="savg-rating"><span class="savg-number">${avgRating}</span><span class="savg-star">★</span><span class="savg-total">sobre ${rated.length} valoradas</span></div>` : ""}
+        <div class="srating-list">${starsRow}</div>
+      </div>
+      <div class="spanel">
+        <h3 class="spanel-title">Géneros favoritos</h3>
+        <div class="sgenre-list">${genresHtml}</div>
+      </div>
+      <div class="spanel">
+        <h3 class="spanel-title">Plataformas</h3>
+        <div class="sgenre-list">${platformsHtml}</div>
+      </div>
+    </div>`;
 }
 
 // ---- Eventos ----
@@ -489,6 +603,13 @@ collectionEl.addEventListener("click", (e) => {
     patchMovie(movie.id, { note });
   }
   else if (action === "date" && movie) editWatchedDate(movie);
+  else if (action === "platform-open") { editingPlatformId = id; renderCollection(); }
+  else if (action === "platform-cancel") { editingPlatformId = null; renderCollection(); }
+  else if (action === "platform-pick") {
+    const platform = e.target.closest("[data-platform]")?.dataset.platform || null;
+    editingPlatformId = null;
+    patchMovie(id, { platform: platform || null });
+  }
   else if (action === "progress") { editingProgressId = id; renderCollection(); }
   else if (action === "progress-cancel") { editingProgressId = null; renderCollection(); }
   else if (action === "progress-save" && movie) {
@@ -590,6 +711,7 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!modalEl.hidden) closeModal();
   else if (!pickPanelEl.hidden) closePickPanel();
+  else if (editingPlatformId !== null) { editingPlatformId = null; renderCollection(); }
   else if (editingProgressId !== null) { editingProgressId = null; renderCollection(); }
   else if (editingNoteId !== null) { editingNoteId = null; renderCollection(); }
 });
