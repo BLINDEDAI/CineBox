@@ -3,12 +3,11 @@
 // ── Supabase & Auth ─────────────────────────────────────────────────────────
 let _supabase = null;
 let _currentUser = null;
+let _currentSession = null; // cacheada por onAuthStateChange; evita llamar a getSession() en cada api()
 let _authMode = "login"; // "login" | "register"
 
-async function _getToken() {
-  if (!_supabase) return null;
-  const { data } = await _supabase.auth.getSession();
-  return data.session?.access_token ?? null;
+function _getToken() {
+  return _currentSession?.access_token ?? null;
 }
 
 function _showLoginScreen() {
@@ -95,7 +94,7 @@ function showMessage(text, type) {
 }
 
 async function api(path, options) {
-  const token = await _getToken();
+  const token = _getToken();
   const headers = { ...(options?.headers) };
   if (token) headers["Authorization"] = `Bearer ${token}`;
   if (options?.body && typeof options.body === "string") headers["Content-Type"] = headers["Content-Type"] || "application/json";
@@ -765,14 +764,18 @@ async function initApp() {
     console.warn("No se pudo cargar la config de Supabase:", e);
   }
 
-  // 2. Listener de cambios de sesión
+  // 2. Listener de cambios de sesión.
+  //    No llamamos a getSession() aquí dentro (footgun de supabase-js: el lock
+  //    interno puede bloquearse). La sesión llega como argumento y la cacheamos;
+  //    loadMovies() se difiere con queueMicrotask para no correr dentro del lock.
   if (_supabase) {
-    _supabase.auth.onAuthStateChange(async (event, session) => {
+    _supabase.auth.onAuthStateChange((event, session) => {
+      _currentSession = session;
       if (session) {
         _currentUser = session.user;
         _hideLoginScreen();
         _updateSidebarUser(session.user.email);
-        await loadMovies();
+        queueMicrotask(() => { loadMovies(); });
       } else {
         _currentUser = null;
         movies = [];
@@ -787,6 +790,7 @@ async function initApp() {
   const session = _supabase
     ? (await _supabase.auth.getSession()).data.session
     : null;
+  _currentSession = session;
 
   const visited = localStorage.getItem("cinebox_visited");
   const welcomeScreen = document.getElementById("welcome-screen");

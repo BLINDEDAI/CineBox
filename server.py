@@ -24,6 +24,7 @@ from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
 import jwt as pyjwt          # PyJWT
+from jwt import PyJWKClient
 import psycopg2
 import psycopg2.extras
 
@@ -87,22 +88,63 @@ def init_db():
 
 # ── JWT ───────────────────────────────────────────────────────────────────────
 
+def supabase_base_url():
+    """URL base del proyecto Supabase, normalizada desde SUPABASE_URL.
+    Tolera el doble esquema (https:https://) y el sufijo /rest/v1 del .env."""
+    raw = os.environ.get("SUPABASE_URL", "")
+    raw = re.sub(r'^https:https://', 'https://', raw)
+    raw = re.sub(r'/rest/v1/?$', '', raw.rstrip('/'))
+    return raw
+
+
+# Cliente JWKS perezoso (cachea las claves públicas internamente).
+_jwks_client = None
+
+def _get_jwks_client():
+    global _jwks_client
+    if _jwks_client is None:
+        base = supabase_base_url()
+        if not base:
+            return None
+        _jwks_client = PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json")
+    return _jwks_client
+
+
 def verify_jwt(token: str):
-    """Verifica el token con SUPABASE_JWT_SECRET (HS256).
-    Devuelve el UUID del usuario (sub) o None si es inválido."""
-    secret = os.environ.get("SUPABASE_JWT_SECRET", "")
-    if not secret:
-        return None
+    """Verifica el access token de Supabase con la clave pública del JWKS
+    (firma asimétrica ES256/RS256). Devuelve el UUID del usuario (sub) o None.
+
+    Fallback a HS256 con SUPABASE_JWT_SECRET para proyectos heredados que
+    aún firmen con secreto compartido."""
+    # 1. Verificación asimétrica vía JWKS (sistema de claves actual de Supabase)
     try:
-        payload = pyjwt.decode(
-            token,
-            secret,
-            algorithms=["HS256"],
-            options={"verify_aud": False},   # Supabase pone aud="authenticated"
-        )
-        return payload.get("sub")           # UUID del usuario
+        client = _get_jwks_client()
+        if client is not None:
+            signing_key = client.get_signing_key_from_jwt(token)
+            payload = pyjwt.decode(
+                token,
+                signing_key.key,
+                algorithms=["ES256", "RS256"],
+                options={"verify_aud": False},   # Supabase pone aud="authenticated"
+            )
+            return payload.get("sub")            # UUID del usuario
     except pyjwt.PyJWTError:
-        return None
+        pass  # token no verificable por JWKS → probamos HS256 abajo
+
+    # 2. Fallback HS256 (secreto compartido heredado)
+    secret = os.environ.get("SUPABASE_JWT_SECRET", "")
+    if secret:
+        try:
+            payload = pyjwt.decode(
+                token,
+                secret,
+                algorithms=["HS256"],
+                options={"verify_aud": False},
+            )
+            return payload.get("sub")
+        except pyjwt.PyJWTError:
+            return None
+    return None
 
 
 # ── Utilidades ────────────────────────────────────────────────────────────────
@@ -196,16 +238,10 @@ class Handler(SimpleHTTPRequestHandler):
         path         = self.path.split("?", 1)[0]
         decoded_path = urllib.parse.unquote(path)
         if path == "/health":       return self._json(200, {"ok": True, "status": "up"})
-        if path == "/api/config":
-            raw = os.environ.get("SUPABASE_URL", "")
-            # Normaliza la URL base: elimina doble-esquema y /rest/v1 si vienen del .env
-            import re as _re
-            raw = _re.sub(r'^https:https://', 'https://', raw)
-            raw = _re.sub(r'/rest/v1/?$', '', raw.rstrip('/'))
-            return self._json(200, {
-                "supabase_url":      raw,
-                "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY", ""),
-            })
+        if path == "/api/config":   return self._json(200, {
+            "supabase_url":      supabase_base_url(),
+            "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY", ""),
+        })
         if path == "/api/movies":   return self._list_movies()
         if path == "/api/search":   return self._search()
         if path == "/api/trending": return self._trending()
