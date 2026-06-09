@@ -2083,10 +2083,68 @@ html.cinebox-visited #welcome-screen { display: none; }
   transition-duration: 60ms;
 }
 
+.welcome-features {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 10px 20px;
+  font-size: 0.88rem;
+  color: rgba(255, 255, 255, 0.6);
+  letter-spacing: 0.01em;
+}
+
+.welcome-features li {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 20px;
+  padding: 5px 14px;
+  white-space: nowrap;
+}
+
+.welcome-actions {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 12px;
+  margin-top: 8px;
+}
+
+.welcome-btn-secondary {
+  background: transparent;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 50px;
+  color: rgba(255, 255, 255, 0.7);
+  cursor: pointer;
+  font-size: 0.95rem;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  padding: 10px 32px;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+
+.welcome-btn-secondary:hover {
+  color: #fff;
+  border-color: rgba(255, 255, 255, 0.55);
+}
+
+.welcome-btn-secondary:active {
+  transform: scale(0.97);
+  transition-duration: 60ms;
+}
+
 @media (max-width: 600px) {
   .welcome-mark, .welcome-mark svg { width: 56px; height: 56px; }
   .welcome-logo { gap: 14px; }
   .welcome-btn { padding: 14px 36px; font-size: 1rem; }
+  .welcome-features { gap: 8px 12px; font-size: 0.82rem; }
+  .welcome-features li { padding: 4px 12px; }
+  .welcome-btn-secondary { font-size: 0.9rem; padding: 9px 28px; }
 }
 
 /* ── Login screen ────────────────────────────────────────────── */

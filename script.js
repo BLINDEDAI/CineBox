@@ -815,10 +815,11 @@ async function initApp() {
   const visited = localStorage.getItem("cinebox_visited");
   const welcomeScreen = document.getElementById("welcome-screen");
 
-  // 4. Enganchar botón de bienvenida (después de saber si hay sesión)
+  // 4. Enganchar botones de bienvenida (después de saber si hay sesión)
   if (welcomeScreen) {
-    document.getElementById("welcome-enter").addEventListener("click", async () => {
+    function _leaveWelcome(mode) {
       localStorage.setItem("cinebox_visited", "1");
+      if (mode) _setLoginMode(mode);
       welcomeScreen.classList.add("is-hiding");
       welcomeScreen.addEventListener("transitionend", () => {
         welcomeScreen.remove();
@@ -828,7 +829,9 @@ async function initApp() {
           _showLoginScreen();
         }
       }, { once: true });
-    });
+    }
+    document.getElementById("welcome-register").addEventListener("click", () => _leaveWelcome("register"));
+    document.getElementById("welcome-login").addEventListener("click",    () => _leaveWelcome("login"));
   }
 
   // 5. Routing inicial
