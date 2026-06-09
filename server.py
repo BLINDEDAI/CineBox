@@ -169,7 +169,11 @@ def webhook_for(status):
     return os.environ.get(key, "").strip() or os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
 
 
-def notify_discord(title, year, status, media_type, poster_url=""):
+def notify_discord(title, year, status, media_type, poster_url="", user_id=None):
+    owner = os.environ.get("DISCORD_OWNER_ID", "").strip()
+
+    if owner and user_id != owner:
+        return
     url = webhook_for(status)
     if not url:
         return
@@ -431,7 +435,7 @@ class Handler(SimpleHTTPRequestHandler):
                  status, None, datetime.now(timezone.utc).isoformat(), watched_at, genres))
             new_id = cur.fetchone()["id"]
 
-        notify_discord(title, year, status, media_type, poster)
+        notify_discord(title, year, status, media_type, poster, user_id)
         self._json(201, {"ok": True, "id": new_id})
 
     # ── PATCH ─────────────────────────────────────────────────────────────────
@@ -510,7 +514,7 @@ class Handler(SimpleHTTPRequestHandler):
                 row = cur.fetchone()
 
         if new_status and row:
-            notify_discord(row["title"], row["year"], new_status, row["media_type"], row["poster_url"])
+            notify_discord(row["title"], row["year"], new_status, row["media_type"], row["poster_url"], user_id)
         self._json(200, {"ok": True})
 
     # ── DELETE ────────────────────────────────────────────────────────────────
