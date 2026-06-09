@@ -662,11 +662,11 @@ collectionEl.addEventListener("click", (e) => {
   else if (action === "progress-save" && movie) {
     const form = card.querySelector(".progress-form");
     const s = form.querySelector("[data-field='season']").value.trim();
-    const e = form.querySelector("[data-field='episode']").value.trim();
+    const ep = form.querySelector("[data-field='episode']").value.trim();
     const season = s ? parseInt(s, 10) : null;
-    const episode = e ? parseInt(e, 10) : null;
+    const episode = ep ? parseInt(ep, 10) : null;
     if (s && (isNaN(season) || season < 1)) { showMessage("La temporada debe ser un número positivo.", "error"); return; }
-    if (e && (isNaN(episode) || episode < 1)) { showMessage("El episodio debe ser un número positivo.", "error"); return; }
+    if (ep && (isNaN(episode) || episode < 1)) { showMessage("El episodio debe ser un número positivo.", "error"); return; }
     editingProgressId = null;
     patchMovie(movie.id, { current_season: season, current_episode: episode });
   }

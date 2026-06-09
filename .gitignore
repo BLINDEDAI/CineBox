@@ -3,6 +3,7 @@
 
 # Caché de Python: archivos compilados que se regeneran solos.
 __pycache__/
+*.pyc
 
 # Resultados de tests (capturas, reportes): se generan al ejecutar las pruebas.
 test-results/
