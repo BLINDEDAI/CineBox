@@ -769,11 +769,8 @@ el("status-filter").addEventListener("change", (e) => {
   renderCollection();
 });
 
-el("media-filter").addEventListener("click", (e) => {
-  const b = e.target.closest(".seg-btn");
-  if (!b) return;
-  mediaFilter = b.dataset.media;
-  document.querySelectorAll("#media-filter .seg-btn").forEach((x) => x.classList.toggle("active", x === b));
+el("discover-type-select").addEventListener("change", (e) => {
+  mediaFilter = e.target.value;
   if (activeGenreId !== null) loadDiscover(activeGenreId);
   else renderResults();
 });

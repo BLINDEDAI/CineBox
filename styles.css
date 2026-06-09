@@ -468,20 +468,46 @@ h1 {
   margin-top: 34px;
 }
 
-.discover-search {
+.discover-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
   margin-top: 28px;
-  max-width: 760px;
+}
+
+.discover-type-select {
+  flex: 0 0 auto;
+  height: 48px;
+  padding: 0 32px 0 14px;
+  background: rgba(8, 12, 26, 0.75);
+  border: 1px solid rgba(255, 255, 255, 0.13);
+  border-radius: 12px;
+  backdrop-filter: blur(16px);
+  -webkit-backdrop-filter: blur(16px);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.10), 0 2px 12px rgba(0, 0, 0, 0.45), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  color: var(--text);
+  font-weight: 700;
+  cursor: pointer;
+  transition: border-color 180ms ease, box-shadow 180ms ease;
+  white-space: nowrap;
+}
+
+.discover-type-select:hover {
+  border-color: rgba(255, 68, 61, 0.38);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.20), 0 4px 16px rgba(0, 0, 0, 0.5), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+}
+
+/* Dentro del toolbar, el form de búsqueda ocupa el espacio restante */
+.discover-toolbar .discover-search {
+  flex: 1;
+  margin-top: 0;
+  max-width: none;
 }
 
 .discover-search-box {
-  min-height: 58px;
+  min-height: 48px;
   background: rgba(7, 11, 22, 0.82);
   border-color: rgba(255, 255, 255, 0.18);
-}
-
-.discover-controls {
-  grid-template-columns: 1fr;
-  margin-top: 22px;
 }
 
 .genre-chips {
@@ -1812,6 +1838,14 @@ h2 {
     min-height: 280px;
     padding: 0 18px 22px;
     border-radius: 0 0 18px 18px;
+  }
+
+  .discover-toolbar {
+    flex-wrap: wrap;
+  }
+
+  .discover-type-select {
+    flex: 1;
   }
 
   .hero-title-row {
