@@ -50,6 +50,8 @@ const resultsEl = el("results");
 const resultsSection = el("results-section");
 const messageEl = el("message");
 const emptyEl = el("empty");
+const collectionEmptyStateEl = el("collection-empty-state");
+const collectionControlsEl = el("collection-controls");
 
 const modalEl = el("modal");
 const modalContent = el("modal-content");
@@ -157,10 +159,13 @@ function renderCollection() {
     (filter === "todas" || m.status === filter) &&
     (collectionMediaFilter === "todo" || (m.media_type || "movie") === collectionMediaFilter) &&
     (!q || `${m.title} ${m.year || ""}`.toLowerCase().includes(q))));
-  emptyEl.hidden = list.length !== 0;
-  emptyEl.textContent = movies.length
-    ? "No hay títulos que coincidan con estos filtros."
-    : "Aún no tienes nada. Ve a Descubrir para buscar películas o series, o añádela manualmente.";
+  const isCollectionEmpty = movies.length === 0;
+  collectionEmptyStateEl.hidden = !isCollectionEmpty;
+  collectionControlsEl.hidden = isCollectionEmpty;
+  emptyEl.hidden = isCollectionEmpty || list.length !== 0;
+  if (!isCollectionEmpty && list.length === 0) {
+    emptyEl.textContent = "No hay títulos que coincidan con estos filtros.";
+  }
   const _html = list.map((m) => `
     <article class="card" data-id="${m.id}">
       <div class="poster ${m.tmdb_id ? "cursor-pointer" : ""}" ${m.tmdb_id ? `data-tmdb="${esc(m.tmdb_id)}" data-type="${esc(m.media_type)}"` : ""}>

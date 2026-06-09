@@ -117,7 +117,7 @@
               </div>
             </div>
 
-            <div class="hero-controls">
+            <div class="hero-controls" id="collection-controls">
               <div class="control-bar">
                 <div class="control-field">
                   <label class="control-label" for="collection-media-filter">Tipo</label>
@@ -165,7 +165,21 @@
           <section id="pick-panel" class="pick-panel" aria-live="polite" hidden></section>
 
           <div id="collection" class="grid"></div>
-          <p id="empty" class="empty" hidden>Aún no tienes nada. Ve a Descubrir para buscar películas o series, o añádela manualmente.</p>
+          <p id="empty" class="empty" hidden></p>
+
+          <div id="collection-empty-state" class="collection-empty-state" hidden>
+            <span class="ces-icon" aria-hidden="true">
+              <svg viewBox="0 0 64 64" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round">
+                <rect x="8" y="20" width="48" height="34" rx="4"/>
+                <path d="m8 28 48-8M8 34h48M8 44h48"/>
+                <path d="M18 20V10M28 20V8M38 20V10M48 20V14"/>
+                <circle cx="32" cy="41" r="4"/>
+              </svg>
+            </span>
+            <p class="ces-title">Tu colección está vacía</p>
+            <p class="ces-sub">Busca una película o serie para empezar</p>
+            <button class="btn ces-action" type="button" data-view-target="discover-view">Ir a Descubrir</button>
+          </div>
         </div>
         </section>
 

@@ -1425,6 +1425,43 @@ h2 {
   background: rgba(9, 14, 26, 0.54);
 }
 
+.collection-empty-state {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  padding: 72px 28px 56px;
+  text-align: center;
+}
+
+.ces-icon {
+  width: 72px;
+  height: 72px;
+  color: var(--text-muted);
+  opacity: 0.35;
+  margin-bottom: 8px;
+}
+
+.ces-title {
+  margin: 0;
+  font-size: 1.22rem;
+  font-weight: 600;
+  color: var(--text);
+  letter-spacing: -0.01em;
+}
+
+.ces-sub {
+  margin: 0;
+  font-size: 0.92rem;
+  color: var(--text-muted);
+}
+
+.ces-action {
+  margin-top: 10px;
+  min-width: 180px;
+}
+
 /* Skeleton loading */
 .skeleton-card {
   min-height: 340px;
