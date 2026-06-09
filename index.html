@@ -101,7 +101,6 @@
                   </select>
                 </div>
                 <button id="pick-tonight" class="btn-secondary control-btn" type="button" title="Elige al azar algo de tu lista «Por ver»">🎲 ¿Qué veo hoy?</button>
-                <button id="manual-toggle" class="btn control-btn" type="button">+ Añadir manual</button>
                 <div class="control-field control-field-search">
                   <label class="control-label" for="search-input">Buscar</label>
                   <form class="search control-search" id="search-form" role="search">
@@ -115,19 +114,7 @@
         </div>
 
         <div class="collection-panel">
-          <div id="stats" class="stats" hidden></div>
-
           <section id="pick-panel" class="pick-panel" aria-live="polite" hidden></section>
-
-          <form id="manual-form" class="manual" hidden>
-            <input id="manual-title" type="text" placeholder="Título" required>
-            <input id="manual-year" type="text" placeholder="Año" inputmode="numeric" maxlength="4">
-            <select id="manual-type" class="select">
-              <option value="movie">Película</option>
-              <option value="tv">Serie</option>
-            </select>
-            <button class="btn" type="submit">Añadir</button>
-          </form>
 
           <div id="collection" class="grid"></div>
           <p id="empty" class="empty" hidden>Aún no tienes nada. Ve a Descubrir para buscar películas o series, o añádela manualmente.</p>

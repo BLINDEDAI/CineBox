@@ -9,7 +9,7 @@ const resultsEl = el("results");
 const resultsSection = el("results-section");
 const messageEl = el("message");
 const emptyEl = el("empty");
-const statsEl = el("stats");
+
 const modalEl = el("modal");
 const modalContent = el("modal-content");
 const pickPanelEl = el("pick-panel");
@@ -71,21 +71,6 @@ function starsHtml(rating) {
   return out;
 }
 
-function renderStats() {
-  const total = movies.length;
-  if (!total) { statsEl.hidden = true; return; }
-  const vistas = movies.filter((m) => m.status === "vista").length;
-  const series = movies.filter((m) => m.media_type === "tv").length;
-  const rated = movies.filter((m) => m.rating);
-  const avg = rated.length ? (rated.reduce((a, m) => a + m.rating, 0) / rated.length).toFixed(1) : "—";
-  statsEl.hidden = false;
-  statsEl.innerHTML = `
-    <div><strong>${total}</strong><span>Total</span></div>
-    <div><strong>${vistas}</strong><span>Vistas</span></div>
-    <div><strong>${total - vistas}</strong><span>Por ver</span></div>
-    <div><strong>${total - series}/${series}</strong><span>Pelis / Series</span></div>
-    <div><strong>${avg}</strong><span>Nota media</span></div>`;
-}
 
 function recentValue(m) {
   return Date.parse(m.created_at || "") || Number(m.id || 0);
@@ -352,7 +337,6 @@ async function loadMovies() {
   if (ok && data.ok) {
     movies = data.movies;
     renderCollection();
-    renderStats();
     renderStatsView();
     if (pickedMovie) {
       const current = movies.find((m) => m.id === pickedMovie.id);
@@ -691,20 +675,6 @@ pickPanelEl.addEventListener("click", async (e) => {
   }
 });
 
-el("manual-toggle").addEventListener("click", () => {
-  const f = el("manual-form");
-  f.hidden = !f.hidden;
-  if (!f.hidden) el("manual-title").focus();
-});
-
-el("manual-form").addEventListener("submit", (e) => {
-  e.preventDefault();
-  const title = el("manual-title").value.trim();
-  if (!title) return;
-  addItem({ title, year: el("manual-year").value.trim(), media_type: el("manual-type").value, poster_url: "", tmdb_id: null }, "pendiente");
-  e.target.reset();
-  e.target.hidden = true;
-});
 
 modalEl.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeModal(); });
 document.addEventListener("keydown", (e) => {

@@ -318,7 +318,7 @@ button {
 }
 
 .control-field-search {
-  flex: 0 0 auto;
+  flex: 0 0 340px;
 }
 
 .control-label {
@@ -354,7 +354,7 @@ button {
 
 /* Búsqueda más corta: ancho fijo, no se estira */
 .control-search {
-  width: 240px;
+  width: 340px;
 }
 
 .notification {
