@@ -212,6 +212,21 @@ def _json_default(o):
 
 class Handler(SimpleHTTPRequestHandler):
 
+    def end_headers(self):
+        self.send_header("X-Frame-Options", "DENY")
+        self.send_header("X-Content-Type-Options", "nosniff")
+        self.send_header("Referrer-Policy", "no-referrer")
+        # Ajustar script-src si supabase-js se carga desde un CDN externo.
+        self.send_header(
+            "Content-Security-Policy",
+            "default-src 'self'; "
+            "script-src 'self' https://cdn.jsdelivr.net; "
+            "img-src 'self' https://image.tmdb.org data: blob:; "
+            "connect-src 'self' https://*.supabase.co; "
+            "frame-ancestors 'none'",
+        )
+        super().end_headers()
+
     def _json(self, status, payload):
         body = json.dumps(payload, ensure_ascii=False, default=_json_default).encode("utf-8")
         self.send_response(status)
@@ -221,7 +236,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_json(self):
-        length = min(int(self.headers.get("Content-Length", 0)), MAX_BODY)
+        length = max(0, min(int(self.headers.get("Content-Length", 0)), MAX_BODY))
         return json.loads(self.rfile.read(length) or b"{}")
 
     def _qs(self):
@@ -411,6 +426,8 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "results": results, "page": page, "has_more": has_more})
 
     def _details(self):
+        if not self._get_user_id():
+            return self._json(401, {"ok": False, "error": "No autenticado"})
         q   = self._qs()
         tid = (q.get("id",   [""])[0]).strip()
         mt  = (q.get("type", ["movie"])[0]).strip()
