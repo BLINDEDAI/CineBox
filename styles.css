@@ -893,6 +893,49 @@ h2 {
   color: var(--text-soft);
 }
 
+.note-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.note-textarea {
+  width: 100%;
+  min-height: 72px;
+  padding: 8px 10px;
+  border: 1px solid rgba(255, 68, 61, 0.35);
+  border-radius: 10px;
+  background: rgba(255, 68, 61, 0.06);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.82rem;
+  line-height: 1.4;
+  resize: vertical;
+  box-sizing: border-box;
+}
+
+.note-textarea:focus {
+  outline: none;
+  border-color: rgba(255, 68, 61, 0.65);
+  background: rgba(255, 68, 61, 0.09);
+}
+
+.note-textarea::placeholder {
+  color: var(--text-muted);
+}
+
+.note-form-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.note-chars {
+  flex: 1;
+  font-size: 0.73rem;
+  color: var(--text-muted);
+}
+
 .date-btn {
   width: 100%;
   min-height: 28px;
@@ -911,6 +954,104 @@ h2 {
 .date-btn:hover {
   border-color: rgba(255, 191, 63, 0.42);
   background: rgba(255, 191, 63, 0.1);
+}
+
+.progress-btn {
+  width: 100%;
+  min-height: 28px;
+  padding: 4px 8px;
+  border: 1px dashed rgba(100, 180, 255, 0.22);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.78rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.progress-btn:hover {
+  border-color: rgba(100, 180, 255, 0.5);
+  color: var(--text-soft);
+}
+
+.progress-btn.has-progress {
+  border-style: solid;
+  border-color: rgba(100, 180, 255, 0.35);
+  background: rgba(100, 180, 255, 0.07);
+  color: #9dcfff;
+  font-weight: 700;
+}
+
+.progress-form {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.progress-label {
+  display: flex;
+  align-items: center;
+  gap: 3px;
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: #9dcfff;
+  user-select: none;
+}
+
+.progress-input {
+  width: 46px;
+  padding: 4px 6px;
+  border: 1px solid rgba(100, 180, 255, 0.4);
+  border-radius: 8px;
+  background: rgba(100, 180, 255, 0.08);
+  color: #cce5ff;
+  font: inherit;
+  font-size: 0.82rem;
+  text-align: center;
+  -moz-appearance: textfield;
+}
+
+.progress-input::-webkit-inner-spin-button,
+.progress-input::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+.progress-input:focus {
+  outline: none;
+  border-color: rgba(100, 180, 255, 0.75);
+  background: rgba(100, 180, 255, 0.13);
+}
+
+.progress-save {
+  padding: 3px 9px;
+  border: 1px solid rgba(100, 220, 130, 0.4);
+  border-radius: 8px;
+  background: rgba(100, 220, 130, 0.1);
+  color: #7debb0;
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.progress-save:hover {
+  background: rgba(100, 220, 130, 0.2);
+  border-color: rgba(100, 220, 130, 0.65);
+}
+
+.progress-cancel {
+  padding: 3px 7px;
+  border: 1px solid rgba(255, 255, 255, 0.1);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.82rem;
+  cursor: pointer;
+}
+
+.progress-cancel:hover {
+  color: var(--text-soft);
+  border-color: rgba(255, 255, 255, 0.22);
 }
 
 .stars {

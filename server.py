@@ -65,6 +65,12 @@ def init_db():
             con.execute("ALTER TABLE movies ADD COLUMN note TEXT")
         if "watched_at" not in cols:
             con.execute("ALTER TABLE movies ADD COLUMN watched_at TEXT")
+        if "total_seasons" not in cols:
+            con.execute("ALTER TABLE movies ADD COLUMN total_seasons INTEGER")
+        if "current_season" not in cols:
+            con.execute("ALTER TABLE movies ADD COLUMN current_season INTEGER")
+        if "current_episode" not in cols:
+            con.execute("ALTER TABLE movies ADD COLUMN current_episode INTEGER")
 
 
 def parse_watched_at(value):
@@ -349,6 +355,12 @@ class Handler(SimpleHTTPRequestHandler):
             except ValueError as exc:
                 return self._json(400, {"ok": False, "error": str(exc)})
             fields.append("watched_at = ?"); values.append(watched_at)
+        for field in ("current_season", "current_episode"):
+            if field in data:
+                v = data[field]
+                if v is not None and (not isinstance(v, int) or v < 1):
+                    return self._json(400, {"ok": False, "error": f"{field} debe ser un entero positivo o null"})
+                fields.append(f"{field} = ?"); values.append(v)
         if not fields:
             return self._json(400, {"ok": False, "error": "Nada que actualizar"})
         row = None

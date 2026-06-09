@@ -23,6 +23,8 @@ let collectionSort = "recent";
 let lastResults = [];
 let resultsMode = "search";
 let pickedMovie = null;
+let editingProgressId = null;
+let editingNoteId = null;
 
 const esc = (s) => String(s == null ? "" : s).replace(/[&<>"']/g, (c) =>
   ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
@@ -126,7 +128,7 @@ function renderCollection() {
   emptyEl.textContent = movies.length
     ? "No hay títulos que coincidan con estos filtros."
     : "Aún no tienes nada. Ve a Descubrir para buscar películas o series, o añádela manualmente.";
-  collectionEl.innerHTML = list.map((m) => `
+  const _html = list.map((m) => `
     <article class="card" data-id="${m.id}">
       <div class="poster ${m.tmdb_id ? "cursor-pointer" : ""}" ${m.tmdb_id ? `data-tmdb="${esc(m.tmdb_id)}" data-type="${esc(m.media_type)}"` : ""}>
         ${posterHtml(m)}
@@ -138,10 +140,30 @@ function renderCollection() {
           <div class="card-title">${esc(m.title)}</div>
           <div class="card-year">${esc(m.year) || "—"}</div>
           ${m.watched_at ? `<button class="date-btn" data-action="date" type="button" title="Editar fecha de visionado">📅 Vista el ${esc(m.watched_at)}</button>` : ""}
+          ${m.media_type === "tv" && m.status !== "vista" ? (
+            editingProgressId === m.id
+              ? `<div class="progress-form">
+                   <label class="progress-label">T<input class="progress-input" type="number" min="1" data-field="season" value="${m.current_season ?? ""}" placeholder="—" aria-label="Temporada"></label>
+                   <label class="progress-label">E<input class="progress-input" type="number" min="1" data-field="episode" value="${m.current_episode ?? ""}" placeholder="—" aria-label="Episodio"></label>
+                   <button class="progress-save" data-action="progress-save" type="button" aria-label="Guardar">✓</button>
+                   <button class="progress-cancel" data-action="progress-cancel" type="button" aria-label="Cancelar">✕</button>
+                 </div>`
+              : `<button class="progress-btn ${(m.current_season || m.current_episode) ? "has-progress" : ""}" data-action="progress" type="button" title="Editar progreso">${(m.current_season || m.current_episode) ? `📍 T${m.current_season ?? "?"}  E${m.current_episode ?? "?"}` : "+ Progreso T/E"}</button>`
+          ) : ""}
         </div>
-        <button class="note-btn ${m.note ? "has-note" : ""}" data-action="note" type="button" title="Editar nota personal">
-          ${m.note ? `<span>${esc(notePreview(m.note))}</span>` : "+ Nota"}
-        </button>
+        ${editingNoteId === m.id
+          ? `<div class="note-form">
+               <textarea class="note-textarea" maxlength="500" placeholder="Tu nota personal…" aria-label="Nota personal">${esc(m.note || "")}</textarea>
+               <div class="note-form-actions">
+                 <span class="note-chars" data-note-chars></span>
+                 <button class="progress-save" data-action="note-save" type="button">✓ Guardar</button>
+                 <button class="progress-cancel" data-action="note-cancel" type="button">✕</button>
+               </div>
+             </div>`
+          : `<button class="note-btn ${m.note ? "has-note" : ""}" data-action="note" type="button" title="Editar nota personal">
+               ${m.note ? `<span>${esc(notePreview(m.note))}</span>` : "+ Nota"}
+             </button>`
+        }
         <div class="stars">${starsHtml(m.rating || 0)}</div>
         <div class="card-actions">
           <button class="btn-secondary btn-sm" data-action="toggle" type="button">${m.status === "vista" ? "↺ Por ver" : "✓ Vista"}</button>
@@ -149,6 +171,21 @@ function renderCollection() {
         </div>
       </div>
     </article>`).join("");
+  collectionEl.innerHTML = _html;
+  if (editingProgressId !== null) {
+    const input = collectionEl.querySelector(`.card[data-id="${editingProgressId}"] .progress-input`);
+    if (input) input.focus();
+  }
+  if (editingNoteId !== null) {
+    const ta = collectionEl.querySelector(`.card[data-id="${editingNoteId}"] .note-textarea`);
+    if (ta) {
+      ta.focus();
+      ta.setSelectionRange(ta.value.length, ta.value.length);
+      const counter = ta.closest(".note-form").querySelector("[data-note-chars]");
+      if (counter) counter.textContent = `${ta.value.length}/500`;
+      ta.addEventListener("input", () => { if (counter) counter.textContent = `${ta.value.length}/500`; });
+    }
+  }
 }
 
 function closePickPanel() {
@@ -328,17 +365,6 @@ async function patchMovie(id, payload) {
   return false;
 }
 
-function editNote(movie) {
-  const current = String(movie.note || "");
-  const next = prompt("Nota personal (máx. 500 caracteres):", current);
-  if (next === null) return;
-  const note = next.trim();
-  if (note.length > 500) {
-    showMessage("La nota no puede superar 500 caracteres.", "error");
-    return;
-  }
-  patchMovie(movie.id, { note });
-}
 
 function editWatchedDate(movie) {
   const current = String(movie.watched_at || "");
@@ -453,8 +479,29 @@ collectionEl.addEventListener("click", (e) => {
     patchMovie(id, payload);
   }
   else if (action === "delete") deleteMovie(id);
-  else if (action === "note" && movie) editNote(movie);
+  else if (action === "note") { editingNoteId = id; renderCollection(); }
+  else if (action === "note-cancel") { editingNoteId = null; renderCollection(); }
+  else if (action === "note-save" && movie) {
+    const ta = card.querySelector(".note-textarea");
+    const note = ta ? ta.value.trim() : "";
+    if (note.length > 500) { showMessage("La nota no puede superar 500 caracteres.", "error"); return; }
+    editingNoteId = null;
+    patchMovie(movie.id, { note });
+  }
   else if (action === "date" && movie) editWatchedDate(movie);
+  else if (action === "progress") { editingProgressId = id; renderCollection(); }
+  else if (action === "progress-cancel") { editingProgressId = null; renderCollection(); }
+  else if (action === "progress-save" && movie) {
+    const form = card.querySelector(".progress-form");
+    const s = form.querySelector("[data-field='season']").value.trim();
+    const e = form.querySelector("[data-field='episode']").value.trim();
+    const season = s ? parseInt(s, 10) : null;
+    const episode = e ? parseInt(e, 10) : null;
+    if (s && (isNaN(season) || season < 1)) { showMessage("La temporada debe ser un número positivo.", "error"); return; }
+    if (e && (isNaN(episode) || episode < 1)) { showMessage("El episodio debe ser un número positivo.", "error"); return; }
+    editingProgressId = null;
+    patchMovie(movie.id, { current_season: season, current_episode: episode });
+  }
 });
 
 el("status-filter").addEventListener("change", (e) => {
@@ -543,6 +590,8 @@ document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
   if (!modalEl.hidden) closeModal();
   else if (!pickPanelEl.hidden) closePickPanel();
+  else if (editingProgressId !== null) { editingProgressId = null; renderCollection(); }
+  else if (editingNoteId !== null) { editingNoteId = null; renderCollection(); }
 });
 
 document.body.dataset.activeView = "collection-view";
