@@ -356,14 +356,23 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": "type debe ser movie, tv o all"})
         page_str  = (q.get("page", ["1"])[0]).strip()
         page      = max(1, min(int(page_str) if page_str.isdigit() else 1, 20))
+        sort_key  = (q.get("sort", ["popular"])[0]).strip()
         genre_id  = int(genre_id_str)
         tv_genre  = str(self._MOVIE_TO_TV_GENRE.get(genre_id, genre_id))
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return self._json(200, {"ok": False, "needs_key": True})
 
-        base = {"sort_by": "popularity.desc", "include_adult": "false", "page": str(page)}
-        mv_extra = {**base, "with_genres": genre_id_str}
-        tv_extra = {**base, "with_genres": tv_genre}
+        _sort_map = {
+            "popular": ("popularity.desc",          "popularity.desc"),
+            "rating":  ("vote_average.desc",         "vote_average.desc"),
+            "recent":  ("primary_release_date.desc", "first_air_date.desc"),
+        }
+        mv_sort, tv_sort = _sort_map.get(sort_key, _sort_map["popular"])
+        base = {"include_adult": "false", "page": str(page)}
+        if sort_key == "rating":
+            base["vote_count.gte"] = "100"
+        mv_extra = {**base, "sort_by": mv_sort, "with_genres": genre_id_str}
+        tv_extra = {**base, "sort_by": tv_sort, "with_genres": tv_genre}
 
         def pack_item(m, mt):
             poster = m.get("poster_path")

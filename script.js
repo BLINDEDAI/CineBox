@@ -81,6 +81,7 @@ let resultsMode = "search";
 let activeGenreId = null;
 let discoverPage = 1;
 let discoverHasMore = false;
+let discoverSort = "popular";
 let pickedMovie = null;
 let editingProgressId = null;
 let editingNoteId = null;
@@ -350,7 +351,7 @@ function renderResults() {
 
   resultsEl.innerHTML = visibleResults.map(({ item: m, index: i }) => `
     <article class="card" data-idx="${i}">
-      <div class="poster">
+      <div class="poster${m.tmdb_id ? " cursor-pointer" : ""}"${m.tmdb_id ? ` data-tmdb="${esc(m.tmdb_id)}" data-type="${esc(m.media_type)}"` : ""}>
         ${posterHtml(m)}
         <span class="media-badge">${mediaIcon(m.media_type)}</span>
       </div>
@@ -480,7 +481,7 @@ async function loadDiscover(genreId, page = 1, append = false) {
   el("results-close").hidden = true;
   if (!append) showMessage("Cargando...");
   const type = mediaFilter === "todo" ? "all" : mediaFilter;
-  const { data } = await api(`/api/discover?genre_id=${genreId}&type=${type}&page=${page}`);
+  const { data } = await api(`/api/discover?genre_id=${genreId}&type=${type}&page=${page}&sort=${discoverSort}`);
   if (data.ok) {
     lastResults = append ? [...lastResults, ...data.results] : data.results;
     discoverPage   = data.page;
@@ -681,6 +682,8 @@ document.querySelectorAll("[data-view-target]").forEach((btn) => {
 });
 
 resultsEl.addEventListener("click", (e) => {
+  const poster = e.target.closest(".poster[data-tmdb]");
+  if (poster) { openDetail(+poster.dataset.tmdb, poster.dataset.type); return; }
   const btn = e.target.closest("[data-action='add']");
   if (!btn) return;
   const idx = +btn.closest(".card").dataset.idx;
@@ -773,6 +776,11 @@ el("discover-type-select").addEventListener("change", (e) => {
   mediaFilter = e.target.value;
   if (activeGenreId !== null) loadDiscover(activeGenreId);
   else renderResults();
+});
+
+el("discover-sort-select").addEventListener("change", (e) => {
+  discoverSort = e.target.value;
+  if (activeGenreId !== null) loadDiscover(activeGenreId);
 });
 
 el("collection-media-filter").addEventListener("change", (e) => {
