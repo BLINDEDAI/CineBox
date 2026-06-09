@@ -115,11 +115,12 @@ def notify_discord(title, year, status, media_type, poster_url=""):
         return
     kind = "Serie" if media_type == "tv" else "Película"
     icon = "📺" if media_type == "tv" else "🎬"
-    destino = "Vistas" if status == "vista" else "Por ver"
+    destino = {"pendiente": "Por ver", "viendo": "Viendo", "vista": "Vistas", "abandonada": "Abandonada"}.get(status, status)
+    color = {"vista": 0x45D667, "viendo": 0x4B86FF, "abandonada": 0x822832}.get(status, 0xE6B13E)
     embed = {
         "title": f"{icon} {title} ({year or 's/f'})",
         "description": f"{kind} en **{destino}**",
-        "color": 0x45D667 if status == "vista" else 0xE6B13E,
+        "color": color,
     }
     if poster_url:
         embed["image"] = {"url": poster_url}
@@ -306,7 +307,7 @@ class Handler(SimpleHTTPRequestHandler):
         if not title:
             return self._json(400, {"ok": False, "error": "El título es obligatorio"})
         media_type = data.get("media_type") if data.get("media_type") in ("movie", "tv") else "movie"
-        status = data.get("status") if data.get("status") in ("pendiente", "vista") else "pendiente"
+        status = data.get("status") if data.get("status") in ("pendiente", "viendo", "vista", "abandonada") else "pendiente"
         try:
             watched_at = parse_watched_at(data.get("watched_at"))
         except ValueError as exc:
@@ -358,7 +359,7 @@ class Handler(SimpleHTTPRequestHandler):
         movie_id = int(m.group(1))
         fields, values = [], []
         new_status = None
-        if data.get("status") in ("pendiente", "vista"):
+        if data.get("status") in ("pendiente", "viendo", "vista", "abandonada"):
             new_status = data["status"]
             fields.append("status = ?"); values.append(new_status)
         if "rating" in data:

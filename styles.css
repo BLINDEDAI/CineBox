@@ -883,6 +883,17 @@ h2 {
   background: rgba(169, 103, 0, 0.72);
 }
 
+.status-badge.viendo {
+  color: #c8e8ff;
+  background: rgba(40, 120, 220, 0.72);
+  box-shadow: 0 0 22px rgba(75, 134, 255, 0.32);
+}
+
+.status-badge.abandonada {
+  color: #f0d0d0;
+  background: rgba(130, 40, 50, 0.72);
+}
+
 .media-badge {
   right: 10px;
   color: #dfe5f4;

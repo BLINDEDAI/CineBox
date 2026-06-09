@@ -133,7 +133,7 @@ function renderCollection() {
     <article class="card" data-id="${m.id}">
       <div class="poster ${m.tmdb_id ? "cursor-pointer" : ""}" ${m.tmdb_id ? `data-tmdb="${esc(m.tmdb_id)}" data-type="${esc(m.media_type)}"` : ""}>
         ${posterHtml(m)}
-        <span class="status-badge ${m.status}">${m.status === "vista" ? "Vista" : "Por ver"}</span>
+        <span class="status-badge ${m.status}">${{ pendiente: "Por ver", viendo: "Viendo", vista: "Vista", abandonada: "Abandonada" }[m.status] ?? m.status}</span>
         <span class="media-badge">${mediaIcon(m.media_type)}</span>
       </div>
       <div class="card-body">
@@ -175,7 +175,12 @@ function renderCollection() {
         }
         <div class="stars">${starsHtml(m.rating || 0)}</div>
         <div class="card-actions">
-          <button class="btn-secondary btn-sm" data-action="toggle" type="button">${m.status === "vista" ? "↺ Por ver" : "✓ Vista"}</button>
+          <select class="select btn-sm status-select" data-action="status-change" aria-label="Cambiar estado">
+            <option value="pendiente" ${m.status === "pendiente" ? "selected" : ""}>Por ver</option>
+            <option value="viendo"    ${m.status === "viendo"    ? "selected" : ""}>Viendo</option>
+            <option value="vista"     ${m.status === "vista"     ? "selected" : ""}>Vista</option>
+            <option value="abandonada"${m.status === "abandonada"? "selected" : ""}>Abandonada</option>
+          </select>
           <button class="icon-btn" data-action="delete" type="button" aria-label="Eliminar">✕</button>
         </div>
       </div>
@@ -569,6 +574,18 @@ resultsEl.addEventListener("click", (e) => {
   addItem(lastResults[idx], btn.dataset.status);
 });
 
+collectionEl.addEventListener("change", (e) => {
+  const sel = e.target.closest("[data-action='status-change']");
+  if (!sel) return;
+  const id = +e.target.closest(".card")?.dataset.id;
+  const status = sel.value;
+  if (!id || !status) return;
+  const movie = movies.find((m) => m.id === id);
+  const payload = { status };
+  if (status === "vista" && movie && !movie.watched_at) payload.watched_at = todayIsoDate();
+  patchMovie(id, payload);
+});
+
 collectionEl.addEventListener("click", (e) => {
   const card = e.target.closest(".card");
   if (!card) return;
@@ -584,7 +601,8 @@ collectionEl.addEventListener("click", (e) => {
   }
   const action = e.target.closest("[data-action]")?.dataset.action;
   if (action === "toggle") {
-    const status = movie.status === "vista" ? "pendiente" : "vista";
+    const next = { pendiente: "viendo", viendo: "vista", vista: "pendiente", abandonada: "pendiente" };
+    const status = next[movie.status] ?? "pendiente";
     const payload = { status };
     if (status === "vista" && !movie.watched_at) payload.watched_at = todayIsoDate();
     patchMovie(id, payload);
