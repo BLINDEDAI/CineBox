@@ -99,16 +99,10 @@ def supabase_base_url():
     return raw
 
 
-# Cliente JWKS perezoso (cachea las claves públicas internamente).
+# Inicializado en main() antes de arrancar el servidor para evitar race conditions.
 _jwks_client = None
 
 def _get_jwks_client():
-    global _jwks_client
-    if _jwks_client is None:
-        base = supabase_base_url()
-        if not base:
-            return None
-        _jwks_client = PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json")
     return _jwks_client
 
 
@@ -549,8 +543,12 @@ class Handler(SimpleHTTPRequestHandler):
 # ── Arranque ──────────────────────────────────────────────────────────────────
 
 def main():
+    global _jwks_client
     load_env()
     init_db()
+    base = supabase_base_url()
+    if base:
+        _jwks_client = PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json")
     handler = partial(Handler, directory=str(BASE_DIR))
     with ThreadingHTTPServer((HOST, PORT), handler) as httpd:
         tmdb = "sí" if os.environ.get("TMDB_API_KEY") else "no (modo manual)"
