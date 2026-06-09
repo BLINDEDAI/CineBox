@@ -5,8 +5,23 @@
     <meta name="viewport" content="width=device-width, initial-scale=1">
     <title>CINEBOX · Mi colección</title>
     <link rel="stylesheet" href="styles.css">
+    <script>if(localStorage.getItem('cinebox_visited'))document.documentElement.classList.add('cinebox-visited');</script>
   </head>
   <body>
+
+    <div id="welcome-screen" class="welcome-screen" role="dialog" aria-label="Bienvenida a CINEBOX">
+      <div class="welcome-content">
+        <div class="welcome-logo">
+          <span class="welcome-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
+          </span>
+          <span class="welcome-name">CINE<strong>BOX</strong></span>
+        </div>
+        <p class="welcome-tagline">Tu universo cinematográfico,<br>organizado a tu manera.</p>
+        <button id="welcome-enter" class="welcome-btn" type="button">Entrar</button>
+      </div>
+    </div>
+
     <aside class="sidebar" aria-label="Navegación principal">
       <div class="brand">
         <span class="brand-mark" aria-hidden="true">

@@ -1,5 +1,18 @@
 // Mi Cineteca — lógica de cliente. Habla con el backend local (server.py).
 
+// ── Pantalla de bienvenida ──────────────────────────────────────────────────
+{
+  const screen = document.getElementById('welcome-screen');
+  if (screen) {
+    document.getElementById('welcome-enter').addEventListener('click', () => {
+      localStorage.setItem('cinebox_visited', '1');
+      screen.classList.add('is-hiding');
+      screen.addEventListener('transitionend', () => screen.remove(), { once: true });
+    });
+  }
+}
+// ───────────────────────────────────────────────────────────────────────────
+
 const STAR = '<svg viewBox="0 0 24 24" fill="currentColor"><path d="m12 2 3.09 6.26L22 9.27l-5 4.87 1.18 6.88L12 17.77l-6.18 3.25L7 14.14l-5-4.87 6.91-1.01Z"/></svg>';
 const FILM = '<svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="2" y="2" width="20" height="20" rx="2.5"/><path d="M7 2v20M17 2v20M2 12h20M2 7h5M2 17h5M17 17h5M17 7h5"/></svg>';
 
