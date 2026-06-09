@@ -69,6 +69,7 @@ let pickedMovie = null;
 let editingProgressId = null;
 let editingNoteId = null;
 let editingPlatformId = null;
+let editingDateId = null;
 
 const PLATFORMS = ["Netflix", "HBO Max", "Prime Video", "Disney+", "Movistar+", "Cine", "Otra"];
 
@@ -177,7 +178,16 @@ function renderCollection() {
         <div>
           <div class="card-title">${esc(m.title)}</div>
           <div class="card-year">${esc(m.year) || "—"}</div>
-          ${m.watched_at ? `<button class="date-btn" data-action="date" type="button" title="Editar fecha de visionado">📅 Vista el ${esc(m.watched_at)}</button>` : ""}
+          ${editingDateId === m.id
+            ? `<div class="date-form">
+                 <input class="date-input" type="date" value="${esc(m.watched_at || '')}" aria-label="Fecha de visionado">
+                 <button class="progress-save" data-action="date-save" type="button" aria-label="Guardar">✓</button>
+                 ${m.watched_at ? `<button class="progress-cancel" data-action="date-clear" type="button" title="Quitar fecha">—</button>` : ""}
+                 <button class="progress-cancel" data-action="date-cancel" type="button" aria-label="Cancelar">✕</button>
+               </div>`
+            : m.watched_at
+              ? `<button class="date-btn" data-action="date" type="button" title="Editar fecha de visionado">📅 Vista el ${esc(m.watched_at)}</button>`
+              : ""}
           ${m.media_type === "tv" && m.status !== "vista" ? (
             editingProgressId === m.id
               ? `<div class="progress-form">
@@ -225,6 +235,10 @@ function renderCollection() {
   collectionEl.innerHTML = _html;
   if (editingProgressId !== null) {
     const input = collectionEl.querySelector(`.card[data-id="${editingProgressId}"] .progress-input`);
+    if (input) input.focus();
+  }
+  if (editingDateId !== null) {
+    const input = collectionEl.querySelector(`.card[data-id="${editingDateId}"] .date-input`);
     if (input) input.focus();
   }
   if (editingPlatformId !== null) {
@@ -422,17 +436,6 @@ async function patchMovie(id, payload) {
 }
 
 
-function editWatchedDate(movie) {
-  const current = String(movie.watched_at || "");
-  const next = prompt("Fecha de visionado (YYYY-MM-DD). Déjalo vacío para limpiar:", current);
-  if (next === null) return;
-  const watchedAt = next.trim();
-  if (watchedAt && !/^\d{4}-\d{2}-\d{2}$/.test(watchedAt)) {
-    showMessage("Formato inválido. Usa YYYY-MM-DD.", "error");
-    return;
-  }
-  patchMovie(movie.id, { watched_at: watchedAt || null });
-}
 
 async function deleteMovie(id) {
   const { ok } = await api(`/api/movies/${id}`, { method: "DELETE" });
@@ -654,7 +657,18 @@ collectionEl.addEventListener("click", (e) => {
     editingNoteId = null;
     patchMovie(movie.id, { note });
   }
-  else if (action === "date" && movie) editWatchedDate(movie);
+  else if (action === "date") { editingDateId = id; renderCollection(); }
+  else if (action === "date-cancel") { editingDateId = null; renderCollection(); }
+  else if (action === "date-clear" && movie) {
+    editingDateId = null;
+    patchMovie(movie.id, { watched_at: null });
+  }
+  else if (action === "date-save" && movie) {
+    const input = card.querySelector(".date-input");
+    const watchedAt = input ? input.value : null;
+    editingDateId = null;
+    patchMovie(movie.id, { watched_at: watchedAt || null });
+  }
   else if (action === "platform-open") { editingPlatformId = id; renderCollection(); }
   else if (action === "platform-cancel") { editingPlatformId = null; renderCollection(); }
   else if (action === "platform-pick") {
@@ -751,6 +765,7 @@ document.addEventListener("keydown", (e) => {
   else if (!pickPanelEl.hidden) closePickPanel();
   else if (editingPlatformId !== null) { editingPlatformId = null; renderCollection(); }
   else if (editingProgressId !== null) { editingProgressId = null; renderCollection(); }
+  else if (editingDateId !== null) { editingDateId = null; renderCollection(); }
   else if (editingNoteId !== null) { editingNoteId = null; renderCollection(); }
 });
 
