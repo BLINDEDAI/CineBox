@@ -160,6 +160,48 @@ def parse_watched_at(value):
         raise ValueError("watched_at debe tener formato YYYY-MM-DD o estar vacío")
 
 
+# Sistema de niveles. Cada entrada: (puntos mínimos, número, nombre).
+# Única fuente de verdad del cálculo de niveles — el cliente nunca suma puntos.
+LEVELS = [
+    (0,    1, "Espectador"),
+    (50,   2, "Aficionado"),
+    (150,  3, "Cinéfilo"),
+    (350,  4, "Crítico"),
+    (700,  5, "Experto"),
+    (1200, 6, "Maestro"),
+]
+POINTS_VISTA = 10
+POINTS_RATING = 5
+POINTS_NOTE = 5
+
+
+def compute_level(points):
+    """Dado un total de puntos, devuelve el bloque de nivel + progreso al siguiente."""
+    current = LEVELS[0]
+    nxt = None
+    for i, lvl in enumerate(LEVELS):
+        if points >= lvl[0]:
+            current = lvl
+            nxt = LEVELS[i + 1] if i + 1 < len(LEVELS) else None
+    current_min, number, name = current
+    if nxt is None:  # nivel máximo
+        return {
+            "points": points, "level": number, "name": name,
+            "current_min": current_min, "next_min": None, "next_name": None,
+            "points_into_level": points - current_min, "points_to_next": 0,
+            "progress_pct": 100,
+        }
+    next_min, _, next_name = nxt
+    span = next_min - current_min
+    into = points - current_min
+    return {
+        "points": points, "level": number, "name": name,
+        "current_min": current_min, "next_min": next_min, "next_name": next_name,
+        "points_into_level": into, "points_to_next": next_min - points,
+        "progress_pct": round(into * 100 / span) if span else 0,
+    }
+
+
 def webhook_for(status):
     key = "DISCORD_WEBHOOK_VISTA" if status == "vista" else "DISCORD_WEBHOOK_PENDIENTE"
     return os.environ.get(key, "").strip() or os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
@@ -271,6 +313,7 @@ class Handler(SimpleHTTPRequestHandler):
             "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY", ""),
         })
         if path == "/api/movies":   return self._list_movies()
+        if path == "/api/level":    return self._level()
         if path == "/api/search":   return self._search()
         if path == "/api/trending": return self._trending()
         if path == "/api/discover": return self._discover()
@@ -291,6 +334,27 @@ class Handler(SimpleHTTPRequestHandler):
                 (user_id,))
             rows = cur.fetchall()
         self._json(200, {"ok": True, "movies": [dict(r) for r in rows]})
+
+    def _level(self):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        with get_db() as cur:
+            cur.execute(
+                "SELECT "
+                "  COUNT(*) FILTER (WHERE status = 'vista')                AS vistas, "
+                "  COUNT(*) FILTER (WHERE rating IS NOT NULL)              AS valoradas, "
+                "  COUNT(*) FILTER (WHERE note IS NOT NULL AND note <> '') AS notas "
+                "FROM movies WHERE user_id = %s",
+                (user_id,))
+            row = cur.fetchone()
+        vistas    = row["vistas"]    or 0
+        valoradas = row["valoradas"] or 0
+        notas     = row["notas"]     or 0
+        points = (vistas * POINTS_VISTA
+                  + valoradas * POINTS_RATING
+                  + notas * POINTS_NOTE)
+        self._json(200, {"ok": True, **compute_level(points)})
 
     def _search(self):
         if not self._get_user_id():

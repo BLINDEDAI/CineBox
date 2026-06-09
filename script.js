@@ -71,6 +71,7 @@ const DISCOVER_GENRES = [
 ];
 
 let movies = [];
+let levelData = null; // nivel calculado en el servidor (/api/level); null hasta que carga
 let filter = "todas";
 let mediaFilter = "todo";
 let collectionMediaFilter = "todo";
@@ -431,6 +432,7 @@ async function loadMovies() {
     movies = data.movies;
     renderCollection();
     renderStatsView();
+    loadLevel();
     if (pickedMovie) {
       const current = movies.find((m) => m.id === pickedMovie.id);
       if (current && current.status === "pendiente") renderPickPanel(current);
@@ -438,6 +440,14 @@ async function loadMovies() {
     }
   }
   else showMessage("No se pudo cargar tu cineteca. ¿Está arrancado server.py?", "error");
+}
+
+async function loadLevel() {
+  const { ok, data } = await api("/api/level");
+  if (ok && data.ok) {
+    levelData = data;
+    renderStatsView();
+  }
 }
 
 async function addItem(item, status) {
@@ -592,7 +602,24 @@ function renderStatsView() {
     </div>`;
   }).join("") : `<p class="muted" style="font-size:.82rem">Aún no has marcado dónde viste ningún título.</p>`;
 
+  let levelHtml = "";
+  if (levelData) {
+    const nextTxt = levelData.next_name
+      ? `faltan ${levelData.points_to_next} pts para ${esc(levelData.next_name)}`
+      : "Nivel máximo alcanzado";
+    levelHtml = `
+      <div class="slevel">
+        <div class="slevel-head">
+          <span class="slevel-name">Nivel ${levelData.level} · ${esc(levelData.name)}</span>
+          <span class="slevel-points">${levelData.points} pts</span>
+        </div>
+        <div class="slevel-bar-wrap"><div class="slevel-bar" style="width:${levelData.progress_pct}%"></div></div>
+        <div class="slevel-next">${nextTxt}</div>
+      </div>`;
+  }
+
   container.innerHTML = `
+    ${levelHtml}
     <div class="stats-grid">
       ${statCard(pelisVistas, "Películas vistas")}
       ${statCard(seriesVistas, "Series vistas")}

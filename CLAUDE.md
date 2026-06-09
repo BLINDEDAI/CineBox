@@ -105,6 +105,43 @@ El endpoint `/api/discover` usa géneros distintos según `media_type`. El ID 10
 
 ---
 
+## Sistema de niveles
+
+Cada usuario acumula puntos por su actividad. **El cálculo vive 100% en `server.py` — el cliente nunca suma puntos.**
+
+### Puntuación
+
+| Acción | Puntos | Cómo se cuenta |
+|--------|--------|----------------|
+| Película/serie vista | 10 | `status = 'vista'` |
+| Valoración puesta | 5 | `rating IS NOT NULL` |
+| Nota escrita | 5 | `note IS NOT NULL AND note <> ''` |
+
+Las tres son independientes: un mismo título visto + valorado + con nota suma 20 pts.
+
+### Niveles
+
+| Nivel | Nombre | Rango de puntos |
+|-------|--------|-----------------|
+| 1 | Espectador | 0–49 |
+| 2 | Aficionado | 50–149 |
+| 3 | Cinéfilo | 150–349 |
+| 4 | Crítico | 350–699 |
+| 5 | Experto | 700–1199 |
+| 6 | Maestro | 1200+ |
+
+La tabla es la constante `LEVELS` en `server.py` (única fuente de verdad). La función `compute_level(points)` devuelve nivel, nombre y progreso al siguiente.
+
+### Endpoint `GET /api/level`
+
+- Requiere auth (`_get_user_id`) → `401` si no.
+- Una sola query agregada (`COUNT(*) FILTER (...)`) filtrada por `user_id`; no trae filas.
+- Respuesta: `{ok, points, level, name, current_min, next_min, next_name, points_into_level, points_to_next, progress_pct}`. En el nivel máximo `next_*` es `null` y `progress_pct` es 100.
+
+El frontend lo pinta en Estadísticas (`renderStatsView` en `script.js`): tarjeta con nombre del nivel, puntos y barra de progreso. Se refresca solo porque `loadMovies()` llama a `loadLevel()`, y toda mutación (vista/rating/nota) pasa por `loadMovies()`.
+
+---
+
 ## Variables de entorno
 
 Todas van en `.env` (ver `.env.example`). Las marcadas **requeridas** crashean el servidor si faltan.
