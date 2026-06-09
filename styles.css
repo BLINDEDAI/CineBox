@@ -2023,3 +2023,185 @@ html.cinebox-visited #welcome-screen { display: none; }
   .welcome-logo { gap: 14px; }
   .welcome-btn { padding: 14px 36px; font-size: 1rem; }
 }
+
+/* ── Login screen ────────────────────────────────────────────── */
+.login-screen {
+  position: fixed;
+  inset: 0;
+  z-index: 900;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background:
+    linear-gradient(160deg, rgba(8,12,26,0.78) 0%, rgba(8,12,26,0.55) 50%, rgba(8,12,26,0.82) 100%),
+    url('assets/banner-sincity.png') center/cover no-repeat;
+  animation: loginFadeIn 0.4s ease;
+}
+
+.login-screen[hidden] { display: none; }
+
+@keyframes loginFadeIn {
+  from { opacity: 0; }
+  to   { opacity: 1; }
+}
+
+.login-card {
+  width: 100%;
+  max-width: 400px;
+  background: rgba(10, 14, 28, 0.82);
+  border: 1px solid rgba(255, 255, 255, 0.10);
+  border-radius: 20px;
+  backdrop-filter: blur(24px);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.14), 0 24px 64px rgba(0,0,0,0.6);
+  padding: 40px 36px 32px;
+  display: flex;
+  flex-direction: column;
+  gap: 24px;
+}
+
+.login-brand {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  justify-content: center;
+}
+
+.login-brand-mark {
+  width: 36px;
+  height: 36px;
+  display: flex;
+  align-items: center;
+}
+.login-brand-mark svg {
+  width: 100%;
+  height: 100%;
+  fill: none;
+  stroke: var(--accent);
+  stroke-width: 2;
+  stroke-linecap: round;
+  stroke-linejoin: round;
+}
+.login-brand-mark svg circle { fill: rgba(255,68,61,0.12); }
+.login-brand-mark svg path  { fill: var(--accent); stroke: none; }
+
+.login-brand-name {
+  font-size: 1.3rem;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  color: var(--text);
+}
+
+.login-heading {
+  font-size: 1.2rem;
+  font-weight: 600;
+  color: var(--text);
+  text-align: center;
+  margin: 0;
+}
+
+.login-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.login-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.login-label {
+  font-size: 0.78rem;
+  font-weight: 500;
+  color: var(--text-soft);
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
+.login-input {
+  background: rgba(255,255,255,0.06);
+  border: 1px solid rgba(255,255,255,0.14);
+  border-radius: 10px;
+  color: var(--text);
+  font-size: 0.95rem;
+  padding: 11px 14px;
+  outline: none;
+  transition: border-color 0.2s, box-shadow 0.2s;
+}
+.login-input::placeholder { color: var(--text-muted); }
+.login-input:focus {
+  border-color: rgba(255,68,61,0.5);
+  box-shadow: 0 0 0 3px rgba(255,68,61,0.14);
+}
+
+.login-error {
+  color: #ff6b6b;
+  font-size: 0.85rem;
+  margin: -4px 0 0;
+  text-align: center;
+}
+.login-success {
+  color: #6bffb0;
+  font-size: 0.85rem;
+  margin: -4px 0 0;
+  text-align: center;
+}
+.login-error[hidden], .login-success[hidden] { display: none; }
+
+.login-btn {
+  width: 100%;
+  padding: 13px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg, #ff443d 0%, #c2393a 100%);
+  color: #fff;
+  border: none;
+  cursor: pointer;
+  box-shadow: 0 4px 20px rgba(255,68,61,0.35);
+  transition: filter 0.15s, transform 0.15s, box-shadow 0.15s;
+}
+.login-btn:hover  { filter: brightness(1.1); transform: translateY(-1px); box-shadow: 0 8px 28px rgba(255,68,61,0.5); }
+.login-btn:active { transform: scale(0.98); transition-duration: 60ms; }
+.login-btn:disabled { opacity: 0.55; cursor: default; transform: none; }
+
+.login-toggle-btn {
+  background: none;
+  border: none;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  cursor: pointer;
+  text-align: center;
+  padding: 0;
+  transition: color 0.15s;
+}
+.login-toggle-btn:hover { color: var(--text-soft); }
+.login-toggle-btn span { color: var(--accent); font-weight: 600; }
+
+/* sidebar logout / user email */
+.sidebar-user-email {
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  padding: 0 12px 8px;
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 180px;
+}
+.sidebar-user-email[hidden] { display: none; }
+
+.side-link-logout {
+  color: rgba(255,68,61,0.75);
+}
+.side-link-logout:hover {
+  background: rgba(255,68,61,0.10);
+  color: #ff6b6b;
+}
+.side-link-logout[hidden] { display: none; }
+
+@media (max-width: 600px) {
+  .login-card { padding: 32px 20px 24px; }
+}

@@ -1,15 +1,44 @@
 // Mi Cineteca — lógica de cliente. Habla con el backend local (server.py).
 
-// ── Pantalla de bienvenida ──────────────────────────────────────────────────
-{
-  const screen = document.getElementById('welcome-screen');
-  if (screen) {
-    document.getElementById('welcome-enter').addEventListener('click', () => {
-      localStorage.setItem('cinebox_visited', '1');
-      screen.classList.add('is-hiding');
-      screen.addEventListener('transitionend', () => { screen.remove(); showView('discover-view'); }, { once: true });
-    });
+// ── Supabase & Auth ─────────────────────────────────────────────────────────
+let _supabase = null;
+let _currentUser = null;
+let _authMode = "login"; // "login" | "register"
+
+async function _getToken() {
+  if (!_supabase) return null;
+  const { data } = await _supabase.auth.getSession();
+  return data.session?.access_token ?? null;
+}
+
+function _showLoginScreen() {
+  const s = document.getElementById("login-screen");
+  if (s) s.hidden = false;
+}
+
+function _hideLoginScreen() {
+  const s = document.getElementById("login-screen");
+  if (s) s.hidden = true;
+}
+
+function _setLoginMode(mode) {
+  _authMode = mode;
+  const heading   = document.getElementById("login-heading");
+  const submit    = document.getElementById("login-submit");
+  const toggle    = document.getElementById("login-toggle");
+  const errorEl   = document.getElementById("login-error");
+  const successEl = document.getElementById("login-success");
+  if (mode === "register") {
+    heading.textContent = "Crear cuenta";
+    submit.textContent  = "Registrarse";
+    toggle.innerHTML    = '¿Ya tienes cuenta? <span>Inicia sesión</span>';
+  } else {
+    heading.textContent = "Iniciar sesión";
+    submit.textContent  = "Entrar";
+    toggle.innerHTML    = '¿No tienes cuenta? <span>Regístrate</span>';
   }
+  errorEl.hidden   = true;
+  successEl.hidden = true;
 }
 // ───────────────────────────────────────────────────────────────────────────
 
@@ -66,7 +95,11 @@ function showMessage(text, type) {
 }
 
 async function api(path, options) {
-  const res = await fetch(path, options);
+  const token = await _getToken();
+  const headers = { ...(options?.headers) };
+  if (token) headers["Authorization"] = `Bearer ${token}`;
+  if (options?.body && typeof options.body === "string") headers["Content-Type"] = headers["Content-Type"] || "application/json";
+  const res = await fetch(path, { ...options, headers });
   const data = await res.json().catch(() => ({}));
   return { ok: res.ok, data };
 }
@@ -718,4 +751,136 @@ document.addEventListener("keydown", (e) => {
 });
 
 document.body.dataset.activeView = "collection-view";
-loadMovies();
+
+// ── Bootstrap ──────────────────────────────────────────────────────────────
+
+async function initApp() {
+  // 1. Cargar config de Supabase desde el servidor
+  try {
+    const cfg = await fetch("/api/config").then(r => r.json()).catch(() => ({}));
+    if (cfg.supabase_url && cfg.supabase_anon_key && window.supabase) {
+      _supabase = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key);
+    }
+  } catch (e) {
+    console.warn("No se pudo cargar la config de Supabase:", e);
+  }
+
+  // 2. Listener de cambios de sesión
+  if (_supabase) {
+    _supabase.auth.onAuthStateChange(async (event, session) => {
+      if (session) {
+        _currentUser = session.user;
+        _hideLoginScreen();
+        _updateSidebarUser(session.user.email);
+        await loadMovies();
+      } else {
+        _currentUser = null;
+        movies = [];
+        renderCollection();
+        const ws = document.getElementById("welcome-screen");
+        if (!ws) _showLoginScreen();
+      }
+    });
+  }
+
+  // 3. Comprobar sesión inicial
+  const session = _supabase
+    ? (await _supabase.auth.getSession()).data.session
+    : null;
+
+  const visited = localStorage.getItem("cinebox_visited");
+  const welcomeScreen = document.getElementById("welcome-screen");
+
+  // 4. Enganchar botón de bienvenida (después de saber si hay sesión)
+  if (welcomeScreen) {
+    document.getElementById("welcome-enter").addEventListener("click", async () => {
+      localStorage.setItem("cinebox_visited", "1");
+      welcomeScreen.classList.add("is-hiding");
+      welcomeScreen.addEventListener("transitionend", () => {
+        welcomeScreen.remove();
+        if (_currentUser) {
+          showView("discover-view");
+        } else {
+          _showLoginScreen();
+        }
+      }, { once: true });
+    });
+  }
+
+  // 5. Routing inicial
+  if (session) {
+    _currentUser = session.user;
+    if (welcomeScreen) welcomeScreen.remove();
+    _hideLoginScreen();
+    _updateSidebarUser(session.user.email);
+    await loadMovies();
+  } else if (visited) {
+    // Ya visitó antes pero no tiene sesión → login
+    if (welcomeScreen) welcomeScreen.remove();
+    _showLoginScreen();
+  }
+  // else: primera visita sin sesión → se muestra la welcome screen normalmente
+
+  // 6. Login form
+  document.getElementById("login-form").addEventListener("submit", async (e) => {
+    e.preventDefault();
+    if (!_supabase) return;
+
+    const email    = document.getElementById("login-email").value.trim();
+    const password = document.getElementById("login-password").value;
+    const errorEl   = document.getElementById("login-error");
+    const successEl = document.getElementById("login-success");
+    const submitBtn = document.getElementById("login-submit");
+
+    errorEl.hidden   = true;
+    successEl.hidden = true;
+    submitBtn.disabled = true;
+    submitBtn.textContent = _authMode === "register" ? "Registrando…" : "Entrando…";
+
+    try {
+      if (_authMode === "register") {
+        const { error } = await _supabase.auth.signUp({ email, password });
+        if (error) throw error;
+        successEl.textContent = "¡Cuenta creada! Revisa tu email para confirmarla.";
+        successEl.hidden = false;
+      } else {
+        const { error } = await _supabase.auth.signInWithPassword({ email, password });
+        if (error) throw error;
+        // onAuthStateChange se encarga del resto
+      }
+    } catch (err) {
+      errorEl.textContent = err.message || "Error al autenticar. Inténtalo de nuevo.";
+      errorEl.hidden = false;
+    } finally {
+      submitBtn.disabled = false;
+      submitBtn.textContent = _authMode === "register" ? "Registrarse" : "Entrar";
+    }
+  });
+
+  // 7. Alternar login/registro
+  document.getElementById("login-toggle").addEventListener("click", () => {
+    _setLoginMode(_authMode === "login" ? "register" : "login");
+  });
+
+  // 8. Cerrar sesión
+  document.getElementById("logout-btn").addEventListener("click", async () => {
+    if (!_supabase) return;
+    await _supabase.auth.signOut();
+    _updateSidebarUser(null);
+  });
+}
+
+function _updateSidebarUser(email) {
+  const emailEl  = document.getElementById("sidebar-user-email");
+  const logoutBtn = document.getElementById("logout-btn");
+  if (email) {
+    emailEl.textContent = email;
+    emailEl.hidden  = false;
+    logoutBtn.hidden = false;
+  } else {
+    emailEl.hidden   = true;
+    logoutBtn.hidden = true;
+  }
+}
+
+initApp();

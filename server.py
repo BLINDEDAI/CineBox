@@ -196,6 +196,16 @@ class Handler(SimpleHTTPRequestHandler):
         path         = self.path.split("?", 1)[0]
         decoded_path = urllib.parse.unquote(path)
         if path == "/health":       return self._json(200, {"ok": True, "status": "up"})
+        if path == "/api/config":
+            raw = os.environ.get("SUPABASE_URL", "")
+            # Normaliza la URL base: elimina doble-esquema y /rest/v1 si vienen del .env
+            import re as _re
+            raw = _re.sub(r'^https:https://', 'https://', raw)
+            raw = _re.sub(r'/rest/v1/?$', '', raw.rstrip('/'))
+            return self._json(200, {
+                "supabase_url":      raw,
+                "supabase_anon_key": os.environ.get("SUPABASE_ANON_KEY", ""),
+            })
         if path == "/api/movies":   return self._list_movies()
         if path == "/api/search":   return self._search()
         if path == "/api/trending": return self._trending()
