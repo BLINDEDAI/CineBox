@@ -7,7 +7,7 @@
     document.getElementById('welcome-enter').addEventListener('click', () => {
       localStorage.setItem('cinebox_visited', '1');
       screen.classList.add('is-hiding');
-      screen.addEventListener('transitionend', () => screen.remove(), { once: true });
+      screen.addEventListener('transitionend', () => { screen.remove(); showView('discover-view'); }, { once: true });
     });
   }
 }
