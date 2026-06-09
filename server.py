@@ -125,6 +125,7 @@ def verify_jwt(token: str):
                 token,
                 signing_key.key,
                 algorithms=["ES256", "RS256"],
+                leeway=60,                       # tolera desfase de reloj (iat/exp/nbf)
                 options={"verify_aud": False},   # Supabase pone aud="authenticated"
             )
             return payload.get("sub")            # UUID del usuario
@@ -139,6 +140,7 @@ def verify_jwt(token: str):
                 token,
                 secret,
                 algorithms=["HS256"],
+                leeway=60,                       # tolera desfase de reloj (iat/exp/nbf)
                 options={"verify_aud": False},
             )
             return payload.get("sub")
@@ -197,10 +199,18 @@ def notify_discord(title, year, status, media_type, poster_url=""):
 
 # ── Handler HTTP ──────────────────────────────────────────────────────────────
 
+def _json_default(o):
+    """Serializa tipos que json no maneja de serie.
+    Postgres devuelve date/datetime como objetos Python → ISO 8601."""
+    if isinstance(o, (date, datetime)):   # datetime es subclase de date
+        return o.isoformat()
+    raise TypeError(f"Object of type {type(o).__name__} is not JSON serializable")
+
+
 class Handler(SimpleHTTPRequestHandler):
 
     def _json(self, status, payload):
-        body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+        body = json.dumps(payload, ensure_ascii=False, default=_json_default).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
