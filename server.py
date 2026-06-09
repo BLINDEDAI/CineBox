@@ -15,6 +15,7 @@ Config en .env:
 import json
 import os
 import re
+import threading
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
@@ -31,6 +32,7 @@ import psycopg2.extras
 BASE_DIR = Path(__file__).resolve().parent
 HOST, PORT = "0.0.0.0", int(os.environ.get("PORT", 8000))
 BLOCKED    = (".env", ".py", ".pyc")
+MAX_BODY   = 64 * 1024  # 64 KB — evita OOM por Content-Length malicioso
 
 TMDB_IMG  = "https://image.tmdb.org/t/p/w342"
 TMDB_LOGO = "https://image.tmdb.org/t/p/w45"
@@ -169,9 +171,19 @@ def webhook_for(status):
     return os.environ.get(key, "").strip() or os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
 
 
+def _send_discord(url, payload_bytes):
+    try:
+        req = urllib.request.Request(url, data=payload_bytes, headers={
+            "Content-Type": "application/json",
+            "User-Agent":   "Cineteca-Webhook/1.0 (+local)",
+        })
+        urllib.request.urlopen(req, timeout=8)
+    except Exception:
+        pass
+
+
 def notify_discord(title, year, status, media_type, poster_url="", user_id=None):
     owner = os.environ.get("DISCORD_OWNER_ID", "").strip()
-
     if owner and user_id != owner:
         return
     url = webhook_for(status)
@@ -190,15 +202,8 @@ def notify_discord(title, year, status, media_type, poster_url="", user_id=None)
     }
     if poster_url:
         embed["image"] = {"url": poster_url}
-    try:
-        data = json.dumps({"embeds": [embed]}).encode("utf-8")
-        req  = urllib.request.Request(url, data=data, headers={
-            "Content-Type": "application/json",
-            "User-Agent":   "Cineteca-Webhook/1.0 (+local)",
-        })
-        urllib.request.urlopen(req, timeout=8)
-    except Exception:
-        pass
+    payload = json.dumps({"embeds": [embed]}).encode("utf-8")
+    threading.Thread(target=_send_discord, args=(url, payload), daemon=True).start()
 
 
 # ── Handler HTTP ──────────────────────────────────────────────────────────────
@@ -222,7 +227,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.wfile.write(body)
 
     def _read_json(self):
-        length = int(self.headers.get("Content-Length", 0))
+        length = min(int(self.headers.get("Content-Length", 0)), MAX_BODY)
         return json.loads(self.rfile.read(length) or b"{}")
 
     def _qs(self):
@@ -278,7 +283,8 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "movies": [dict(r) for r in rows]})
 
     def _search(self):
-        # Proxy TMDB — no toca la BD, no requiere auth
+        if not self._get_user_id():
+            return self._json(401, {"ok": False, "error": "No autenticado"})
         query = (self._qs().get("q", [""])[0]).strip()
         if not query:
             return self._json(400, {"ok": False, "error": "Falta el término de búsqueda"})
@@ -308,6 +314,8 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "results": pack(mv, "movie") + pack(tv, "tv")})
 
     def _trending(self):
+        if not self._get_user_id():
+            return self._json(401, {"ok": False, "error": "No autenticado"})
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return self._json(200, {"ok": False, "needs_key": True})
         try:
