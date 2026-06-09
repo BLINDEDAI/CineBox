@@ -258,6 +258,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/movies":   return self._list_movies()
         if path == "/api/search":   return self._search()
         if path == "/api/trending": return self._trending()
+        if path == "/api/discover": return self._discover()
         if path == "/api/details":  return self._details()
         parts = [p for p in decoded_path.split("/") if p]
         if (decoded_path.lower().endswith(BLOCKED)
@@ -333,6 +334,72 @@ class Handler(SimpleHTTPRequestHandler):
             if len(results) >= 18:
                 break
         self._json(200, {"ok": True, "results": results})
+
+    # IDs de géneros de películas → IDs equivalentes en TV (TMDB usa catálogos distintos)
+    _MOVIE_TO_TV_GENRE = {
+        28:  10759,  # Acción          → Acción y aventura
+        12:  10759,  # Aventura        → Acción y aventura
+        27:   9648,  # Terror          → Misterio (más cercano en TV)
+        878: 10765,  # Ciencia ficción → Ciencia ficción y fantasía
+        53:     80,  # Suspense        → Crimen (más cercano en TV)
+    }
+
+    def _discover(self):
+        if not self._get_user_id():
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        q = self._qs()
+        genre_id_str = (q.get("genre_id", [""])[0]).strip()
+        media_type   = (q.get("type",     ["all"])[0]).strip()
+        if not genre_id_str.isdigit():
+            return self._json(400, {"ok": False, "error": "genre_id inválido"})
+        if media_type not in ("movie", "tv", "all"):
+            return self._json(400, {"ok": False, "error": "type debe ser movie, tv o all"})
+        page_str  = (q.get("page", ["1"])[0]).strip()
+        page      = max(1, min(int(page_str) if page_str.isdigit() else 1, 20))
+        genre_id  = int(genre_id_str)
+        tv_genre  = str(self._MOVIE_TO_TV_GENRE.get(genre_id, genre_id))
+        if not os.environ.get("TMDB_API_KEY", "").strip():
+            return self._json(200, {"ok": False, "needs_key": True})
+
+        base = {"sort_by": "popularity.desc", "include_adult": "false", "page": str(page)}
+        mv_extra = {**base, "with_genres": genre_id_str}
+        tv_extra = {**base, "with_genres": tv_genre}
+
+        def pack_item(m, mt):
+            poster = m.get("poster_path")
+            return {
+                "tmdb_id":    m.get("id"),
+                "media_type": mt,
+                "title":      m.get("title") or m.get("name") or "Sin título",
+                "year":       (m.get("release_date") or m.get("first_air_date") or "")[:4],
+                "poster_url": (TMDB_IMG + poster) if poster else "",
+                "genre_ids":  m.get("genre_ids", []),
+            }
+
+        try:
+            results  = []
+            has_more = False
+            if media_type == "all":
+                mv_data = self._tmdb("/discover/movie", mv_extra) or {}
+                tv_data = self._tmdb("/discover/tv",    tv_extra) or {}
+                mv = mv_data.get("results", [])
+                tv = tv_data.get("results", [])
+                for i in range(max(len(mv[:9]), len(tv[:9]))):
+                    if i < len(mv) and len(results) < 18: results.append(pack_item(mv[i], "movie"))
+                    if i < len(tv) and len(results) < 18: results.append(pack_item(tv[i], "tv"))
+                has_more = (page < (mv_data.get("total_pages") or 1) or
+                            page < (tv_data.get("total_pages") or 1))
+            elif media_type == "movie":
+                mv_data  = self._tmdb("/discover/movie", mv_extra) or {}
+                results  = [pack_item(m, "movie") for m in mv_data.get("results", [])[:18]]
+                has_more = page < (mv_data.get("total_pages") or 1)
+            else:
+                tv_data  = self._tmdb("/discover/tv", tv_extra) or {}
+                results  = [pack_item(m, "tv") for m in tv_data.get("results", [])[:18]]
+                has_more = page < (tv_data.get("total_pages") or 1)
+        except Exception:
+            return self._json(502, {"ok": False, "error": "No se pudo consultar TMDB."})
+        self._json(200, {"ok": True, "results": results, "page": page, "has_more": has_more})
 
     def _details(self):
         q   = self._qs()

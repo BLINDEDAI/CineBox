@@ -484,6 +484,46 @@ h1 {
   margin-top: 22px;
 }
 
+.genre-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.genre-chip {
+  height: 34px;
+  padding: 0 14px;
+  border: 1px solid rgba(255, 255, 255, 0.09);
+  border-radius: 999px;
+  background: rgba(10, 14, 25, 0.64);
+  color: var(--text-soft);
+  font-size: .82rem;
+  font-weight: 700;
+  cursor: pointer;
+  white-space: nowrap;
+  transition: border-color 160ms ease, background 160ms ease, color 160ms ease, box-shadow 160ms ease;
+}
+
+.genre-chip:hover {
+  border-color: rgba(255, 255, 255, 0.18);
+  background: rgba(255, 255, 255, 0.07);
+  color: var(--text);
+}
+
+.genre-chip.active {
+  color: #ff756d;
+  border-color: rgba(255, 68, 61, 0.65);
+  background: linear-gradient(180deg, rgba(255, 68, 61, 0.24), rgba(255, 68, 61, 0.13));
+  box-shadow: 0 0 20px rgba(255, 68, 61, 0.18);
+}
+
+.discover-load-more {
+  display: flex;
+  justify-content: center;
+  padding: 28px 0 8px;
+}
+
 .btn,
 .btn-secondary,
 .select {
@@ -1880,6 +1920,17 @@ h2 {
   .tab {
     flex: 0 0 auto;
   }
+
+  .genre-chips {
+    flex-wrap: nowrap;
+    overflow-x: auto;
+    padding-bottom: 4px;
+    scrollbar-width: none;
+  }
+
+  .genre-chips::-webkit-scrollbar { display: none; }
+
+  .genre-chip { flex: 0 0 auto; }
 
   /* Títulos un poco más contenidos en pantalla estrecha. */
   h1 {

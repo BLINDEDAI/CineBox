@@ -57,6 +57,19 @@ const modalEl = el("modal");
 const modalContent = el("modal-content");
 const pickPanelEl = el("pick-panel");
 
+const DISCOVER_GENRES = [
+  { id: 28,    name: "Acción" },
+  { id: 27,    name: "Terror" },
+  { id: 35,    name: "Comedia" },
+  { id: 18,    name: "Drama" },
+  { id: 878,   name: "Ciencia ficción" },
+  { id: 16,    name: "Animación" },
+  { id: 53,    name: "Suspense" },
+  { id: 10749, name: "Romance" },
+  { id: 12,    name: "Aventura" },
+  { id: 80,    name: "Crimen" },
+];
+
 let movies = [];
 let filter = "todas";
 let mediaFilter = "todo";
@@ -65,6 +78,9 @@ let collectionQuery = "";
 let collectionSort = "recent";
 let lastResults = [];
 let resultsMode = "search";
+let activeGenreId = null;
+let discoverPage = 1;
+let discoverHasMore = false;
 let pickedMovie = null;
 let editingProgressId = null;
 let editingNoteId = null;
@@ -310,7 +326,10 @@ function showView(viewId) {
     btn.classList.toggle("active", btn.dataset.viewTarget === viewId);
   });
   showMessage("");
-  if (viewId === "discover-view" && !el("discover-search-input").value.trim()) loadTrending();
+  if (viewId === "discover-view" && !el("discover-search-input").value.trim()) {
+    if (activeGenreId !== null) loadDiscover(activeGenreId);
+    else loadTrending();
+  }
   if (viewId === "stats-view") renderStatsView();
 }
 
@@ -319,10 +338,13 @@ function renderResults() {
     .map((m, i) => ({ item: m, index: i }))
     .filter(({ item }) => mediaFilter === "todo" || item.media_type === mediaFilter);
 
+  const loadMoreEl = el("discover-load-more");
+
   if (lastResults.length && !visibleResults.length) {
     const label = mediaFilter === "movie" ? "películas" : "series";
-    resultsEl.innerHTML = `<p class="empty">No hay ${label} en estos resultados. Prueba con “Pelis y series”.</p>`;
+    resultsEl.innerHTML = `<p class="empty">No hay ${label} en estos resultados. Prueba con "Pelis y series".</p>`;
     resultsSection.hidden = false;
+    if (loadMoreEl) loadMoreEl.hidden = true;
     return;
   }
 
@@ -344,6 +366,7 @@ function renderResults() {
       </div>
     </article>`).join("");
   resultsSection.hidden = visibleResults.length === 0;
+  if (loadMoreEl) loadMoreEl.hidden = !(resultsMode === "discover" && discoverHasMore && visibleResults.length > 0);
 }
 
 // ---- Modal detalle ----
@@ -442,7 +465,41 @@ async function deleteMovie(id) {
   if (ok) await loadMovies();
 }
 
+function renderGenreChips() {
+  const container = el("genre-chips");
+  if (!container) return;
+  container.innerHTML = DISCOVER_GENRES.map((g) =>
+    `<button class="genre-chip${activeGenreId === g.id ? " active" : ""}" data-genre-id="${g.id}" type="button">${esc(g.name)}</button>`
+  ).join("");
+}
+
+async function loadDiscover(genreId, page = 1, append = false) {
+  const genre = DISCOVER_GENRES.find((g) => g.id === genreId);
+  resultsMode = "discover";
+  el("results-title").textContent = genre ? genre.name : "Por género";
+  el("results-close").hidden = true;
+  if (!append) showMessage("Cargando...");
+  const type = mediaFilter === "todo" ? "all" : mediaFilter;
+  const { data } = await api(`/api/discover?genre_id=${genreId}&type=${type}&page=${page}`);
+  if (data.ok) {
+    lastResults = append ? [...lastResults, ...data.results] : data.results;
+    discoverPage   = data.page;
+    discoverHasMore = data.has_more;
+    renderResults();
+    showMessage("");
+  } else if (data.needs_key) {
+    lastResults     = [];
+    discoverHasMore = false;
+    renderResults();
+    showMessage("Descubrir desactivado (sin TMDB key). Configura la clave (ver README).", "error");
+  } else {
+    showMessage(data.error || "No se pudieron cargar los resultados.", "error");
+  }
+}
+
 async function loadTrending() {
+  discoverHasMore = false;
+  discoverPage    = 1;
   resultsMode = "trending";
   el("results-title").textContent = "Tendencias de la semana";
   el("results-close").hidden = true;
@@ -579,7 +636,15 @@ el("collection-sort").addEventListener("change", (e) => {
 el("discover-search-form").addEventListener("submit", async (e) => {
   e.preventDefault();
   const q = el("discover-search-input").value.trim();
-  if (!q) { loadTrending(); return; }
+  if (!q) {
+    if (activeGenreId !== null) loadDiscover(activeGenreId);
+    else loadTrending();
+    return;
+  }
+  activeGenreId   = null;
+  discoverHasMore = false;
+  discoverPage    = 1;
+  renderGenreChips();
   resultsMode = "search";
   el("results-title").textContent = "Resultados";
   el("results-close").hidden = false;
@@ -597,10 +662,18 @@ el("discover-search-form").addEventListener("submit", async (e) => {
   }
 });
 
-el("results-close").addEventListener("click", () => { el("discover-search-input").value = ""; loadTrending(); });
+el("results-close").addEventListener("click", () => {
+  el("discover-search-input").value = "";
+  activeGenreId = null;
+  renderGenreChips();
+  loadTrending();
+});
 
 el("discover-search-input").addEventListener("input", (e) => {
-  if (!e.target.value.trim()) loadTrending();
+  if (!e.target.value.trim()) {
+    if (activeGenreId !== null) loadDiscover(activeGenreId);
+    else loadTrending();
+  }
 });
 
 document.querySelectorAll("[data-view-target]").forEach((btn) => {
@@ -701,7 +774,8 @@ el("media-filter").addEventListener("click", (e) => {
   if (!b) return;
   mediaFilter = b.dataset.media;
   document.querySelectorAll("#media-filter .seg-btn").forEach((x) => x.classList.toggle("active", x === b));
-  renderResults();
+  if (activeGenreId !== null) loadDiscover(activeGenreId);
+  else renderResults();
 });
 
 el("collection-media-filter").addEventListener("change", (e) => {
@@ -770,6 +844,30 @@ document.addEventListener("keydown", (e) => {
 });
 
 document.body.dataset.activeView = "collection-view";
+renderGenreChips();
+
+// Chips de género — delegado en la vista Descubrir (siempre en el DOM)
+el("discover-view").addEventListener("click", (e) => {
+  const chip = e.target.closest(".genre-chip");
+  if (!chip) return;
+  const genreId = +chip.dataset.genreId;
+  el("discover-search-input").value = "";
+  if (activeGenreId === genreId) {
+    activeGenreId = null;
+    renderGenreChips();
+    loadTrending();
+  } else {
+    activeGenreId = genreId;
+    renderGenreChips();
+    loadDiscover(genreId);
+  }
+});
+
+// Botón "Ver más" — delegado en resultsSection (ya es const, siempre en el DOM)
+resultsSection.addEventListener("click", (e) => {
+  if (!e.target.closest("#load-more-btn")) return;
+  if (activeGenreId !== null) loadDiscover(activeGenreId, discoverPage + 1, true);
+});
 
 // ── Bootstrap ──────────────────────────────────────────────────────────────
 
