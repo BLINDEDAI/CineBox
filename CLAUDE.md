@@ -128,6 +128,23 @@ threading.Thread(target=_notify_discord, args=(...), daemon=True).start()
 
 Las notificaciones van en thread separado — nunca en el hilo de respuesta HTTP.
 
+### Conexiones a la DB — pool acotado
+
+`get_db()` toma conexiones de un `ThreadedConnectionPool(1, DB_POOL_MAX)` gateado por
+un semáforo del mismo tamaño (inicializado en `main()` antes de `init_db`). Los hilos
+sobrantes esperan hasta `DB_WAIT_TIMEOUT` (10 s) y, si no hay slot, el endpoint devuelve
+**503** (vía el decorador `_db_guard` sobre los `do_*`). No volver a abrir conexiones
+sueltas con `psycopg2.connect`: usar siempre `with get_db() as cur:`.
+
+### Rate limiting — endpoints que pegan a TMDB
+
+Los 5 endpoints que consumen la clave TMDB (`/api/search`, `/api/trending`,
+`/api/discover`, `/api/details`, `/api/similar`) pasan por `self._rate_limited(user_id)`
+justo tras la auth. Ventana deslizante en memoria (por proceso): **por usuario**
+`RATE_MAX` (60) y **global** `RATE_GLOBAL_MAX` (300) por `RATE_WINDOW` (60 s). Al superar
+cualquiera → **429 + `Retry-After`**. Las constantes viven en `server.py`. Si se añade
+otro endpoint que llame a `_tmdb(...)`, aplicarle el mismo patrón.
+
 ---
 
 ## Errores conocidos — no repetir

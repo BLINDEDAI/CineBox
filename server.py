@@ -16,6 +16,7 @@ import json
 import os
 import re
 import threading
+import time
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
@@ -135,6 +136,42 @@ def _db_guard(method):
             return self._json(503, {"ok": False,
                                     "error": "Servidor ocupado, reintenta en unos segundos."})
     return wrapper
+
+
+# ── Rate limiting ─────────────────────────────────────────────────────────────
+# Ventana deslizante en memoria por usuario, sobre los endpoints que pegan a
+# TMDB con NUESTRA clave. Evita que una cuenta agote la cuota de TMDB o el pool.
+# Es por proceso (no compartido entre instancias) y los límites son constantes
+# de código — suficiente para la escala actual.
+_rate_lock = threading.Lock()
+_rate_hits = {}            # key -> lista de timestamps monotónicos dentro de la ventana
+RATE_WINDOW = 60           # ventana deslizante (segundos) para todos los buckets
+RATE_MAX = 60              # tope por usuario en la ventana
+RATE_GLOBAL_MAX = 300      # tope agregado (todos los usuarios) — protege la clave
+                           # TMDB de abuso vía múltiples cuentas
+
+
+def rate_check(buckets):
+    """`buckets`: lista de (key, limit). Ventana deslizante por key. Devuelve
+    (permitido, retry_after_s) y solo registra el hit en TODOS los buckets si
+    TODOS están por debajo de su límite (atómico). Thread-safe."""
+    now = time.monotonic()
+    with _rate_lock:
+        if len(_rate_hits) > 1000:   # barrido oportunista de claves inactivas
+            for k in [k for k, v in _rate_hits.items()
+                      if not any(now - t < RATE_WINDOW for t in v)]:
+                del _rate_hits[k]
+        windows = {}
+        for key, limit in buckets:
+            hits = [t for t in _rate_hits.get(key, []) if now - t < RATE_WINDOW]
+            windows[key] = hits
+            if len(hits) >= limit:
+                _rate_hits[key] = hits
+                return False, max(1, int(RATE_WINDOW - (now - hits[0])) + 1)
+        for key, hits in windows.items():   # todos por debajo → registrar el hit
+            hits.append(now)
+            _rate_hits[key] = hits
+        return True, 0
 
 
 def init_db():
@@ -315,13 +352,26 @@ class Handler(SimpleHTTPRequestHandler):
         )
         super().end_headers()
 
-    def _json(self, status, payload):
+    def _json(self, status, payload, extra_headers=None):
         body = json.dumps(payload, ensure_ascii=False, default=_json_default).encode("utf-8")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        for k, v in (extra_headers or {}).items():
+            self.send_header(k, str(v))
         self.end_headers()
         self.wfile.write(body)
+
+    def _rate_limited(self, user_id):
+        """Aplica el límite de tasa TMDB a `user_id`. Si lo supera, responde
+        429 + Retry-After y devuelve True (el endpoint debe retornar)."""
+        allowed, retry = rate_check([(f"tmdb:{user_id}", RATE_MAX),
+                                     ("tmdb:_global", RATE_GLOBAL_MAX)])
+        if allowed:
+            return False
+        self._json(429, {"ok": False, "error": "Demasiadas peticiones, espera un momento."},
+                   extra_headers={"Retry-After": retry})
+        return True
 
     def _read_json(self):
         length = max(0, min(int(self.headers.get("Content-Length", 0)), MAX_BODY))
@@ -405,8 +455,11 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, **compute_level(points)})
 
     def _search(self):
-        if not self._get_user_id():
+        user_id = self._get_user_id()
+        if not user_id:
             return self._json(401, {"ok": False, "error": "No autenticado"})
+        if self._rate_limited(user_id):
+            return
         query = (self._qs().get("q", [""])[0]).strip()
         if not query:
             return self._json(400, {"ok": False, "error": "Falta el término de búsqueda"})
@@ -436,8 +489,11 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "results": pack(mv, "movie") + pack(tv, "tv")})
 
     def _trending(self):
-        if not self._get_user_id():
+        user_id = self._get_user_id()
+        if not user_id:
             return self._json(401, {"ok": False, "error": "No autenticado"})
+        if self._rate_limited(user_id):
+            return
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return self._json(200, {"ok": False, "needs_key": True})
         try:
@@ -472,8 +528,11 @@ class Handler(SimpleHTTPRequestHandler):
     }
 
     def _discover(self):
-        if not self._get_user_id():
+        user_id = self._get_user_id()
+        if not user_id:
             return self._json(401, {"ok": False, "error": "No autenticado"})
+        if self._rate_limited(user_id):
+            return
         q = self._qs()
         genre_id_str = (q.get("genre_id", [""])[0]).strip()
         media_type   = (q.get("type",     ["all"])[0]).strip()
@@ -538,8 +597,11 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "results": results, "page": page, "has_more": has_more})
 
     def _details(self):
-        if not self._get_user_id():
+        user_id = self._get_user_id()
+        if not user_id:
             return self._json(401, {"ok": False, "error": "No autenticado"})
+        if self._rate_limited(user_id):
+            return
         q   = self._qs()
         tid = (q.get("id",   [""])[0]).strip()
         mt  = (q.get("type", ["movie"])[0]).strip()
@@ -591,8 +653,11 @@ class Handler(SimpleHTTPRequestHandler):
         }})
 
     def _similar(self):
-        if not self._get_user_id():
+        user_id = self._get_user_id()
+        if not user_id:
             return self._json(401, {"ok": False, "error": "No autenticado"})
+        if self._rate_limited(user_id):
+            return
         q   = self._qs()
         tid = (q.get("id",   [""])[0]).strip()
         mt  = (q.get("type", ["movie"])[0]).strip()
