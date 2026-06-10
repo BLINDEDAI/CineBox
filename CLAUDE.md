@@ -260,3 +260,19 @@ más estricto de todos los archivos tocados.
 ### Regla de duda
 Si no está claro en qué fila cae → pasar los cuatro.
 No hacer commit sin que dod-checker haya dado DONE.
+
+### Sesiones separadas: bug no trivial → fix en sesión nueva
+Cuando `tester` (o `reviewer`/`security`) encuentra un bug **no trivial**, NO se
+arregla en la misma sesión: contamina el contexto de test/review con detalles de
+implementación y empeora las dos tareas. En su lugar:
+
+1. La sesión actual produce un **prompt autocontenido** para el fix: síntoma
+   (observado vs esperado + error literal), reproducción, causa raíz si se conoce
+   (archivo/función), criterio de aceptación y restricciones (qué NO tocar).
+   El agente `tester` ya emite este prompt en su sección "Fix prompts for new sessions".
+2. Se abre una **sesión nueva** con ese prompt → arregla enfocada solo en el fix,
+   sin arrastrar el ruido de la verificación.
+3. Se vuelve a la sesión original y se **relanza** la verificación (`tester`).
+
+Trivial (typo, guard de una línea, off-by-one obvio) → arreglar inline. Ante la
+duda, separar.
