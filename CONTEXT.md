@@ -4,7 +4,36 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
-## Última sesión — 2026-06-10 (actualizado)
+## Última sesión — 2026-06-10 (refactor frontend + CSP)
+
+### Hecho hoy
+- **`script.js` dividido en 7 módulos de scope global** (split mecánico, sin cambios de lógica):
+  `api.js → ui.js → collection.js → modal.js → discover.js → stats.js → app.js`, cargados con
+  `<script defer>` en ese orden. `script.js` eliminado (se conservó como `.bak` durante el proceso y luego se borró).
+  - Regla de oro descubierta: cualquier sentencia de nivel superior que se ejecuta al cargar
+    (un `addEventListener`, `const x = el(...)`) solo puede referir globals del mismo archivo o de uno
+    cargado antes. Por eso `const collectionEl` vive en `collection.js` (su delegador lo usa al cargar),
+    no en `app.js` — moverlo daba `ReferenceError` en carga. Detalle documentado en `CLAUDE.md`.
+  - `CLAUDE.md` "Archivos clave" reescrito con el mapa de módulos/funciones y la regla de orden de carga.
+  - Commit `8279a0e`. Agentes reviewer + security + tester en verde.
+- **Violaciones CSP preexistentes corregidas** (commit `145ef68`, separado):
+  - `<script>` inline (flag `cinebox_visited`) → `boot.js` (en `<head>`, **sin defer**, para conservar el
+    timing pre-paint del que depende `html.cinebox-visited` para evitar el flash de bienvenida).
+  - Estilos inline del footer → reglas `.app-credit` en `styles.css`. Sin cambio en la cabecera CSP.
+- **Pusheado a `origin/main`** (`eecc752..145ef68`) → deploy automático en Render disparado.
+
+### Pendiente
+- **Hard-refresh de la página en producción** (`Ctrl+Shift+R`) tras el deploy para soltar el `index.html`
+  cacheado; entonces la consola queda limpia (sin errores de inline script/style).
+- Único aviso restante esperado: el sourcemap `.map` de jsdelivr (solo debug, inofensivo, fuera de alcance).
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. Confirmar que el deploy de Render terminó y que la consola del navegador está limpia.
+
+---
+
+## Sesión anterior — 2026-06-10 (Títulos similares)
 
 ### Hecho hoy
 - **Feature "Títulos similares"** implementada y verificada:
