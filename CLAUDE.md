@@ -23,7 +23,7 @@ At the start of each session, read CONTEXT.md if it exists. At the end, update i
 |------|-----------|
 | Backend | Python 3, `http.server.ThreadingHTTPServer` (stdlib, sin Flask/FastAPI) |
 | Base de datos | PostgreSQL vía `psycopg2`, hosteado en Supabase |
-| Auth | Supabase email/password + JWT (ES256/RS256 via JWKS, fallback HS256) |
+| Auth | Supabase email/password + JWT asimétrico (ES256/RS256 via JWKS); se exige `aud=authenticated` y `role=authenticated` |
 | Frontend | HTML + CSS + JS vanilla (sin build, sin bundler) |
 | API externa | TMDB v3 |
 | Notificaciones | Discord Incoming Webhooks (async en threads) |
@@ -202,7 +202,7 @@ Todas van en `.env` (ver `.env.example`). Las marcadas **requeridas** crashean e
 | `DATABASE_URL` | Conexión PostgreSQL | **Sí** |
 | `SUPABASE_URL` | URL del proyecto Supabase | **Sí** |
 | `SUPABASE_ANON_KEY` | Clave pública (se envía al browser) | **Sí** |
-| `SUPABASE_JWT_SECRET` | Fallback HS256 para JWT | No |
+| `SUPABASE_JWT_SECRET` | Ya no se usa en runtime (HS256 eliminado) | No |
 | `SUPABASE_SERVICE_KEY` | No usado en runtime (reservado) | No |
 | `TMDB_API_KEY` | Sin él, search/discover/details no funcionan | No |
 | `DISCORD_WEBHOOK_VISTA` | Webhook cuando se marca como vista | No |

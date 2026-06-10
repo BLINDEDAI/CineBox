@@ -8,7 +8,7 @@ el user_id se extrae del token, nunca del cliente.
 Ejecutar:  python server.py
 Config en .env:
     DATABASE_URL=...
-    SUPABASE_JWT_SECRET=...   (Settings → API → JWT Secret en Supabase)
+    SUPABASE_URL=...          (para descubrir el JWKS y verificar el token)
     TMDB_API_KEY=...
     DISCORD_WEBHOOK_URL=...
 """
@@ -110,39 +110,30 @@ def verify_jwt(token: str):
     """Verifica el access token de Supabase con la clave pública del JWKS
     (firma asimétrica ES256/RS256). Devuelve el UUID del usuario (sub) o None.
 
-    Fallback a HS256 con SUPABASE_JWT_SECRET para proyectos heredados que
-    aún firmen con secreto compartido."""
-    # 1. Verificación asimétrica vía JWKS (sistema de claves actual de Supabase)
+    Solo se acepta firma asimétrica: no hay fallback HS256. Además del
+    chequeo de firma/expiración se exige aud="authenticated" y
+    role="authenticated", de modo que un token que no sea una sesión de
+    usuario real (anon, otra audience) se rechaza."""
     try:
         client = _get_jwks_client()
-        if client is not None:
-            signing_key = client.get_signing_key_from_jwt(token)
-            payload = pyjwt.decode(
-                token,
-                signing_key.key,
-                algorithms=["ES256", "RS256"],
-                leeway=60,                       # tolera desfase de reloj (iat/exp/nbf)
-                options={"verify_aud": False},   # Supabase pone aud="authenticated"
-            )
-            return payload.get("sub")            # UUID del usuario
-    except pyjwt.PyJWTError:
-        pass  # token no verificable por JWKS → probamos HS256 abajo
-
-    # 2. Fallback HS256 (secreto compartido heredado)
-    secret = os.environ.get("SUPABASE_JWT_SECRET", "")
-    if secret:
-        try:
-            payload = pyjwt.decode(
-                token,
-                secret,
-                algorithms=["HS256"],
-                leeway=60,                       # tolera desfase de reloj (iat/exp/nbf)
-                options={"verify_aud": False},
-            )
-            return payload.get("sub")
-        except pyjwt.PyJWTError:
+        if client is None:
             return None
-    return None
+        signing_key = client.get_signing_key_from_jwt(token)
+        payload = pyjwt.decode(
+            token,
+            signing_key.key,
+            algorithms=["ES256", "RS256"],
+            audience="authenticated",   # rechaza tokens de otra audience
+            leeway=60,                  # tolera desfase de reloj (iat/exp/nbf)
+        )
+    except (pyjwt.PyJWTError, ValueError, OSError):
+        # PyJWTError: token/firma inválidos. ValueError: JWKS devolvió un body
+        # no-JSON. OSError: red caída al traer el JWKS. Todo → 401, no 500.
+        return None
+    if payload.get("role") != "authenticated":
+        return None                     # rechaza anon u otros roles
+    user_id = payload.get("sub")
+    return user_id if user_id else None  # exige sub no vacío (UUID del usuario)
 
 
 # ── Utilidades ────────────────────────────────────────────────────────────────
