@@ -210,6 +210,7 @@ Todas van en `.env` (ver `.env.example`). Las marcadas **requeridas** crashean e
 | `DISCORD_WEBHOOK_URL` | Webhook genérico de fallback | No |
 | `DISCORD_OWNER_ID` | UUID Supabase — filtra notificaciones al owner | No |
 | `PORT` | Puerto del servidor | No (default: 8000) |
+| `DB_POOL_MAX` | Máx. conexiones del pool a Postgres (por proceso). Subir solo si el pooler de Supabase lo aguanta; con varias instancias, el total es `instancias × DB_POOL_MAX` | No (default: 10) |
 
 ## Agentes — obligatorio antes de cualquier push
 

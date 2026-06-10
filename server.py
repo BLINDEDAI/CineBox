@@ -20,7 +20,7 @@ import urllib.parse
 import urllib.request
 from contextlib import contextmanager
 from datetime import date, datetime, timezone
-from functools import partial
+from functools import partial, wraps
 from http.server import SimpleHTTPRequestHandler, ThreadingHTTPServer
 from pathlib import Path
 
@@ -28,6 +28,7 @@ import jwt as pyjwt          # PyJWT
 from jwt import PyJWKClient
 import psycopg2
 import psycopg2.extras
+import psycopg2.pool
 
 BASE_DIR = Path(__file__).resolve().parent
 HOST, PORT = "0.0.0.0", int(os.environ.get("PORT", 8000))
@@ -67,19 +68,73 @@ def load_env():
 
 # ── Base de datos ─────────────────────────────────────────────────────────────
 
+# Pool de conexiones (inicializado en main(), antes de init_db). El semáforo
+# gatea el pool al mismo tamaño: si todas las conexiones están en uso, los
+# hilos sobrantes esperan en cola en vez de petar con PoolError. Mantiene
+# acotado el nº de conexiones al pooler de Supabase ante un pico de tráfico.
+_db_pool = None
+_db_sem = None
+DB_WAIT_TIMEOUT = 10  # s máximos esperando un slot del pool antes de rendirse (503)
+
+
+class DBBusy(Exception):
+    """No se obtuvo conexión del pool dentro de DB_WAIT_TIMEOUT (saturación)."""
+
+
+def init_pool(maxconn):
+    global _db_pool, _db_sem
+    _db_pool = psycopg2.pool.ThreadedConnectionPool(1, maxconn, os.environ["DATABASE_URL"])
+    _db_sem = threading.BoundedSemaphore(maxconn)
+
+
 @contextmanager
 def get_db():
-    """Abre conexión Postgres, hace commit al salir o rollback en error."""
-    con = psycopg2.connect(os.environ["DATABASE_URL"])
+    """Toma una conexión del pool (esperando si está lleno, hasta
+    DB_WAIT_TIMEOUT → DBBusy), commit al salir o rollback en error, y la
+    devuelve al pool. Si la conexión quedó rota (rollback falló o el pooler
+    la cerró), se descarta para que el pool abra otra.
+
+    El semáforo se libera SIEMPRE (finally anidado), de modo que un fallo de
+    putconn() no puede fugar permisos y bloquear el servidor."""
+    if not _db_sem.acquire(timeout=DB_WAIT_TIMEOUT):
+        raise DBBusy("pool de conexiones saturado")
+    con = None
+    broken = False
     try:
-        with con.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
-            yield cur
-        con.commit()
-    except Exception:
-        con.rollback()
-        raise
+        con = _db_pool.getconn()
+        try:
+            with con.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
+                yield cur
+            con.commit()
+        except Exception:
+            broken = True                 # asumir rota; si el rollback va bien, reutilizable
+            try:
+                con.rollback()
+                broken = bool(con.closed)
+            except Exception:
+                broken = True             # rollback falló → conexión muerta, descartar
+            raise
     finally:
-        con.close()
+        try:
+            if con is not None:
+                _db_pool.putconn(con, close=broken)
+        except Exception:
+            pass                          # nunca dejar que putconn impida liberar el semáforo
+        finally:
+            _db_sem.release()
+
+
+def _db_guard(method):
+    """Convierte una saturación del pool (DBBusy) en un 503 limpio en vez de
+    propagar la excepción y devolver un 500 con traceback."""
+    @wraps(method)
+    def wrapper(self, *args, **kwargs):
+        try:
+            return method(self, *args, **kwargs)
+        except DBBusy:
+            return self._json(503, {"ok": False,
+                                    "error": "Servidor ocupado, reintenta en unos segundos."})
+    return wrapper
 
 
 def init_db():
@@ -295,6 +350,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── GET ───────────────────────────────────────────────────────────────────
 
+    @_db_guard
     def do_GET(self):
         path         = self.path.split("?", 1)[0]
         decoded_path = urllib.parse.unquote(path)
@@ -564,6 +620,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── POST ──────────────────────────────────────────────────────────────────
 
+    @_db_guard
     def do_POST(self):
         if self.path != "/api/movies":
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -633,6 +690,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── PATCH ─────────────────────────────────────────────────────────────────
 
+    @_db_guard
     def do_PATCH(self):
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
@@ -712,6 +770,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     # ── DELETE ────────────────────────────────────────────────────────────────
 
+    @_db_guard
     def do_DELETE(self):
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
@@ -736,6 +795,7 @@ class Handler(SimpleHTTPRequestHandler):
 def main():
     global _jwks_client
     load_env()
+    init_pool(int(os.environ.get("DB_POOL_MAX", 10)))
     init_db()
     base = supabase_base_url()
     if base:
@@ -751,6 +811,9 @@ def main():
             httpd.serve_forever()
         except KeyboardInterrupt:
             print("\nServidor detenido.")
+        finally:
+            if _db_pool is not None:
+                _db_pool.closeall()
 
 
 if __name__ == "__main__":
