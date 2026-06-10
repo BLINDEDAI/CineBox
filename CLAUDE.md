@@ -231,11 +231,27 @@ Todas van en `.env` (ver `.env.example`). Las marcadas **requeridas** crashean e
 | `PORT` | Puerto del servidor | No (default: 8000) |
 | `DB_POOL_MAX` | Máx. conexiones del pool a Postgres (por proceso). Subir solo si el pooler de Supabase lo aguanta; con varias instancias, el total es `instancias × DB_POOL_MAX` | No (default: 10) |
 
-## Agentes — obligatorio antes de cualquier push
+## Agentes — obligatorio antes de cualquier commit/push
 
-Después de cualquier cambio en server.py o en los módulos del frontend, ejecutar en orden:
-1. `reviewer` — revisa lógica y convenciones
-2. `security` — verifica auth y exposición de datos
-3. `tester` — prueba los flujos afectados
+### Cuándo entra cada agente
 
-No hacer commit sin haber pasado los tres. No hay excepciones.
+| Cambio | reviewer | security | tester | dod-checker |
+|--------|----------|----------|--------|-------------|
+| server.py (endpoints, auth, DB, validación) | ✅ | ✅ | ✅ | ✅ |
+| JS con lógica de negocio (collection, modal, discover, stats, app) | ✅ | ✅ | ✅ | ✅ |
+| JS sin lógica de negocio (ui.js, boot.js) | ✅ | ❌ | ✅ | ✅ |
+| styles.css | ❌ | ❌ | ❌ | ✅ |
+| index.html / boot.js sin scripts nuevos | ✅ | ✅ | ✅ | ✅ |
+| Refactor mecánico (mover código sin cambiar lógica) | ✅ | ✅ | ✅ | ✅ |
+| CLAUDE.md / CONTEXT.md / docs | ❌ | ❌ | ❌ | ✅ |
+
+### Orden de ejecución
+reviewer → security (si aplica) → tester (si aplica) → dod-checker
+
+### Regla de cambios mixtos
+Si un cambio toca varios tipos de archivo, aplica el criterio
+más estricto de todos los archivos tocados.
+
+### Regla de duda
+Si no está claro en qué fila cae → pasar los cuatro.
+No hacer commit sin que dod-checker haya dado DONE.
