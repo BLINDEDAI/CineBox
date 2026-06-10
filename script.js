@@ -1,5 +1,4 @@
 // Mi Cineteca — lógica de cliente. Habla con el backend local (server.py).
-console.log("test");
 
 // ── Supabase & Auth ─────────────────────────────────────────────────────────
 let _supabase = null;
