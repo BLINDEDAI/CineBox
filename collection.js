@@ -266,14 +266,7 @@ collectionEl.addEventListener("click", (e) => {
     return;
   }
   const action = e.target.closest("[data-action]")?.dataset.action;
-  if (action === "toggle") {
-    const next = { pendiente: "viendo", viendo: "vista", vista: "pendiente", abandonada: "pendiente" };
-    const status = next[movie.status] ?? "pendiente";
-    const payload = { status };
-    if (status === "vista" && !movie.watched_at) payload.watched_at = todayIsoDate();
-    patchMovie(id, payload);
-  }
-  else if (action === "delete") deleteMovie(id);
+  if (action === "delete") deleteMovie(id);
   else if (action === "note") { editingNoteId = id; renderCollection(); }
   else if (action === "note-cancel") { editingNoteId = null; renderCollection(); }
   else if (action === "note-save" && movie) {

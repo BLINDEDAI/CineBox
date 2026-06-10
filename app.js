@@ -282,7 +282,10 @@ async function initApp() {
         _currentUser = session.user;
         _hideLoginScreen();
         _updateSidebarUser(session.user.email);
-        queueMicrotask(() => { loadMovies(); });
+        // En la carga inicial NO recargamos aquí: el bloque «sesión inicial» de
+        // más abajo ya llama a loadMovies(). El listener solo carga en logins
+        // posteriores (SIGNED_IN, TOKEN_REFRESHED) → evita un doble fetch al abrir.
+        if (event !== "INITIAL_SESSION") queueMicrotask(() => { loadMovies(); });
       } else {
         _currentUser = null;
         movies = [];

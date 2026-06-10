@@ -33,7 +33,9 @@ At the start of each session, read CONTEXT.md if it exists. At the end, update i
 
 ```
 server.py   — todo el backend (~660 líneas)
-index.html  — SPA de una sola página; carga los 7 módulos JS con <script defer>
+index.html  — SPA de una sola página; carga boot.js (síncrono) + los 7 módulos JS (<script defer>)
+boot.js     — script síncrono en <head>: marca <html> con la clase cinebox-visited
+              (de localStorage) ANTES de pintar, para evitar el flash de bienvenida
 styles.css  — estilos
 .env        — secretos (no commitear)
 ```
@@ -96,7 +98,7 @@ Sin esto el usuario puede acceder a datos ajenos. No hay excepciones.
 ### Lectura de JSON del cuerpo
 
 ```python
-body = self._read_json()  # ya aplica MAX_BODY (32 KB)
+body = self._read_json()  # ya aplica MAX_BODY (64 KB)
 ```
 
 No leer `self.rfile` directamente — puede colgar el servidor con requests grandes.
