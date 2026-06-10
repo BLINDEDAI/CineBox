@@ -1,0 +1,120 @@
+// Mi Cineteca — modal de detalle: ficha TMDB, alta desde modal y títulos similares.
+
+const modalContent = el("modal-content");
+let modalContext = null;
+
+// ---- Modal detalle ----
+function closeModal() {
+  modalEl.classList.remove("is-open");
+  setTimeout(() => { modalEl.hidden = true; modalContent.innerHTML = ""; modalContext = null; }, 220);
+}
+
+async function openDetail(tmdbId, type, hint = {}) {
+  modalContext = null;
+  modalContent.innerHTML = '<p class="muted">Cargando...</p>';
+  modalEl.hidden = false;
+  void modalEl.offsetWidth;
+  modalEl.classList.add("is-open");
+  const { data } = await api(`/api/details?id=${tmdbId}&type=${type}`);
+  if (!data.ok) {
+    modalContent.innerHTML = "<p>No hay detalle disponible (¿sin TMDB key?).</p>";
+    return;
+  }
+  const d = data.details;
+  const existing = movies.find((x) => x.tmdb_id === tmdbId && x.media_type === type);
+  const m = existing || hint;
+  modalContext = {
+    tmdbId,
+    type,
+    title:      m.title      || d.title || "",
+    poster_url: m.poster_url || (d.poster_path ? `https://image.tmdb.org/t/p/w342${d.poster_path}` : ""),
+    year:       m.year       || "",
+  };
+  const creditsHtml = [
+    d.directors.length ? `<p><strong>${esc(d.dir_label)}:</strong> ${d.directors.map(esc).join(", ")}</p>` : "",
+    d.cast.length ? `<p><strong>Reparto:</strong> ${d.cast.map(esc).join(", ")}</p>` : "",
+  ].filter(Boolean).join("");
+  const overviewHtml = d.overview ? esc(d.overview) : '<span class="muted">Sin sinopsis disponible.</span>';
+  const providers = d.providers || [];
+  const providersHtml = `
+    <div class="modal-providers">
+      <span class="providers-label">Dónde ver en España</span>
+      ${providers.length
+        ? `<div class="providers-logos">
+            ${providers.map((p) => `<img src="${esc(p.logo)}" alt="${esc(p.name)}" title="${esc(p.name)}" class="provider-logo" loading="lazy">`).join("")}
+          </div>`
+        : `<span class="providers-empty">No disponible en streaming</span>`}
+    </div>`;
+  modalContent.innerHTML = `
+    <div class="modal-head">
+      ${modalContext.poster_url ? `<img src="${esc(modalContext.poster_url)}" alt="">` : ""}
+      <div>
+        <h3 class="modal-title">${esc(m.title || "")}</h3>
+        <div class="modal-meta">
+          <span class="chip">${mediaIcon(type)} ${type === "tv" ? "Serie" : "Película"}</span>
+          ${m.year ? `<span class="chip">${esc(m.year)}</span>` : ""}
+          ${d.runtime ? `<span class="chip">${d.runtime} min</span>` : ""}
+          ${d.vote_average ? `<span class="chip">★ ${d.vote_average}</span>` : ""}
+          ${d.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join("")}
+        </div>
+      </div>
+    </div>
+    ${!existing ? `
+    <div class="modal-add-btns" id="modal-add-btns">
+      <button class="btn btn-sm" data-add-status="pendiente">+ Por ver</button>
+      <button class="btn btn-sm btn-success" data-add-status="vista">✓ Vista</button>
+    </div>` : `<div class="modal-status-chip"><span class="chip chip-status">${esc(existing.status)}</span></div>`}
+    ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
+    ${providersHtml}
+    ${creditsHtml ? `<div class="modal-credits">${creditsHtml}</div>` : ""}
+    <div class="modal-overview"><p>${overviewHtml}</p></div>
+    <div class="modal-similar" id="modal-similar-section"></div>`;
+  const addBtns = document.getElementById("modal-add-btns");
+  if (addBtns) {
+    addBtns.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-add-status]");
+      if (btn) addFromModal(btn.dataset.addStatus);
+    });
+  }
+  const similarSection = document.getElementById("modal-similar-section");
+  if (similarSection) similarSection.addEventListener("click", (e) => {
+    const btn = e.target.closest(".similar-card[data-tmdb]");
+    if (!btn) return;
+    openDetail(+btn.dataset.tmdb, btn.dataset.type, {
+      title: btn.dataset.title,
+      poster_url: btn.dataset.poster,
+      year: btn.dataset.year,
+    });
+  });
+  api(`/api/similar?id=${tmdbId}&type=${type}`).then(({ data }) => {
+    if (!similarSection.isConnected || !data.ok || !data.results.length) return;
+    similarSection.innerHTML = `
+      <h4 class="similar-title">Títulos similares</h4>
+      <div class="similar-grid">
+        ${data.results.map((r) => `
+          <button class="similar-card"
+            data-tmdb="${esc(r.tmdb_id)}"
+            data-type="${esc(r.type)}"
+            data-title="${esc(r.title)}"
+            data-poster="${esc(r.poster_url)}"
+            data-year="${esc(r.year)}">
+            ${r.poster_url
+              ? `<img src="${esc(r.poster_url)}" alt="${esc(r.title)}" loading="lazy">`
+              : `<div class="similar-no-poster">${esc(r.title)}</div>`}
+            <span class="similar-card-title">${esc(r.title)}</span>
+          </button>`).join("")}
+      </div>`;
+  }).catch(() => {});
+}
+
+async function addFromModal(status) {
+  if (!modalContext) return;
+  const added = await addItem({
+    title:      modalContext.title,
+    media_type: modalContext.type,
+    tmdb_id:    modalContext.tmdbId,
+    year:       modalContext.year,
+    poster_url: modalContext.poster_url,
+  }, status);
+  if (added) closeModal();
+}

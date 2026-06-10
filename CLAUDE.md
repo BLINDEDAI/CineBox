@@ -32,18 +32,44 @@ At the start of each session, read CONTEXT.md if it exists. At the end, update i
 ## Archivos clave
 
 ```
-server.py      — todo el backend (~660 líneas)
-script.js      — todo el frontend (~1000 líneas)  ⚠️ ver abajo
-index.html     — SPA de una sola página
-styles.css     — estilos
-.env           — secretos (no commitear)
+server.py   — todo el backend (~660 líneas)
+index.html  — SPA de una sola página; carga los 7 módulos JS con <script defer>
+styles.css  — estilos
+.env        — secretos (no commitear)
 ```
+
+### Frontend — 7 módulos de scope global (sin bundler)
+
+`script.js` se dividió en 7 archivos. Son scripts clásicos (no ES modules): todo vive
+en el scope global, sin `import`/`export`. Se cargan con `<script defer>` en **este
+orden exacto** (lo imponen las dependencias en tiempo de carga):
+
+`api.js → ui.js → collection.js → modal.js → discover.js → stats.js → app.js`
+
+| Archivo | Responsabilidad | Funciones / símbolos |
+|---------|-----------------|----------------------|
+| `api.js` | Red y token | `_getToken`, `api` |
+| `ui.js` | Helpers de presentación | `el`, `esc`, `mediaIcon`, `mediaLabel`, `notePreview`, `todayIsoDate`, `showMessage`, `posterHtml`, `starsHtml` (+ consts `STAR`, `FILM`, `messageEl`) |
+| `collection.js` | Colección: orden, render, CRUD, «Esta noche» | `recentValue`, `yearValue`, `ratingValue`, `byRecent`, `sortCollection`, `renderCollection`, `renderSkeleton`, `closePickPanel`, `renderPickPanel`, `loadMovies`, `addItem`, `patchMovie`, `deleteMovie`, `pickTonight` + delegador `click` de la colección (+ consts `collectionEl`, `emptyEl`, `collectionEmptyStateEl`, `collectionControlsEl`, `PLATFORMS`) |
+| `modal.js` | Modal de detalle TMDB | `closeModal`, `openDetail`, `addFromModal` (+ `modalContent`, `modalContext`) |
+| `discover.js` | Descubrir / búsqueda | `renderResults`, `renderGenreChips`, `loadDiscover`, `loadTrending` (+ const `DISCOVER_GENRES`) |
+| `stats.js` | Estadísticas y nivel | `loadLevel`, `renderStatsView` (+ `levelData`) |
+| `app.js` | Arranque, estado compartido, auth, listeners | auth de Supabase (`_setLoginMode`, etc.), `showView`, estado global (`movies`, `filter`, `lastResults`, `editing*`, …), refs DOM compartidas (`resultsEl`, `modalEl`, `pickPanelEl`), todos los `addEventListener` restantes, `initApp`, `_updateSidebarUser` |
+
+⚠️ **Regla de orden de carga (no romper).** Cualquier sentencia de nivel superior que
+se ejecute en el acto al cargar el archivo (un `addEventListener`, una llamada como
+`renderGenreChips()`, un `const x = el(...)`) solo puede referirse a globals declarados
+en el **mismo archivo más arriba** o en un archivo **cargado antes**. Los *cuerpos* de
+funciones sí pueden usar globals de archivos posteriores (corren en tiempo de llamada,
+ya cargado todo). Por eso `const collectionEl` vive en `collection.js` y no en `app.js`:
+su delegador `click` lo usa al cargar. Mover una declaración a un archivo más tardío que
+su primer uso inmediato = `ReferenceError` en carga y app muerta.
 
 ---
 
 ## Barreras — leer antes de tocar nada
 
-**`script.js` es frágil.** Cualquier cambio en ese archivo ha causado crashes en el pasado. Avisar al usuario antes de modificarlo y describir exactamente qué se va a cambiar.
+**El frontend (7 módulos, ver «Archivos clave») es frágil.** Cambios en el front han causado crashes en el pasado. Avisar al usuario antes de tocar cualquier módulo, describir exactamente qué se va a cambiar y respetar el orden de carga.
 
 **Parar antes de acciones destructivas:** cambios en la DB (migraciones, DROP, ALTER), sobrescribir archivos, deploys. Confirmar primero.
 
@@ -184,3 +210,12 @@ Todas van en `.env` (ver `.env.example`). Las marcadas **requeridas** crashean e
 | `DISCORD_WEBHOOK_URL` | Webhook genérico de fallback | No |
 | `DISCORD_OWNER_ID` | UUID Supabase — filtra notificaciones al owner | No |
 | `PORT` | Puerto del servidor | No (default: 8000) |
+
+## Agentes — obligatorio antes de cualquier push
+
+Después de cualquier cambio en server.py o en los módulos del frontend, ejecutar en orden:
+1. `reviewer` — revisa lógica y convenciones
+2. `security` — verifica auth y exposición de datos
+3. `tester` — prueba los flujos afectados
+
+No hacer commit sin haber pasado los tres. No hay excepciones.
