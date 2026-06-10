@@ -521,6 +521,7 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "details": {
             "overview":       d.get("overview") or "Sin sinopsis disponible.",
             "genres":         [g["name"] for g in d.get("genres", [])],
+            "genre_ids":      [g["id"] for g in d.get("genres", []) if g.get("id")],
             "runtime":        runtime,
             "title":          d.get("title") or d.get("name") or "",
             "poster_path":    d.get("poster_path") or "",
@@ -597,7 +598,18 @@ class Handler(SimpleHTTPRequestHandler):
         genres = ", ".join(
             TMDB_GENRES[gid] for gid in (data.get("genre_ids") or [])
             if isinstance(gid, int) and gid in TMDB_GENRES
-        ) or None
+        )
+        if not genres:
+            # Fallback: nombres de género ya resueltos. El alta desde el modal
+            # de detalle no tiene genre_ids (TMDB /details devuelve nombres),
+            # así que el cliente envía la lista de nombres en `genres`.
+            raw = data.get("genres")
+            if isinstance(raw, list):
+                genres = ", ".join(
+                    str(g).strip()[:40] for g in raw[:8]
+                    if isinstance(g, str) and g.strip()
+                )
+        genres = genres or None
 
         with get_db() as cur:
             if tmdb_id:

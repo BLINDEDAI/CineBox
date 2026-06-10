@@ -29,6 +29,8 @@ async function openDetail(tmdbId, type, hint = {}) {
     title:      m.title      || d.title || "",
     poster_url: m.poster_url || (d.poster_path ? `https://image.tmdb.org/t/p/w342${d.poster_path}` : ""),
     year:       m.year       || "",
+    genre_ids:  d.genre_ids  || [],   // ids → el backend los mapea a nombres ES (consistente con la carátula)
+    genres:     d.genres     || [],   // nombres; fallback si no hubiera ids
   };
   const creditsHtml = [
     d.directors.length ? `<p><strong>${esc(d.dir_label)}:</strong> ${d.directors.map(esc).join(", ")}</p>` : "",
@@ -115,6 +117,8 @@ async function addFromModal(status) {
     tmdb_id:    modalContext.tmdbId,
     year:       modalContext.year,
     poster_url: modalContext.poster_url,
+    genre_ids:  modalContext.genre_ids,
+    genres:     modalContext.genres,
   }, status);
   if (added) closeModal();
 }
