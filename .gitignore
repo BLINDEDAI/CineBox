@@ -10,3 +10,6 @@ test-results/
 
 # Base de datos local con tu colección: es tuya y cambia constantemente.
 *.sqlite
+
+# Configuración local de Claude Code (hooks, permisos): no es parte del repo público.
+.claude/
