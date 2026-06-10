@@ -40,12 +40,49 @@ JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) · rate limi
   añadió SRI). Sin decidir.
 - **Versionar `.claude/`** (hooks) en el repo o dejarlo local. Sin decidir.
 - **Verificación manual en producción** tras el último deploy (login+recarga, género desde modal, logout).
-- Posible mejora de infra: **MCP de Postgres/Supabase de solo-lectura** para inspeccionar schema/datos
-  reales (propuesto, no iniciado).
+
+#### Hallazgos de la auditoría de DB vía MCP (2026-06-10) — sesiones aparte
+1. **Activar Leaked Password Protection** en Supabase Auth settings (1 clic, manual del usuario).
+2. **Decidir columna `total_seasons`**: está muerta (0/105 filas, el `PATCH` nunca la escribe) → cablearla
+   en el `PATCH` para progreso de series, o `DROP COLUMN`. Cambio de DB → sesión nueva con plan.
+3. **Alinear default de `status`** de `'pending'` (inglés) a `'pendiente'` (la app usa estados en español;
+   hoy inofensivo porque `server.py` siempre setea `status`). Cambio de DB menor → sesión nueva.
+4. **`REVOKE EXECUTE` en `rls_auto_enable`** para `anon`/`authenticated` (higiene, baja prioridad; es un
+   event-trigger que solo *activa* RLS, severidad real baja).
 
 ---
 
-## Última sesión — 2026-06-10 (auditoría de seguridad/calidad)
+## Sesión — 2026-06-10 (adopción de buenas prácticas IA + MCP de Supabase)
+
+Sesión de proceso/infra, no de código de la app. Disparada por un mini-curso de buenas prácticas IA.
+
+### Hecho hoy
+- **Convención de CONTEXT.md** documentada en `CLAUDE.md` (`32ef010`): snapshot arriba (in place) +
+  log de sesiones append-only abajo; al cerrar, snapshot primero. Y se añadió el propio snapshot (`3c99c2f`).
+- **Regla de sesiones separadas para bugs no triviales** (`492d00c`): adoptada en `CLAUDE.md` (sección
+  Agentes) y en el `tester` global (`~/.claude/agents/tester.md`, fuera del repo) que ahora emite un
+  "fix prompt" autocontenido. Bug no trivial → no se arregla inline, se pasa a sesión nueva.
+- **MCP de Supabase de solo-lectura montado** (config local en `~/.claude.json`, scope `local`, **no
+  commiteado**): servidor hospedado `mcp.supabase.com` con `read_only=true` + `project_ref` + OAuth.
+  No hay PAT ni secreto en ningún archivo. Reemplaza el "no puedo ver el estado real de la DB".
+- **Primera auditoría de DB con el MCP** (read-only): esquema real de `public.movies` (17 cols, RLS on,
+  FK a `auth.users`) **casa sin drift** con lo que asume `server.py`. 105 filas, estados todos válidos.
+  Hallados 4 pendientes (ver snapshot → "Hallazgos de la auditoría de DB"): `total_seasons` muerta,
+  default `status` desalineado, 2 advisors de seguridad (`rls_auto_enable` expuesta, leaked-password off).
+
+### Decisiones
+- MCP elegido: **hospedado + OAuth** (no el npx local con PAT) por seguridad — nada sensible en disco.
+- Los 4 hallazgos de DB **no se arreglan en esta sesión** (coherente con la regla recién adoptada): quedan
+  registrados como pendientes para sesiones enfocadas. Ninguno es crítico.
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. Si se aborda un hallazgo de DB: cambios de DB (#2, #3, #4) requieren plan + confirmación antes de tocar.
+3. El MCP de Supabase ya está disponible (read-only) para inspeccionar estado real cuando haga falta.
+
+---
+
+## Sesión — 2026-06-10 (auditoría de seguridad/calidad)
 
 Auditoría completa del proyecto (reviewer + security sobre todo el código) y corrección de
 todos los hallazgos. **9 commits, pusheados a `origin/main`** (`716fa60..5795885`).
