@@ -337,6 +337,14 @@ def _json_default(o):
 
 class Handler(SimpleHTTPRequestHandler):
 
+    # StreamRequestHandler aplica este timeout a CADA operación del socket de la
+    # petición (lectura del request y escritura de la respuesta): si una se
+    # estanca más de este tiempo, la conexión se corta. Frena Slowloris
+    # (Content-Length grande + body a cuentagotas) que, si no, bloquearía un
+    # hilo del pool. 15 s sobra para leer un body de 64 KB o escribir el JSON;
+    # el tiempo de la llamada saliente a TMDB no cuenta (no toca este socket).
+    timeout = 15
+
     def end_headers(self):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("X-Content-Type-Options", "nosniff")
@@ -696,7 +704,7 @@ class Handler(SimpleHTTPRequestHandler):
             data = self._read_json()
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"ok": False, "error": "JSON inválido"})
-        title = str(data.get("title", "")).strip()
+        title = str(data.get("title", "")).strip()[:300]
         if not title:
             return self._json(400, {"ok": False, "error": "El título es obligatorio"})
         media_type = data.get("media_type") if data.get("media_type") in ("movie", "tv") else "movie"
@@ -715,8 +723,12 @@ class Handler(SimpleHTTPRequestHandler):
                 return self._json(400, {"ok": False, "error": "tmdb_id inválido"})
         else:
             tmdb_id = None
-        year   = str(data.get("year", "")).strip()
+        year   = str(data.get("year", "")).strip()[:10]
         poster = str(data.get("poster_url", "")).strip()
+        # Solo aceptamos posters servidos por TMDB; cualquier otra URL se descarta.
+        if poster and not poster.startswith("https://image.tmdb.org/"):
+            poster = ""
+        poster = poster[:500]
         genres = ", ".join(
             TMDB_GENRES[gid] for gid in (data.get("genre_ids") or [])
             if isinstance(gid, int) and gid in TMDB_GENRES
