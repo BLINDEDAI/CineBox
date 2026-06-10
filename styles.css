@@ -1733,6 +1733,12 @@ h2 {
   color: var(--text-soft);
 }
 
+/* Texto muted pequeño para estados vacíos del panel de estadísticas
+   (antes era un style="font-size:.82rem" inline, bloqueado por la CSP). */
+.smuted-sm {
+  font-size: .82rem;
+}
+
 .credit strong {
   color: #fff;
 }
