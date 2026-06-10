@@ -4,6 +4,47 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
+## Estado actual (snapshot) — 2026-06-10
+
+Resumen consolidado del proyecto. El **registro por sesiones** está más abajo.
+
+### Qué es
+CineBox: rastreador personal de películas y series. Backend Python puro (stdlib, sin framework),
+frontend vanilla JS sin bundler, PostgreSQL en Supabase, deploy en Render. Auth Supabase
+(email/password) con JWT asimétrico (ES256/RS256 vía JWKS).
+
+### Qué está construido (funcional)
+- **Colección personal**: añadir, editar (estado vista/pendiente, rating, nota), borrar. Filtrado y
+  orden (reciente / año / valoración). Estado vacío y skeletons de carga.
+- **«Esta noche»**: panel que sugiere un título al azar de los pendientes.
+- **Descubrir**: búsqueda TMDB, trending, discover por géneros (chips), con mapeo de géneros
+  película≠serie. Modal de detalle con quick-add y sección **«Títulos similares»**.
+- **Estadísticas + sistema de niveles**: 6 niveles por puntos (vista=10, rating=5, nota=5); cálculo
+  100% en backend (`compute_level` / constante `LEVELS`). Barras de progreso vía CSSOM (CSP estricta).
+- **Notificaciones Discord** async (vista / pendiente) en threads, filtradas al owner.
+
+### Endpoints (server.py)
+- `GET` — `/api/config`, `/api/movies`, `/api/level`, `/api/search`, `/api/trending`,
+  `/api/discover`, `/api/details`, `/api/similar`, `/health`
+- `POST /api/movies` · `PATCH /api/movies/{id}` · `DELETE /api/movies/{id}`
+- Todos los que tocan DB exigen JWT válido (`aud`/`role=authenticated`). Los 5 que pegan a TMDB pasan
+  por rate limiting (60/usuario + 300/global por 60s → 429).
+
+### Hardening vigente
+JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) · rate limiting TMDB ·
+`socket timeout` 15s (Slowloris) · validación POST (`title`≤300, `year`≤10, `poster_url` solo
+`image.tmdb.org`) · CSP estricta · `MAX_BODY` 64KB.
+
+### Pendiente abierto (decisiones del usuario)
+- **Self-host de supabase-js** para poder fijar versión + SRI (hoy usa `@2` flotante, por eso NO se
+  añadió SRI). Sin decidir.
+- **Versionar `.claude/`** (hooks) en el repo o dejarlo local. Sin decidir.
+- **Verificación manual en producción** tras el último deploy (login+recarga, género desde modal, logout).
+- Posible mejora de infra: **MCP de Postgres/Supabase de solo-lectura** para inspeccionar schema/datos
+  reales (propuesto, no iniciado).
+
+---
+
 ## Última sesión — 2026-06-10 (auditoría de seguridad/calidad)
 
 Auditoría completa del proyecto (reviewer + security sobre todo el código) y corrección de
