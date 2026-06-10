@@ -2,6 +2,10 @@
 
 Rastreador personal de películas y series. Backend Python puro (sin framework), frontend vanilla JS, PostgreSQL en Supabase.
 
+## Flujo de sesión
+
+At the start of each session, read CONTEXT.md if it exists. At the end, update it with what was done and what's next.
+
 ## Stack
 
 | Capa | Tecnología |
