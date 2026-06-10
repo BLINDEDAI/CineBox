@@ -318,6 +318,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/trending": return self._trending()
         if path == "/api/discover": return self._discover()
         if path == "/api/details":  return self._details()
+        if path == "/api/similar":  return self._similar()
         parts = [p for p in decoded_path.split("/") if p]
         if (decoded_path.lower().endswith(BLOCKED)
                 or any(p.startswith(".") for p in parts)):
@@ -530,6 +531,8 @@ class Handler(SimpleHTTPRequestHandler):
             "overview":       d.get("overview") or "Sin sinopsis disponible.",
             "genres":         [g["name"] for g in d.get("genres", [])],
             "runtime":        runtime,
+            "title":          d.get("title") or d.get("name") or "",
+            "poster_path":    d.get("poster_path") or "",
             "vote_average":   round(d.get("vote_average") or 0, 1),
             "trailer":        trailer,
             "dir_label":      dir_label,
@@ -538,6 +541,34 @@ class Handler(SimpleHTTPRequestHandler):
             "providers":      providers,
             "providers_link": wp_es.get("link", ""),
         }})
+
+    def _similar(self):
+        if not self._get_user_id():
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        q   = self._qs()
+        tid = (q.get("id",   [""])[0]).strip()
+        mt  = (q.get("type", ["movie"])[0]).strip()
+        if not tid.isdigit() or mt not in ("movie", "tv"):
+            return self._json(400, {"ok": False, "error": "Parámetros inválidos"})
+        if not os.environ.get("TMDB_API_KEY", "").strip():
+            return self._json(200, {"ok": True, "results": []})
+        try:
+            data = self._tmdb(f"/{mt}/{tid}/similar")
+        except Exception:
+            return self._json(200, {"ok": True, "results": []})
+        items = []
+        for r in (data.get("results") or [])[:6]:
+            if not r.get("id"):
+                continue
+            poster = r.get("poster_path")
+            items.append({
+                "tmdb_id":    r.get("id"),
+                "type":       mt,
+                "title":      r.get("title") or r.get("name") or "",
+                "year":       (r.get("release_date") or r.get("first_air_date") or "")[:4],
+                "poster_url": TMDB_IMG + poster if poster else "",
+            })
+        self._json(200, {"ok": True, "results": items})
 
     # ── POST ──────────────────────────────────────────────────────────────────
 

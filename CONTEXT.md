@@ -4,7 +4,28 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
-## Última sesión — 2026-06-10
+## Última sesión — 2026-06-10 (actualizado)
+
+### Hecho hoy
+- **Feature "Títulos similares"** implementada y verificada:
+  - Nuevo endpoint `GET /api/similar` en `server.py` (auth requerida, hasta 6 resultados de TMDB)
+  - `openDetail` en `script.js` acepta `hint={}` para títulos fuera de la colección
+  - Sección de posters similares al fondo del modal de detalle, con listener delegado
+  - Bugs encontrados y corregidos vía agentes: race condition en fetch, `.catch()` faltante, auth guard faltante
+  - 29 tests automáticos pasados; 6 tests manuales de browser pendientes de verificar
+
+### Pendiente
+- **6 tests manuales** del tester: visual render del modal, click a título similar, stale guard, resultados vacíos, comportamiento sin TMDB key
+- **Commit pendiente** — cambios en `server.py`, `script.js`, `styles.css` listos para commitear
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. Hacer commit si no se hizo.
+3. Verificar los 6 tests manuales si no se hicieron.
+
+---
+
+## Sesión anterior — 2026-06-10
 
 ### Hecho hoy
 - **Hooks instalados** en la configuración de Claude Code para este proyecto.

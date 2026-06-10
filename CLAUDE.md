@@ -147,6 +147,16 @@ Las tres son independientes: un mismo título visto + valorado + con nota suma 2
 
 La tabla es la constante `LEVELS` en `server.py` (única fuente de verdad). La función `compute_level(points)` devuelve nivel, nombre y progreso al siguiente.
 
+### Endpoint `GET /api/similar`
+
+- Requiere auth (`_get_user_id`) → `401` si no.
+- Params: `id` (TMDB id, dígitos) y `type` (`movie` | `tv`) → `400` si inválidos.
+- Llama a TMDB `/{type}/{id}/similar`. Si no hay clave TMDB o TMDB falla: devuelve `{ok: true, results: []}` (sin error).
+- Respuesta: `{ok, results: [{tmdb_id, type, title, year, poster_url}]}` — máximo 6 items, filtrados si no tienen `id`.
+- Frontend: `openDetail` acepta tercer parámetro `hint={}` con `{title, poster_url, year}` para títulos que no están en la colección del usuario. La sección "Títulos similares" se inyecta al fondo del modal de detalle de forma no bloqueante.
+
+---
+
 ### Endpoint `GET /api/level`
 
 - Requiere auth (`_get_user_id`) → `401` si no.
