@@ -17,6 +17,11 @@ Rastreador personal de películas y series. Backend Python puro (sin framework),
 
 At the start of each session, read CONTEXT.md if it exists. At the end, update it with what was done and what's next.
 
+### Convención de CONTEXT.md
+- **Sección superior:** snapshot del estado actual — se actualiza *in place* cada sesión.
+- **Debajo:** registro de sesiones append-only con fecha — nunca se borra, solo se añade.
+- **Al cerrar sesión:** primero actualizar el snapshot, luego añadir la entrada de la sesión.
+
 ## Stack
 
 | Capa | Tecnología |
