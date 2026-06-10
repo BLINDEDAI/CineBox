@@ -416,7 +416,7 @@ async function openDetail(tmdbId, type, hint = {}) {
     </div>`;
   modalContent.innerHTML = `
     <div class="modal-head">
-      ${m.poster_url ? `<img src="${esc(m.poster_url)}" alt="">` : ""}
+      ${modalContext.poster_url ? `<img src="${esc(modalContext.poster_url)}" alt="">` : ""}
       <div>
         <h3 class="modal-title">${esc(m.title || "")}</h3>
         <div class="modal-meta">
@@ -775,7 +775,13 @@ document.querySelectorAll("[data-view-target]").forEach((btn) => {
 
 resultsEl.addEventListener("click", (e) => {
   const poster = e.target.closest(".poster[data-tmdb]");
-  if (poster) { openDetail(+poster.dataset.tmdb, poster.dataset.type); return; }
+  if (poster) {
+    const tmdb = +poster.dataset.tmdb;
+    const type = poster.dataset.type;
+    const hint = lastResults.find(r => r.tmdb_id === tmdb && r.media_type === type) || {};
+    openDetail(tmdb, type, hint);
+    return;
+  }
   const btn = e.target.closest("[data-action='add']");
   if (!btn) return;
   const idx = +btn.closest(".card").dataset.idx;
