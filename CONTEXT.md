@@ -4,7 +4,72 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
-## Última sesión — 2026-06-10 (refactor frontend + CSP)
+## Última sesión — 2026-06-10 (auditoría de seguridad/calidad)
+
+Auditoría completa del proyecto (reviewer + security sobre todo el código) y corrección de
+todos los hallazgos. **9 commits, pusheados a `origin/main`** (`716fa60..5795885`).
+
+### Hecho hoy
+- **JWT endurecido** (`d8ca1d0`): eliminado el fallback HS256; solo firma asimétrica JWKS
+  (ES256/RS256). Ahora se exige `audience="authenticated"` y `role="authenticated"`, y `sub` no vacío.
+  `except` ampliado (ValueError/OSError) → JWKS malformado o red caída devuelve 401, no 500.
+  `PyJWT>=2.8,<3` pineado. **Decisión del usuario:** eliminar HS256 por completo (su proyecto Supabase
+  firma asimétrico). `SUPABASE_JWT_SECRET` ya no se usa en runtime.
+- **CSP / barras de estadísticas** (`5c03453`): los `style="width:X%"` inline estaban bloqueados por la
+  CSP estricta → barras siempre al 100%. Ahora `data-pct` + se fija el ancho vía CSSOM
+  (`element.style`, no sujeto a `style-src`). Estados vacíos → clase `.smuted-sm`. CSP sin tocar.
+- **Bug: géneros no se guardaban al añadir desde el modal** (`c559204`): `addFromModal` no mandaba
+  `genre_ids`. Causa raíz del "no se actualiza" era además **3 instancias viejas de `server.py`** ocupando
+  el puerto 8000 (ver Aprendizajes). Fix: `/api/details` ahora devuelve `genre_ids`; el modal los envía;
+  el backend los mapea con `TMDB_GENRES` → nombres ES consistentes con la ruta de la carátula. **Verificado
+  por el usuario en vivo.**
+- **#4 Pool de conexiones DB** (`9e69ae5`): `get_db()` usa `ThreadedConnectionPool(1, DB_POOL_MAX=10)`
+  gateado por un `BoundedSemaphore`; los hilos sobrantes esperan ≤`DB_WAIT_TIMEOUT`(10s) y devuelven **503**
+  (decorador `_db_guard`). A prueba de excepciones (semáforo liberado siempre; conexiones rotas descartadas).
+  `DATABASE_URL` es el **pooler de Supabase (pgbouncer 6543)** → pool cliente modesto.
+- **#4 Rate limiting** (`8d4fd58`): ventana deslizante en memoria sobre los 5 endpoints TMDB
+  (`search/trending/discover/details/similar`): **por usuario 60/60s + global 300/60s** (el global cierra
+  el abuso multi-cuenta). Supera → **429 + Retry-After**. Registro atómico. Por proceso (no compartido).
+- **#5/#6 Hardening** (`739d6cd`): `Handler.timeout=15s` (Slowloris); `title`≤300, `year`≤10, y `poster_url`
+  solo si empieza por `https://image.tmdb.org/` (cierra SSRF/tracking vía el embed de Discord).
+- **Limpieza** (`5795885`): quitada rama muerta `toggle` (collection.js); el listener auth ya no recarga en
+  `INITIAL_SESSION` (sin doble `loadMovies` al abrir; login/refresh siguen cargando); docs (`MAX_BODY`=64KB,
+  `boot.js`, `DB_POOL_MAX`, rate limiting, pool) en CLAUDE.md y `.env.example`.
+- **Hook arreglado** (local, `.claude/` no versionado): `block_dirty_commit.py` ahora permite `.env.example`
+  (el escaneo de secretos sigue activo sobre su contenido); `.env*` reales siguen bloqueados.
+
+### Cómo se probó (DoD punto 3)
+- Arranque: `python server.py` → `/health` 200. Sintaxis: `ast.parse` (server.py) + `node --check` (módulos JS) en cada cambio.
+- Pool: contra Supabase real — init_db, reutilización, concurrencia 20 hilos/pool 4 (0 errores), recuperación tras error de query, timeout→DBBusy con pool operativo después.
+- Rate limiting: unit (límite, aislamiento por key, thread-safety 50 hilos/max 10 = exactamente 10, tope global + atomicidad) y **E2E HTTP** (3×200 → 429 + `Retry-After:60`).
+- Validación POST: posters maliciosos/`javascript:` descartados, caps aplicados.
+- Cada cambio de lógica pasó **reviewer + security** (verde tras aplicar sus correcciones).
+
+### Pendiente / decisiones para el usuario
+- **#10 (no hecho a propósito):** NO añadir SRI al `<script>` de supabase-js — usa `@2` (versión flotante) y el
+  hash rompería en la próxima minor. El fix correcto es **self-hostear** el bundle (descargar, servir desde el
+  dominio, fijar versión, CSP `script-src 'self'`). Pendiente de decidir si se hace.
+- **Versionar `.claude/`** (hooks) en el repo, o dejarlo como config local — pendiente de decidir.
+- **Verificación manual en producción tras el deploy:** (1) login + recarga → carga la colección (JWT
+  asimétrico, sin doble fetch); (2) añadir desde el modal → el género sube en Estadísticas; (3) logout limpia.
+
+### Aprendizajes (no repetir)
+- **Puerto 8000 ocupado por instancias viejas:** `python server.py` no recarga en caliente; si `Ctrl+C` no mató
+  el proceso, el nuevo no bindea y **sigue sirviendo el viejo** (código sin cambios). Síntoma típico: "reinicié y
+  el fix no aplica". Comprobar con `Get-NetTCPConnection -LocalPort 8000` / `Get-CimInstance Win32_Process` y matar
+  las huérfanas antes de relanzar.
+- **Artefacto de visualización en Windows:** las herramientas muestran `/` como `\` en parte de la salida
+  (vimos `\api\movies`, `\health`, `\ //comentario`). NO son bugs — verificar con `node --check`/`grep` los bytes
+  reales antes de "arreglar" una falsa alarma (nos pasó con `deleteMovie` y con un comentario en app.js).
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. Confirmar que el deploy de Render terminó y hacer la verificación manual de arriba.
+3. Decidir sobre #10 (self-host supabase-js) y versionado de `.claude/`.
+
+---
+
+## Sesión — 2026-06-10 (refactor frontend + CSP)
 
 ### Hecho hoy
 - **`script.js` dividido en 7 módulos de scope global** (split mecánico, sin cambios de lógica):
