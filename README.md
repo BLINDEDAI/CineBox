@@ -25,7 +25,6 @@ CineBox uses a dark noir theme: near-black background (`#050915`), a deep red ac
 - **Statistics view** — a quick overview of your collection breakdown
 - **Discover tab** — weekly trending titles from TMDB
 - **Detail panel** — synopsis, director/creator, cast, trailer link, and streaming providers
-- **Export / Import** your collection as JSON (full backup and restore)
 - **Discord notifications** — webhook alerts with embed and poster when you add or change a title's status
 - **Owner-only notifications** — filter Discord alerts to a single Supabase user via `DISCORD_OWNER_ID`
 - **Supabase authentication** — email/password login and registration, JWT-validated on every request

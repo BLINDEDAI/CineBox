@@ -129,7 +129,7 @@ el("discover-search-form").addEventListener("submit", async (e) => {
     const visibleCount = lastResults.filter((m) => mediaFilter === "todo" || m.media_type === mediaFilter).length;
     showMessage(visibleCount ? "" : "Sin resultados para el tipo seleccionado.");
   } else if (data.needs_key) {
-    showMessage("Búsqueda online desactivada (sin TMDB key). Usa «+ Añadir manual» en Mi colección o configura la clave (ver README).", "error");
+    showMessage("Búsqueda online desactivada: requiere configurar una clave de TMDB (ver README).", "error");
   } else {
     showMessage(data.error || "Error en la búsqueda.", "error");
   }
