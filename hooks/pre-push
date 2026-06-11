@@ -1,0 +1,164 @@
+#!/usr/bin/env bash
+#
+# Pre-push hook — the MECHANICAL trigger for the two framework gates that otherwise
+# depend on an LLM remembering to run them: the fleet scaffold-drift scan and the
+# spec-traceability gate. Without a hook these scripts exist but fire only when an
+# agent chooses to invoke them ("the trigger is disciplinary"). A git pre-push hook
+# turns that discipline into a mechanism: it runs at every `git push` and BLOCKS the
+# push on a hard failure.
+#
+# Install (into EVERY git repo of the workspace — each service repo AND the
+# {project}-docs repo; /init-project documents this, see § "pre-push gates" in
+# commands/init-project-command.md):
+#   cp ALEXANDRIA/templates/hooks/pre-push-workspace-gates.sh {repo}/.git/hooks/pre-push
+#   chmod +x {repo}/.git/hooks/pre-push
+#
+# What it runs:
+#   1. scaffold-drift (ALWAYS) — `make scaffold-drift` from the ALEXANDRIA dir.
+#      Scans the WHOLE workspace's vendored scaffold copies for dropped security
+#      properties + renamed copies (FIX 2b) and surfaces critical-scaffold absence
+#      (FIX 2a, advisory). HARD: a property drift (exit 1) blocks the push.
+#   2. spec-traceability (DOCS REPO ONLY) — `check-spec-traceability.sh` over each
+#      changed spec triplet in the push range. HARD: an orphan/dangling AC, an
+#      intra-spec endpoint collision, or a UI-surface spec with no a11y/CWV criterion
+#      (FIX 1) blocks the push.
+#   3. secrets scan (ALWAYS, when gitleaks is installed) — `check-secrets-leaked.sh`
+#      over this repo's working tree (AS-020). HARD: a detected secret blocks the
+#      push. TOLERANT: gitleaks not installed → warn and let through (toolchain gap,
+#      not a gate failure) — `brew install gitleaks` closes the warning.
+#
+# WHY a pre-push hook and not CI (read this — the honesty boundary)
+# -----------------------------------------------------------------
+#   scaffold-drift needs the FULL workspace checkout: it diffs every service's
+#   vendored scaffold copy against the canonical one, and the sibling service repos
+#   are SEPARATE git repos that a single-service GitHub Actions runner never checks
+#   out. So a per-service CI structurally CANNOT host scaffold-drift — only a place
+#   that has all the checkouts on disk can, and that place is the developer's machine.
+#   This hook is therefore the honest home for the fleet scan: LOCAL, at push time.
+#
+#   What this hook can catch:   scaffold-rot / rename-rot / critical absence across the
+#                               whole local workspace, and spec-traceability on docs pushes,
+#                               BEFORE the bad commit reaches the remote.
+#   What it CANNOT guarantee:   a teammate (or a CI-only contributor) who has not
+#                               installed the hook, or who passes `--no-verify`. A hook is
+#                               a local convenience gate, not a server-side enforcement —
+#                               it does not replace branch protection. For a true server
+#                               gate you would need every service repo checked out in one
+#                               CI job (a monorepo or a meta-checkout workflow), which this
+#                               workspace deliberately is not. Do not pretend otherwise.
+#
+# Bypass (discouraged, for a genuine emergency): git push --no-verify
+#
+# This hook is intentionally TOLERANT of a missing toolchain: if it cannot locate the
+# ALEXANDRIA dir or the scripts, it WARNS and lets the push through rather than
+# blocking work on an environment gap. It only ever BLOCKS on a real gate failure.
+
+set -uo pipefail
+
+# --- Locate the ALEXANDRIA dir -------------------------------------------------
+# Every repo in this workspace sits as a sibling of `ALEXANDRIA/` under the
+# workspace root. From the repo root, that is `../ALEXANDRIA`. Resolve it robustly;
+# if absent, this is not a wired workspace — skip with a warning, never block.
+REPO_ROOT="$(git rev-parse --show-toplevel 2>/dev/null || pwd)"
+WORKSPACE_ROOT="$(cd "$REPO_ROOT/.." && pwd)"
+AISTD="$WORKSPACE_ROOT/ALEXANDRIA"
+
+if [ ! -d "$AISTD" ] || [ ! -x "$AISTD/scripts/scaffold-drift.sh" ]; then
+  echo "→ pre-push: ALEXANDRIA/ not found beside $REPO_ROOT — skipping workspace gates (not a wired workspace)" >&2
+  exit 0
+fi
+
+FAILED=0
+
+# --- Gate 1: scaffold-drift (always) ---------------------------------------------
+echo "→ pre-push: scaffold-drift (fleet scan of vendored scaffold copies)"
+if command -v make >/dev/null 2>&1 && grep -q '^scaffold-drift:' "$AISTD/Makefile" 2>/dev/null; then
+  if ! ( cd "$AISTD" && make --no-print-directory scaffold-drift ); then
+    echo "✗ pre-push: scaffold-drift found a dropped security property in a vendored copy — fix it (or back-propagate the canonical scaffold) before pushing." >&2
+    FAILED=1
+  fi
+else
+  # No make / no target — fall back to the script directly so the gate still fires.
+  if ! "$AISTD/scripts/scaffold-drift.sh"; then
+    echo "✗ pre-push: scaffold-drift found a dropped security property in a vendored copy." >&2
+    FAILED=1
+  fi
+fi
+
+# --- Gate 2: spec-traceability (docs repo only) ----------------------------------
+# Only the project docs repo carries the spec triplets. Detect it by the presence of
+# a specs/ tree with *-specs.md files; a service repo has neither, so this is a no-op
+# there. Run the gate over each spec triplet whose -specs.md changed in the push range.
+SPECS_DIR=""
+if [ -d "$REPO_ROOT/specs" ]; then
+  SPECS_DIR="$REPO_ROOT/specs"
+fi
+
+if [ -n "$SPECS_DIR" ]; then
+  TRACE="$AISTD/scripts/project-checks/check-spec-traceability.sh"
+  if [ -x "$TRACE" ]; then
+    # The push range is fed on stdin as: <local ref> <local sha> <remote ref> <remote sha>.
+    # For each, diff the pushed commits against the remote tip to find changed -specs.md;
+    # when the remote sha is all-zeroes (new branch) diff against the merge-base with master.
+    CHANGED_SPECS=""
+    while read -r _localref localsha _remoteref remotesha; do
+      [ -z "${localsha:-}" ] && continue
+      case "$localsha" in *[!0]*) ;; *) continue ;; esac   # deletion push — skip
+      base="$remotesha"
+      case "$remotesha" in *[!0]*) ;; *)
+        base="$(git -C "$REPO_ROOT" merge-base "$localsha" origin/master 2>/dev/null || echo "")" ;;
+      esac
+      if [ -n "$base" ]; then
+        rng="$(git -C "$REPO_ROOT" diff --name-only "$base" "$localsha" 2>/dev/null || true)"
+      else
+        rng="$(git -C "$REPO_ROOT" show --name-only --pretty=format: "$localsha" 2>/dev/null || true)"
+      fi
+      CHANGED_SPECS="$CHANGED_SPECS
+$(printf '%s\n' "$rng" | grep -E '/[^/]+-specs\.md$' || true)"
+    done
+    CHANGED_SPECS="$(printf '%s\n' "$CHANGED_SPECS" | grep . | sort -u || true)"
+
+    if [ -n "$CHANGED_SPECS" ]; then
+      echo "→ pre-push: spec-traceability over changed spec(s)"
+      while IFS= read -r specrel; do
+        [ -z "$specrel" ] && continue
+        spec="$REPO_ROOT/$specrel"
+        plan="${spec%-specs.md}-plan.md"
+        task="${spec%-specs.md}-task.md"
+        if [ -f "$spec" ] && [ -f "$plan" ] && [ -f "$task" ]; then
+          if ! "$TRACE" "$spec" "$plan" "$task"; then
+            echo "✗ pre-push: $specrel failed spec-traceability — resolve the orphan/collision/web-quality finding above before pushing." >&2
+            FAILED=1
+          fi
+        else
+          # A refined triplet is spec+plan+task; a spec pushed without its plan/task is
+          # not yet a refined feature — skip rather than false-fail.
+          echo "  skip: $specrel has no sibling -plan.md/-task.md yet (not a refined triplet)" >&2
+        fi
+      done <<< "$CHANGED_SPECS"
+    fi
+  fi
+fi
+
+# --- Gate 3: secrets scan (always, tolerant of missing gitleaks) ------------------
+# AS-020: gitleaks over THIS repo's working tree before the push leaves the machine.
+# check-secrets-leaked.sh exits 1 on a real leak (HARD — block) and 2 when gitleaks
+# is not installed (toolchain gap — warn and let through, per this hook's philosophy).
+LEAKSCAN="$AISTD/scripts/project-checks/check-secrets-leaked.sh"
+if [ -x "$LEAKSCAN" ]; then
+  echo "→ pre-push: secrets scan (gitleaks, working tree)"
+  "$LEAKSCAN" "$REPO_ROOT"
+  case $? in
+    0) ;;
+    2) echo "→ pre-push: gitleaks not installed — secrets scan SKIPPED (brew install gitleaks to enable)" >&2 ;;
+    *) echo "✗ pre-push: secrets scan found a leaked credential — rotate it per secrets.md before pushing." >&2
+       FAILED=1 ;;
+  esac
+fi
+
+if [ "$FAILED" -ne 0 ]; then
+  echo "✗ pre-push: workspace gates failed — push aborted. (Emergency bypass: git push --no-verify)" >&2
+  exit 1
+fi
+echo "→ pre-push: workspace gates passed"
+exit 0

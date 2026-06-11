@@ -1,0 +1,8 @@
+# Normalize all text to LF in the repo and working tree (kills Windows CRLF rewrites).
+* text=auto eol=lf
+
+# Belt-and-suspenders for the files where a CRLF rewrite is not just noise but a breakage:
+*.sh            text eol=lf
+*.mk            text eol=lf
+Makefile        text eol=lf
+hooks/pre-push  text eol=lf
