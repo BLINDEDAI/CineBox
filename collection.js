@@ -78,12 +78,17 @@ function renderCollection() {
           ${m.media_type === "tv" && m.status !== "vista" ? (
             editingProgressId === m.id
               ? `<div class="progress-form">
-                   <label class="progress-label">T<input class="progress-input" type="number" min="1" data-field="season" value="${m.current_season ?? ""}" placeholder="—" aria-label="Temporada"></label>
+                   <label class="progress-label">T<input class="progress-input" type="number" min="1"${m.total_seasons ? ` max="${esc(m.total_seasons)}"` : ""} data-field="season" value="${m.current_season ?? ""}" placeholder="—" aria-label="Temporada"></label>
                    <label class="progress-label">E<input class="progress-input" type="number" min="1" data-field="episode" value="${m.current_episode ?? ""}" placeholder="—" aria-label="Episodio"></label>
+                   ${m.total_seasons ? `<span class="progress-hint">de ${esc(m.total_seasons)} temporadas</span>` : ""}
                    <button class="progress-save" data-action="progress-save" type="button" aria-label="Guardar">✓</button>
                    <button class="progress-cancel" data-action="progress-cancel" type="button" aria-label="Cancelar">✕</button>
                  </div>`
-              : `<button class="progress-btn ${(m.current_season || m.current_episode) ? "has-progress" : ""}" data-action="progress" type="button" title="Editar progreso">${(m.current_season || m.current_episode) ? `📍 T${m.current_season ?? "?"}  E${m.current_episode ?? "?"}` : "+ Progreso T/E"}</button>`
+              : `<button class="progress-btn ${(m.current_season || m.current_episode) ? "has-progress" : ""}" data-action="progress" type="button" title="Editar progreso">${(m.current_season || m.current_episode)
+                    ? (m.total_seasons
+                        ? `📍 S${m.current_season ?? "?"} · E${m.current_episode ?? "?"} de ${esc(m.total_seasons)} temporadas`
+                        : `📍 T${m.current_season ?? "?"}  E${m.current_episode ?? "?"}`)
+                    : "+ Progreso T/E"}</button>`
           ) : ""}
           ${editingPlatformId === m.id
             ? `<div class="platform-picker">
@@ -305,6 +310,10 @@ collectionEl.addEventListener("click", (e) => {
     const episode = ep ? parseInt(ep, 10) : null;
     if (s && (isNaN(season) || season < 1)) { showMessage("La temporada debe ser un número positivo.", "error"); return; }
     if (ep && (isNaN(episode) || episode < 1)) { showMessage("El episodio debe ser un número positivo.", "error"); return; }
+    if (movie.total_seasons && season !== null && season > movie.total_seasons) {
+      showMessage(`La temporada no puede superar el total de ${movie.total_seasons} temporadas.`, "error");
+      return;
+    }
     editingProgressId = null;
     patchMovie(movie.id, { current_season: season, current_episode: episode });
   }

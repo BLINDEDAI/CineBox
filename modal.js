@@ -31,7 +31,20 @@ async function openDetail(tmdbId, type, hint = {}) {
     year:       m.year       || "",
     genre_ids:  d.genre_ids  || [],   // ids → el backend los mapea a nombres ES (consistente con la carátula)
     genres:     d.genres     || [],   // nombres; fallback si no hubiera ids
+    total_seasons: d.total_seasons,   // total de temporadas TMDB (series); null si no aplica/no disponible
   };
+  // AC-7 — backfill oportunista: si la serie ya está en la colección sin total
+  // y TMDB ahora lo devuelve, persistir una vez y mutar la entrada en memoria
+  // (sin loadMovies() para no recargar la colección con el modal abierto).
+  // Fire-and-forget; silencioso ante fallo (BR-7).
+  if (existing && existing.media_type === "tv" && !existing.total_seasons && d.total_seasons) {
+    existing.total_seasons = d.total_seasons;
+    api(`/api/movies/${existing.id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ total_seasons: d.total_seasons }),
+    }).catch(() => {});
+  }
   const creditsHtml = [
     d.directors.length ? `<p><strong>${esc(d.dir_label)}:</strong> ${d.directors.map(esc).join(", ")}</p>` : "",
     d.cast.length ? `<p><strong>Reparto:</strong> ${d.cast.map(esc).join(", ")}</p>` : "",
@@ -119,6 +132,7 @@ async function addFromModal(status) {
     poster_url: modalContext.poster_url,
     genre_ids:  modalContext.genre_ids,
     genres:     modalContext.genres,
+    total_seasons: modalContext.total_seasons,
   }, status);
   if (added) closeModal();
 }

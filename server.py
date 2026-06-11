@@ -658,6 +658,7 @@ class Handler(SimpleHTTPRequestHandler):
             "cast":           cast,
             "providers":      providers,
             "providers_link": wp_es.get("link", ""),
+            "total_seasons":  d.get("number_of_seasons") if mt == "tv" else None,
         }})
 
     def _similar(self):
@@ -745,6 +746,13 @@ class Handler(SimpleHTTPRequestHandler):
                 )
         genres = genres or None
 
+        total_seasons = data.get("total_seasons")
+        if total_seasons is not None and (not isinstance(total_seasons, int) or total_seasons < 1):
+            return self._json(400, {"ok": False, "error": "total_seasons debe ser un entero positivo o null"})
+        # BR-1: el total de temporadas solo aplica a series; en películas se fuerza null.
+        if media_type != "tv":
+            total_seasons = None
+
         with get_db() as cur:
             if tmdb_id:
                 cur.execute(
@@ -756,10 +764,11 @@ class Handler(SimpleHTTPRequestHandler):
             cur.execute(
                 "INSERT INTO movies "
                 "(user_id, tmdb_id, media_type, title, year, poster_url, status, "
-                " rating, created_at, watched_at, genres) "
-                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                " rating, created_at, watched_at, genres, total_seasons) "
+                "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id",
                 (user_id, tmdb_id, media_type, title, year, poster,
-                 status, None, datetime.now(timezone.utc).isoformat(), watched_at, genres))
+                 status, None, datetime.now(timezone.utc).isoformat(), watched_at, genres,
+                 total_seasons))
             new_id = cur.fetchone()["id"]
 
         notify_discord(title, year, status, media_type, poster, user_id)
@@ -809,7 +818,7 @@ class Handler(SimpleHTTPRequestHandler):
             if v is not None and v not in PLATFORMS:
                 return self._json(400, {"ok": False, "error": "Plataforma no válida"})
             fields.append("platform = %s"); values.append(v)
-        for field in ("current_season", "current_episode"):
+        for field in ("current_season", "current_episode", "total_seasons"):
             if field in data:
                 v = data[field]
                 if v is not None and (not isinstance(v, int) or v < 1):
