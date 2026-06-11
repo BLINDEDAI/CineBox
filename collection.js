@@ -80,9 +80,9 @@ function renderCollection() {
               ? `<div class="progress-form">
                    <label class="progress-label">T<input class="progress-input" type="number" min="1"${m.total_seasons ? ` max="${esc(m.total_seasons)}"` : ""} data-field="season" value="${m.current_season ?? ""}" placeholder="—" aria-label="Temporada"></label>
                    <label class="progress-label">E<input class="progress-input" type="number" min="1" data-field="episode" value="${m.current_episode ?? ""}" placeholder="—" aria-label="Episodio"></label>
-                   ${m.total_seasons ? `<span class="progress-hint">de ${esc(m.total_seasons)} temporadas</span>` : ""}
                    <button class="progress-save" data-action="progress-save" type="button" aria-label="Guardar">✓</button>
                    <button class="progress-cancel" data-action="progress-cancel" type="button" aria-label="Cancelar">✕</button>
+                   ${m.total_seasons ? `<span class="progress-hint">de ${esc(m.total_seasons)} temporadas</span>` : ""}
                  </div>`
               : `<button class="progress-btn ${(m.current_season || m.current_episode) ? "has-progress" : ""}" data-action="progress" type="button" title="Editar progreso">${(m.current_season || m.current_episode)
                     ? (m.total_seasons

@@ -1135,6 +1135,14 @@ h2 {
   display: flex;
   align-items: center;
   gap: 6px;
+  flex-wrap: wrap;
+}
+
+.progress-hint {
+  flex-basis: 100%;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+  user-select: none;
 }
 
 .progress-label {
