@@ -1,0 +1,19 @@
+# Ruff configuration for CineBox.
+#
+# CineBox's backend (server.py) is hand-formatted with intentional column alignment
+# (aligned constant assignments, a compact TMDB_GENRES map) and uses deliberate
+# one-liner compound statements (`if path == "...": return ...` dispatch in do_GET;
+# `fields.append(...); values.append(v)` pairs in the PATCH builder). These are the
+# project's chosen style, not defects. See CineBox-docs/project-standards.md
+# § Quality gates and ADR/PS notes.
+
+[lint]
+ignore = [
+    "E701",  # multiple statements on one line (colon) — deliberate compact dispatch
+    "E702",  # multiple statements on one line (semicolon) — deliberate append pairs
+]
+
+[format]
+# server.py is hand-formatted with intentional column alignment; the auto-formatter
+# would destroy it. Exclude it from `ruff format` while keeping it under `ruff check`.
+exclude = ["server.py"]

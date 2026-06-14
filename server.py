@@ -361,11 +361,12 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
-        # Ajustar script-src si supabase-js se carga desde un CDN externo.
+        # supabase-js se sirve desde el mismo origen (vendor/) con SRI; no se
+        # confia en ningun CDN externo para scripts -> script-src 'self'.
         self.send_header(
             "Content-Security-Policy",
             "default-src 'self'; "
-            "script-src 'self' https://cdn.jsdelivr.net; "
+            "script-src 'self'; "
             "img-src 'self' https://image.tmdb.org data: blob:; "
             "connect-src 'self' https://*.supabase.co; "
             "frame-ancestors 'none'",

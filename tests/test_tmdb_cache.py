@@ -36,8 +36,10 @@ class _FakeResp:
 def _patched(*, ttl=900, monotonic=None, urlopen=None):
     """Reset the module cache and patch TTL / clock / urlopen for one test."""
     server._tmdb_cache.clear()
-    with mock.patch.object(server, "TMDB_CACHE_TTL", ttl), \
-         mock.patch.dict(os.environ, {"TMDB_API_KEY": "k"}, clear=False):
+    with (
+        mock.patch.object(server, "TMDB_CACHE_TTL", ttl),
+        mock.patch.dict(os.environ, {"TMDB_API_KEY": "k"}, clear=False),
+    ):
         stack = []
         if monotonic is not None:
             stack.append(mock.patch.object(server.time, "monotonic", monotonic))
@@ -99,7 +101,7 @@ class TmdbCache(unittest.TestCase):
         with _patched(ttl=900, monotonic=lambda: clock["t"], urlopen=fake_urlopen):
             h = _handler()
             first = h._tmdb("/trending/all/week")
-            clock["t"] += 901          # advance past the TTL
+            clock["t"] += 901  # advance past the TTL
             second = h._tmdb("/trending/all/week")
         self.assertEqual(calls["n"], 2)
         self.assertNotEqual(first, second)
@@ -128,9 +130,11 @@ class TmdbCache(unittest.TestCase):
             called["n"] += 1
             return _FakeResp({})
 
-        with mock.patch.object(server, "TMDB_CACHE_TTL", 900), \
-             mock.patch.object(server.urllib.request, "urlopen", fake_urlopen), \
-             mock.patch.dict(os.environ, {}, clear=False):
+        with (
+            mock.patch.object(server, "TMDB_CACHE_TTL", 900),
+            mock.patch.object(server.urllib.request, "urlopen", fake_urlopen),
+            mock.patch.dict(os.environ, {}, clear=False),
+        ):
             os.environ.pop("TMDB_API_KEY", None)
             h = _handler()
             self.assertIsNone(h._tmdb("/trending/all/week"))
@@ -139,6 +143,7 @@ class TmdbCache(unittest.TestCase):
 
     def test_network_error_is_not_cached(self):
         """A urlopen failure propagates and leaves the cache empty (no poisoning)."""
+
         def boom(url, timeout=None):
             raise urllib.error.URLError("down")
 
