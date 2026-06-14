@@ -7,6 +7,8 @@ Rastreador personal de películas y series. Backend Python puro (sin framework),
 | Acción | Comando |
 |--------|---------|
 | Iniciar servidor | `python server.py` (puerto 8000) |
+| Tests unitarios | `python -m unittest discover -s tests` |
+| Tests E2E (navegador) | `pip install -r requirements-dev.txt && playwright install chromium`, luego `pytest tests/e2e/` (ver `tests/e2e/README`; ADR-003) |
 | Deploy | `git push origin main` (auto-deploy en Render) |
 | Base de datos | Supabase — no hay comandos locales de DB |
 | Entorno | Variables en `.env` — **nunca commitear este archivo** |
@@ -178,6 +180,14 @@ suministro: el navegador solo ejecuta el bundle si sus bytes coinciden con el ha
 
 El `<script>` sigue **síncrono en `<head>`** (PS-003): el símbolo global `supabase`
 debe existir antes de `boot.js` y los 7 módulos `defer`. No añadir `defer`/`async`.
+
+**Suite E2E de navegador (ADR-003).** Estas garantías de cadena de suministro de
+runtime de navegador (supabase-js servido desde el propio origen sin petición a
+`cdn.jsdelivr.net`; bundle manipulado bloqueado por SRI sin fallback a CDN) ahora
+tienen una suite automatizada Playwright/pytest bajo `tests/e2e/`, separada del gate
+`unittest`. El fixture (`tests/e2e/conftest.py`) arranca el `server.Handler` real sin
+DB. Ejecutar con `pytest tests/e2e/` (instalar primero con `pip install -r
+requirements-dev.txt && playwright install chromium`). Ver `tests/e2e/README`.
 
 **Actualizar versión** (cambio atómico — bump del archivo + del hash en el mismo
 commit): re-descargar el UMD canónico de npm, recalcular el SRI sha384, actualizar
