@@ -174,6 +174,18 @@ def rate_check(buckets):
         return True, 0
 
 
+# ── Caché TMDB ─────────────────────────────────────────────────────────────────
+# Caché en memoria con TTL sobre las respuestas de TMDB. Los datos de TMDB son
+# independientes del usuario (un trending/discover/details es idéntico para todos),
+# así que cachearlos es seguro y no cruza datos entre cuentas. Recorta llamadas a
+# TMDB, latencia y presión sobre la cuota/clave. Por proceso (no compartido entre
+# instancias) — suficiente a esta escala, como el rate limiting.
+_tmdb_cache = {}            # clave -> (expiry_monotónico, valor)
+_tmdb_cache_lock = threading.Lock()
+TMDB_CACHE_TTL = int(os.environ.get("TMDB_CACHE_TTL", 900))  # s; 0 = desactiva la caché
+TMDB_CACHE_MAX = 500        # tope de entradas; purga oportunista al superarlo
+
+
 def init_db():
     """Verifica que DATABASE_URL es accesible al arrancar."""
     with get_db() as cur:
@@ -403,8 +415,28 @@ class Handler(SimpleHTTPRequestHandler):
         if extra:
             params.update(extra)
         url = f"https://api.themoviedb.org/3{path}?{urllib.parse.urlencode(params)}"
+
+        # Clave de caché: path + params ordenados, EXCLUYENDO api_key (es el
+        # secreto y además constante por proceso). Determinista entre llamadas.
+        cache_key = (path, tuple(sorted((k, v) for k, v in params.items() if k != "api_key")))
+        if TMDB_CACHE_TTL > 0:
+            now = time.monotonic()
+            with _tmdb_cache_lock:
+                hit = _tmdb_cache.get(cache_key)
+                if hit and hit[0] > now:
+                    return hit[1]
+
         with urllib.request.urlopen(url, timeout=10) as resp:
-            return json.loads(resp.read())
+            data = json.loads(resp.read())   # un error de red/HTTP se propaga (no se cachea)
+
+        if TMDB_CACHE_TTL > 0:
+            now = time.monotonic()
+            with _tmdb_cache_lock:
+                if len(_tmdb_cache) >= TMDB_CACHE_MAX:   # purga oportunista de expiradas
+                    for k in [k for k, (exp, _) in _tmdb_cache.items() if exp <= now]:
+                        del _tmdb_cache[k]
+                _tmdb_cache[cache_key] = (now + TMDB_CACHE_TTL, data)
+        return data
 
     # ── GET ───────────────────────────────────────────────────────────────────
 
