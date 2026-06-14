@@ -4,7 +4,7 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
-## Estado actual (snapshot) — 2026-06-10
+## Estado actual (snapshot) — 2026-06-14
 
 Resumen consolidado del proyecto. El **registro por sesiones** está más abajo.
 
@@ -35,6 +35,14 @@ JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) · rate limi
 `socket timeout` 15s (Slowloris) · validación POST (`title`≤300, `year`≤10, `poster_url` solo
 `image.tmdb.org`) · CSP estricta · `MAX_BODY` 64KB.
 
+### Rendimiento vigente
+**Caché TTL en memoria dentro de `_tmdb()`** (2026-06-14): cachea las respuestas de TMDB para los
+5 endpoints (search/trending/discover/details/similar). Clave = `(path, params sin api_key)`; datos
+de TMDB independientes del usuario (no cruza datos entre cuentas). `TMDB_CACHE_TTL` env (default 900s,
+`0` desactiva), `TMDB_CACHE_MAX` 500 con purga oportunista de expiradas. Errores de red no se cachean;
+sin clave TMDB devuelve `None` antes de tocar la caché. El rate limiting sigue contando por usuario aun
+en hit. ⚠️ `MAX` es **cap blando** (solo purga expiradas) — follow-up: cap duro (FIFO/`OrderedDict`).
+
 ### Pendiente abierto (decisiones del usuario)
 - **Self-host de supabase-js** para poder fijar versión + SRI (hoy usa `@2` flotante, por eso NO se
   añadió SRI). Sin decidir.
@@ -49,6 +57,40 @@ JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) · rate limi
    hoy inofensivo porque `server.py` siempre setea `status`). Cambio de DB menor → sesión nueva.
 4. **`REVOKE EXECUTE` en `rls_auto_enable`** para `anon`/`authenticated` (higiene, baja prioridad; es un
    event-trigger que solo *activa* RLS, severidad real baja).
+
+---
+
+## Sesión — 2026-06-14 (caché TTL para TMDB)
+
+Mejora de rendimiento. Disparada por una petición de "¿qué habría que mejorar?" → se eligió la #1
+del diagnóstico (caché TMDB) por mejor relación valor/riesgo.
+
+### Hecho hoy
+- **Caché TTL en memoria a nivel de `_tmdb()`** (ver snapshot → "Rendimiento vigente"). Punto único,
+  transparente para los 5 endpoints; tests stubbean `_tmdb` así que no se vieron afectados.
+- **6 tests nuevos** en `tests/test_tmdb_cache.py`: hit evita 2ª llamada, params distintos = entradas
+  separadas, expiración tras TTL, TTL=0 desactiva, sin clave no cachea, error de red no se cachea.
+  Suite total **23/23** (17 previos + 6).
+- **Flujo git completo**: rama `feature/discover/tmdb-cache` → commit `8748587` → `/code-review` (1
+  hallazgo baja severidad, no bloqueante) + `/security-review` (sin vulns) → merge `--no-ff` a `main`
+  (`50874e1`) → push (deploy Render disparado) → rama borrada (local + origin).
+
+### Decisiones / notas
+- **Bypass documentado**: el pipeline de agentes (`reviewer→security→tester→dod-checker`) de `CLAUDE.md`
+  NO se ejecutó en el commit, a petición explícita del usuario; se compensó con `/code-review` +
+  `/security-review` antes del merge. Queda constancia en el mensaje de commit `8748587`.
+- **gitleaks no instalado** → el pre-push salta el barrido de secretos (fail-open). Este push no
+  contiene secretos. Pendiente: `choco install gitleaks` para cubrir `main` a futuro.
+- **Follow-up**: `TMDB_CACHE_MAX` es cap blando (solo purga expiradas); con muchas claves distintas
+  dentro del TTL (las queries de `/api/search` son entrada no acotada) la caché puede crecer por encima
+  de 500 hasta que expiren. Bajo riesgo en monousuario. Fix futuro: cap duro FIFO/`OrderedDict`.
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. **Verificación manual en producción** tras el deploy: `/health` 200; search/discover/details OK;
+   una 2ª carga de "Descubrir" no debería re-pegar a TMDB (caché funcionando).
+3. Si interesa: cap duro de la caché (follow-up), o seguir con otra mejora del diagnóstico
+   (self-host supabase-js + SRI, hallazgos de DB, auditoría frontend).
 
 ---
 
