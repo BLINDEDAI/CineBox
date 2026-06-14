@@ -5,6 +5,10 @@
 __pycache__/
 *.pyc
 
+# Entorno virtual local y caché de ruff: se regeneran; no son parte del repo.
+.venv/
+.ruff_cache/
+
 # Resultados de tests (capturas, reportes): se generan al ejecutar las pruebas.
 test-results/
 

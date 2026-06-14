@@ -1,0 +1,85 @@
+Vendored supabase-js (self-hosted, SRI-pinned)
+==============================================
+
+Why this exists
+---------------
+The Supabase JS client drives authentication (login, registration, session/JWT
+handling). It used to load from the public jsDelivr CDN with a *floating* major
+version (@2) and no Subresource Integrity. That is a supply-chain weakness for a
+security-critical script: the browser would execute whatever bytes the CDN
+returned, and a CDN outage broke login entirely.
+
+This directory holds the bundle vendored at an exact pinned version, served from
+CineBox's own origin and loaded with an SRI integrity hash (fail-closed). The CSP
+`script-src` in server.py is correspondingly tightened to `'self'` (no jsDelivr).
+
+Pinned version
+--------------
+@supabase/supabase-js  2.108.1
+
+Vendored file
+-------------
+2.108.1/supabase.min.js
+
+  Source of truth: the npm package's own UMD artifact `dist/umd/supabase.js`
+  (already Terser-minified by the package build), downloaded from
+  https://unpkg.com/@supabase/supabase-js@2.108.1/dist/umd/supabase.js
+  It is stored here as `supabase.min.js` (the bytes ARE the production-minified
+  UMD build that defines the global `supabase` symbol).
+
+  NOTE: we deliberately do NOT vendor jsDelivr's `dist/umd/supabase.min.js`
+  path. jsDelivr *re-minifies* the package on the fly (its own banner warns
+  "Do NOT use SRI with dynamically generated files"), so those bytes are not a
+  stable, reproducible artifact. The npm package file is the canonical, stable
+  artifact and is what carries a published integrity hash.
+
+Integrity (SRI) hash — used in index.html
+-----------------------------------------
+  sha384-EjUdIVmzWliPzdzhxZ9ZoO0etXLKWuUPUftAGxP6qH6Lm4oLwoLaJR0Ba4pIDiDL
+
+Authenticity cross-check
+------------------------
+The vendored bytes' sha256 equals the integrity unpkg publishes for this exact
+package file, proving the bytes are the authentic, untampered npm artifact:
+  sha256-06f9DJ3ul5CtbqhErClWxIkVQv0g6WQeRsyn+fcOcag=
+
+How it is loaded
+----------------
+index.html (in <head>, SYNCHRONOUS — load order unchanged, the global
+`supabase` symbol must exist before boot.js + the 7 deferred modules):
+
+  <script src="vendor/supabase-js/2.108.1/supabase.min.js"
+          integrity="sha384-EjUdIVmzWliPzdzhxZ9ZoO0etXLKWuUPUftAGxP6qH6Lm4oLwoLaJR0Ba4pIDiDL"
+          crossorigin="anonymous"></script>
+
+There is NO CDN fallback <script>. If the SRI check fails the browser refuses to
+execute the bundle (fail-closed) — by design.
+
+Upgrade procedure (single coordinated change)
+---------------------------------------------
+Upgrading supabase-js is one atomic change — never bump the file without bumping
+the hash in the same commit, or the browser will block the new bundle.
+
+1. Pick the new exact version (e.g. 2.X.Y). Download the canonical npm UMD file:
+     curl -sL \
+       "https://unpkg.com/@supabase/supabase-js@2.X.Y/dist/umd/supabase.js" \
+       -o vendor/supabase-js/2.X.Y/supabase.min.js
+   (create the new versioned directory; the version in the path is cache-busting.)
+
+2. Recompute the SRI hash from the exact bytes you just downloaded:
+     openssl dgst -sha384 -binary \
+       vendor/supabase-js/2.X.Y/supabase.min.js | openssl base64 -A
+   (Python alternative:
+     python -c "import hashlib,base64,sys;print('sha384-'+base64.b64encode(hashlib.sha384(open(sys.argv[1],'rb').read()).digest()).decode())" \
+       vendor/supabase-js/2.X.Y/supabase.min.js )
+
+3. In index.html, update BOTH the src path (new version directory) and the
+   integrity="sha384-..." attribute together.
+
+4. Update the pinned version + hash recorded in this README and in
+   CineBox/CLAUDE.md.
+
+5. Remove the old version directory once the new one is verified loading.
+
+6. Verify in a browser: auth still works, no jsDelivr request, and an
+   intentionally corrupted byte makes the browser block the script.

@@ -160,7 +160,29 @@ otro endpoint que llame a `_tmdb(...)`, aplicarle el mismo patrón.
 `document.getElementById("x").addEventListener(...)` explota si el elemento no está en la página actual. Usar siempre `const el = document.getElementById("x"); if (el) el.addEventListener(...)`.
 
 **CSP bloqueando CDNs externos.**
-La cabecera `Content-Security-Policy` del servidor controla qué scripts/estilos se cargan. Al añadir librerías externas (supabase-js, etc.), actualizar la CSP en `server.py` o el script no cargará en producción.
+La cabecera `Content-Security-Policy` del servidor controla qué scripts/estilos se cargan. Al añadir librerías externas, actualizar la CSP en `server.py` o el script no cargará en producción (PS-006). **Nota:** supabase-js ya NO se carga desde un CDN — se sirve self-host con SRI (ver «supabase-js vendored» abajo), y por eso `script-src` es `'self'` (sin `cdn.jsdelivr.net`). No reintroducir un CDN para scripts.
+
+### supabase-js vendored (self-host + SRI)
+
+El cliente Supabase JS (auth/login/JWT) se sirve **desde el propio origen** con
+Subresource Integrity, no desde jsDelivr. Esto cierra un agujero de cadena de
+suministro: el navegador solo ejecuta el bundle si sus bytes coinciden con el hash.
+
+| Dato | Valor |
+|------|-------|
+| Versión fijada | `@supabase/supabase-js` **2.108.1** |
+| Archivo | `vendor/supabase-js/2.108.1/supabase.min.js` (UMD canónico de npm) |
+| SRI (en `index.html`) | `sha384-EjUdIVmzWliPzdzhxZ9ZoO0etXLKWuUPUftAGxP6qH6Lm4oLwoLaJR0Ba4pIDiDL` |
+| CSP | `script-src 'self'` (sin `cdn.jsdelivr.net`) |
+| Fallback | **Ninguno** — fail-closed: si el SRI falla, el script no se ejecuta |
+
+El `<script>` sigue **síncrono en `<head>`** (PS-003): el símbolo global `supabase`
+debe existir antes de `boot.js` y los 7 módulos `defer`. No añadir `defer`/`async`.
+
+**Actualizar versión** (cambio atómico — bump del archivo + del hash en el mismo
+commit): re-descargar el UMD canónico de npm, recalcular el SRI sha384, actualizar
+`src` + `integrity` en `index.html`, y este bloque + `vendor/supabase-js/README`.
+El procedimiento completo (comandos) está en `vendor/supabase-js/README`.
 
 **`Content-Length` negativo.**
 Al construir respuestas HTTP manualmente, calcular el tamaño del body en bytes (`len(body.encode())`) antes de escribir la cabecera. Un valor negativo o incorrecto rompe la conexión en algunos clientes.
