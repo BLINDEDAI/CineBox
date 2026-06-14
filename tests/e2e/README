@@ -1,0 +1,51 @@
+CineBox browser E2E suite
+=========================
+
+What this is
+------------
+A Playwright-for-Python (headless Chromium) browser test harness that boots the
+real CineBox server and verifies the `selfhost-supabase-sri` supply-chain
+guarantees that the stdlib `unittest` suite cannot observe (browser-runtime
+behaviour): supabase-js is fetched same-origin with no `cdn.jsdelivr.net`
+request, and a tampered vendored bundle is SRI-blocked with no CDN fallback.
+Adopted in ADR-003 (CineBox-docs/decisions.md).
+
+This suite is SEPARATE from the unit gate. The unit gate
+(`python -m unittest discover -s tests`) does NOT discover or import anything
+under `tests/e2e/`, so it never needs Playwright installed.
+
+The fixture (`conftest.py`) boots `ThreadingHTTPServer` with the real
+`server.Handler` on an ephemeral `127.0.0.1` port in a daemon thread. It does
+NOT call `server.main()`, `init_pool()`, or `init_db()`, so NO `DATABASE_URL`
+and NO Postgres are required.
+
+Install (one-time)
+------------------
+From the CineBox repo root:
+
+    pip install -r requirements.txt -r requirements-dev.txt
+    playwright install chromium
+
+`playwright install chromium` downloads the Chromium browser binary that the
+pinned `playwright` driver drives. The `requirements-dev.txt` deps are
+dev/test-only and are never imported by `server.py`.
+
+Run
+---
+From the CineBox repo root:
+
+    pytest tests/e2e/
+
+Headless Chromium is the pytest-playwright default; no extra flag is needed. A
+failing browser-runtime security assertion fails the suite with a non-zero exit
+code (no silent skips).
+
+To keep a Playwright trace for any failing case (useful for debugging):
+
+    pytest tests/e2e/ --tracing=retain-on-failure
+
+CI
+--
+`.github/workflows/e2e.yml` runs this suite in its own optional job on push and
+pull_request, installing the deps and Chromium (`playwright install --with-deps
+chromium`). It is independent of the unit gate.

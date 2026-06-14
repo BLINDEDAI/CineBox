@@ -1,0 +1,42 @@
+# Browser E2E suite (Playwright + pytest) — ADR-003.
+#
+# Separate, optional job: the repo's first workflow. It is INDEPENDENT of the
+# fast unit `unittest` gate (which is not represented here and is unchanged), so
+# the heavier Chromium install never slows or blocks unit testing (AC-6, BR-7).
+name: e2e
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  browser-e2e:
+    name: Browser E2E (Chromium)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      - name: Install Chromium
+        run: playwright install --with-deps chromium
+
+      - name: Run browser E2E suite
+        # --tracing=retain-on-failure keeps a Playwright trace for any failing
+        # case so a CI failure is diagnosable from the uploaded artifact.
+        run: pytest tests/e2e/ --tracing=retain-on-failure
+
+      - name: Upload Playwright traces
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: playwright-traces
+          path: test-results/
+          if-no-files-found: ignore

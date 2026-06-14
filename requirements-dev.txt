@@ -1,0 +1,13 @@
+# Dev/test-only dependencies — browser E2E harness (ADR-003, BR-9).
+#
+# These are NEVER imported by server.py or any shipped frontend module; the
+# production runtime stays Python-stdlib-only / no-build. They are installed
+# only to run the Playwright browser E2E suite under tests/e2e/ (see
+# tests/e2e/README). The Chromium browser binary itself is provisioned out of
+# band with `playwright install chromium` (CI: `--with-deps`).
+#
+# Pinned (== exact) so the Playwright driver and the matched Chromium revision
+# stay reproducible across local runs and CI.
+playwright==1.60.0
+pytest==9.1.0
+pytest-playwright==0.8.0
