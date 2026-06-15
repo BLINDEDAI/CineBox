@@ -183,7 +183,7 @@ def rate_check(buckets):
 _tmdb_cache = {}            # clave -> (expiry_monotónico, valor)
 _tmdb_cache_lock = threading.Lock()
 TMDB_CACHE_TTL = int(os.environ.get("TMDB_CACHE_TTL", 900))  # s; 0 = desactiva la caché
-TMDB_CACHE_MAX = 500        # tope de entradas; purga oportunista al superarlo
+TMDB_CACHE_MAX = 500        # tope duro de entradas; purga expiradas + desaloja FIFO al superarlo
 
 
 def init_db():
@@ -436,6 +436,8 @@ class Handler(SimpleHTTPRequestHandler):
                 if len(_tmdb_cache) >= TMDB_CACHE_MAX:   # purga oportunista de expiradas
                     for k in [k for k, (exp, _) in _tmdb_cache.items() if exp <= now]:
                         del _tmdb_cache[k]
+                while len(_tmdb_cache) >= TMDB_CACHE_MAX:  # tope duro: desaloja las más antiguas (FIFO)
+                    del _tmdb_cache[next(iter(_tmdb_cache))]
                 _tmdb_cache[cache_key] = (now + TMDB_CACHE_TTL, data)
         return data
 
