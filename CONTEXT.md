@@ -48,7 +48,6 @@ en hit.
 - **Self-host de supabase-js** para poder fijar versión + SRI (hoy usa `@2` flotante, por eso NO se
   añadió SRI). Sin decidir.
 - **Versionar `.claude/`** (hooks) en el repo o dejarlo local. Sin decidir.
-- **Verificación manual en producción** tras el último deploy (login+recarga, género desde modal, logout).
 
 #### Hallazgos de la auditoría de DB vía MCP (2026-06-10) — sesiones aparte
 1. **Activar Leaked Password Protection** en Supabase Auth settings (1 clic, manual del usuario).
@@ -61,10 +60,10 @@ en hit.
 
 ---
 
-## Sesión — 2026-06-15 (cap duro de la caché TMDB)
+## Sesión — 2026-06-15 (cap duro de caché + gitleaks + incidente de secreto + verif. prod)
 
-Quick-fix. Disparada por "analiza CineBox y qué recomiendas" → del diagnóstico se eligió el
-follow-up #3 (cap blando de `_tmdb_cache`) por ser el único bug latente con riesgo de runtime.
+Quick-fix + cierre de pendientes. Disparada por "analiza CineBox y qué recomiendas" → del diagnóstico
+se eligió el follow-up #3 (cap blando de `_tmdb_cache`), y luego se cerraron pendientes de proceso.
 
 ### Hecho hoy
 - **Cap duro en `_tmdb()`** (`server.py`): tras la purga oportunista de expiradas, un bucle FIFO
@@ -74,6 +73,22 @@ follow-up #3 (cap blando de `_tmdb_cache`) por ser el único bug latente con rie
 - **Test de regresión** `test_cache_size_is_hard_capped` en `tests/test_tmdb_cache.py`: llena el
   caché al tope con entradas vivas, mete una más, assertea `len == MAX` y que la más antigua se
   desaloja (FIFO). Suite total **40/40** verde. `ruff` verde.
+- **Flujo git**: rama `fix/platform/tmdb-cache-hard-cap` → commit `2948b25` → review/security → merge
+  `--no-ff` a `main` (`8acae51`) → push (`56a53f3..8acae51`, deploy Render) → rama borrada.
+- **gitleaks instalado** (`winget install Gitleaks.Gitleaks` 8.30.1) → el pre-push pasa de fail-open a
+  fail-closed. ⚠️ El PATH nuevo NO lo ven los shells/git ya abiertos: **reiniciar terminal/IDE** para
+  que el hook lo encuentre en el próximo push.
+- 🔴 **Incidente de secreto (resuelto)**: el primer escaneo de gitleaks encontró `TMDB_API_KEY`
+  filtrada en el commit inicial `7c36c7d` (`.env`, *"copiado del vault"*, ya pusheado a GitHub).
+  `.env` ya estaba destrackeado/gitignored desde `703a00a`, pero el blob seguía en el historial remoto.
+  **El usuario rotó la clave** (en `.env` local + Render) → la del historial queda muerta/neutralizada.
+  Purga del historial (`git filter-repo` + force-push) **descartada** a propósito: sin valor de
+  seguridad una vez rotada, y es repo personal. Es cosmética; queda como opción futura si molesta.
+- **Verificación manual en producción** (`https://cinebox-y9s3.onrender.com`) — arrastrada desde
+  2026-06-14, ahora **HECHA**: `/health` 200; CSP `default-src 'self'; script-src 'self'` (sin
+  jsdelivr, 0 refs); supabase-js servido desde el propio origen (`vendor/.../2.108.1`, integrity
+  `sha384-EjUd…`, 200, 203479 B); headers `X-Frame-Options DENY`/`nosniff`/`no-referrer` presentes;
+  auth aplicada (`/api/movies`, `/api/level`, `/api/search` → 401 sin token). Todo correcto.
 
 ### Decisiones / notas
 - **Tratado como quick-fix** (no SDD): cambio en memoria, no toca DB/auth/PII/dinero/perímetro →
@@ -86,7 +101,7 @@ follow-up #3 (cap blando de `_tmdb_cache`) por ser el único bug latente con rie
 
 ### Para empezar la próxima sesión
 1. Leer este CONTEXT.md.
-2. **Verificación manual en producción** sigue pendiente (arrastrada del deploy 2026-06-14).
+2. **Reiniciar terminal/IDE** una vez para que git/los shells vean gitleaks en PATH (ver arriba).
 3. Deuda estructural restante: reconciliación de schema (#2 `total_seasons` muerta + #3 default
    `status` desalineado) → esta sí es migración → `/create-specs` + `/build-plan` (sesión nueva).
 
