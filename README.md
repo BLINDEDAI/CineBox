@@ -23,8 +23,8 @@ CineBox uses a dark noir theme: near-black background (`#050915`), a deep red ac
 - **Episode progress** for TV shows (current season and episode)
 - **Filter and search** your collection by status, media type, and title
 - **Statistics view** — a quick overview of your collection breakdown
-- **Discover tab** — weekly trending titles from TMDB
-- **Detail panel** — synopsis, director/creator, cast, trailer link, and streaming providers
+- **Discover tab** — weekly trending titles plus browse-by-genre (movies and TV), with sorting by popularity, rating, or release date
+- **Detail panel** — synopsis, director/creator, cast, trailer link, similar titles, and streaming providers
 - **Discord notifications** — webhook alerts with embed and poster when you add or change a title's status
 - **Owner-only notifications** — filter Discord alerts to a single Supabase user via `DISCORD_OWNER_ID`
 - **Supabase authentication** — email/password login and registration, JWT-validated on every request
@@ -38,11 +38,25 @@ CineBox uses a dark noir theme: near-black background (`#050915`), a deep red ac
 |---|---|
 | Frontend | Vanilla HTML5, CSS3, JavaScript (no build step) |
 | Backend | Python 3 — `http.server`, `ThreadingHTTPServer` (no framework) |
-| Database | PostgreSQL via `psycopg2` |
-| Auth | Supabase (email/password) — JWT verified server-side via JWKS |
+| Database | PostgreSQL via `psycopg2`, with a bounded `ThreadedConnectionPool` |
+| Auth | Supabase (email/password) — JWT verified server-side via JWKS, **asymmetric only** (ES256/RS256), requiring `aud=authenticated` and `role=authenticated` |
 | Movie data | The Movie Database (TMDB) API v3 |
-| Notifications | Discord Incoming Webhooks |
+| Notifications | Discord Incoming Webhooks (sent off-thread) |
 | Hosting | Render (backend) + Supabase (auth + DB) |
+
+---
+
+## 🛡 Security & Robustness
+
+The backend is small but hardened for real traffic on a free tier:
+
+- **Bounded connection pool** — DB connections are taken from a `ThreadedConnectionPool` gated by a semaphore of the same size (`DB_POOL_MAX`, default 10). Under a traffic spike, surplus threads queue for up to 10 s instead of exhausting the Supabase pooler; if no slot frees up, the endpoint returns `503` cleanly.
+- **Rate limiting** — the five endpoints that spend our TMDB key (`/api/search`, `/api/trending`, `/api/discover`, `/api/details`, `/api/similar`) run a sliding-window limiter: per-user (60/min) plus a global cap (300/min) that protects the shared key from abuse across accounts. Over the limit → `429` + `Retry-After`.
+- **TMDB response caching** — TMDB data is user-independent, so responses are cached in memory with a TTL (`TMDB_CACHE_TTL`, default 900 s), cutting API calls, latency, and quota pressure.
+- **Asymmetric JWT only** — tokens are verified against the Supabase JWKS public keys (ES256/RS256). There is no HS256 shared-secret fallback; `aud` and `role` are both checked.
+- **Supply-chain integrity** — the Supabase JS client is self-hosted (not loaded from a CDN) and pinned with Subresource Integrity; the browser refuses to run a tampered bundle. The CSP is `script-src 'self'` (fail-closed, no fallback).
+- **Request hardening** — security headers on every response (CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`), a 64 KB request-body cap, and a 15 s per-socket timeout that blunts Slowloris-style slow requests.
+- **Per-user isolation** — every DB query is filtered by the `user_id` extracted from the verified token, never from the client.
 
 ---
 
@@ -115,6 +129,17 @@ python server.py
 
 Open [http://localhost:8000](http://localhost:8000) in your browser.
 
+### Running the tests (optional)
+
+```bash
+# Unit tests (no DB required)
+python -m unittest discover -s tests
+
+# Browser E2E — supply-chain / SRI guarantees (Playwright)
+pip install -r requirements-dev.txt && playwright install chromium
+pytest tests/e2e/
+```
+
 ---
 
 ## 🔑 Environment Variables
@@ -131,7 +156,11 @@ Copy `.env.example` to `.env` and set these values. The server reads `.env` at s
 | `DISCORD_WEBHOOK_PENDIENTE` | Optional | Webhook for titles added to the watchlist |
 | `DISCORD_WEBHOOK_VISTA` | Optional | Webhook for titles marked as watched |
 | `DISCORD_OWNER_ID` | Optional | Supabase UUID of the account that should trigger Discord notifications — all other users are silenced |
+| `DB_POOL_MAX` | Optional | Max DB connections in the pool, per process (default: `10`). With N instances the total is N × this value — raise only if the Supabase pooler can take it |
+| `TMDB_CACHE_TTL` | Optional | TTL in seconds for the in-memory TMDB cache (default: `900`; `0` disables caching) |
 | `PORT` | Optional | HTTP port (default: `8000`) |
+
+> `SUPABASE_SERVICE_KEY` and `SUPABASE_JWT_SECRET` may appear in `.env.example` but are **not used at runtime** (the HS256 fallback was removed — JWT verification is asymmetric-only). They are kept for reference and can be left empty.
 
 ---
 
