@@ -141,6 +141,29 @@ class TmdbCache(unittest.TestCase):
         self.assertEqual(called["n"], 0)
         self.assertEqual(len(server._tmdb_cache), 0)
 
+    def test_cache_size_is_hard_capped(self):
+        """Past TMDB_CACHE_MAX distinct *live* entries the cache evicts oldest-first.
+
+        Regression guard: the opportunistic purge only removes *expired* entries, so
+        with many distinct queries inside one TTL window the cache must still not grow
+        without bound. Asserts len stays at the cap and FIFO eviction drops the oldest.
+        """
+
+        def fake_urlopen(url, timeout=None):
+            return _FakeResp({"url": url})
+
+        with _patched(ttl=900, urlopen=fake_urlopen):
+            h = _handler()
+            # Fill exactly to the cap; every entry is live (TTL=900, clock unmoved).
+            for i in range(server.TMDB_CACHE_MAX):
+                h._tmdb("/discover/movie", {"page": str(i)})
+            self.assertEqual(len(server._tmdb_cache), server.TMDB_CACHE_MAX)
+            oldest = next(iter(server._tmdb_cache))
+            # One more distinct query must evict, not grow past the cap.
+            h._tmdb("/discover/movie", {"page": "new"})
+            self.assertEqual(len(server._tmdb_cache), server.TMDB_CACHE_MAX)
+            self.assertNotIn(oldest, server._tmdb_cache)  # oldest dropped (FIFO)
+
     def test_network_error_is_not_cached(self):
         """A urlopen failure propagates and leaves the cache empty (no poisoning)."""
 

@@ -4,7 +4,7 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
-## Estado actual (snapshot) — 2026-06-14
+## Estado actual (snapshot) — 2026-06-15
 
 Resumen consolidado del proyecto. El **registro por sesiones** está más abajo.
 
@@ -39,9 +39,10 @@ JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) · rate limi
 **Caché TTL en memoria dentro de `_tmdb()`** (2026-06-14): cachea las respuestas de TMDB para los
 5 endpoints (search/trending/discover/details/similar). Clave = `(path, params sin api_key)`; datos
 de TMDB independientes del usuario (no cruza datos entre cuentas). `TMDB_CACHE_TTL` env (default 900s,
-`0` desactiva), `TMDB_CACHE_MAX` 500 con purga oportunista de expiradas. Errores de red no se cachean;
+`0` desactiva), `TMDB_CACHE_MAX` 500 con **cap duro** (2026-06-15): purga expiradas y, si sigue lleno,
+desaloja las más antiguas FIFO → nunca supera 500 entradas. Errores de red no se cachean;
 sin clave TMDB devuelve `None` antes de tocar la caché. El rate limiting sigue contando por usuario aun
-en hit. ⚠️ `MAX` es **cap blando** (solo purga expiradas) — follow-up: cap duro (FIFO/`OrderedDict`).
+en hit.
 
 ### Pendiente abierto (decisiones del usuario)
 - **Self-host de supabase-js** para poder fijar versión + SRI (hoy usa `@2` flotante, por eso NO se
@@ -57,6 +58,37 @@ en hit. ⚠️ `MAX` es **cap blando** (solo purga expiradas) — follow-up: cap
    hoy inofensivo porque `server.py` siempre setea `status`). Cambio de DB menor → sesión nueva.
 4. **`REVOKE EXECUTE` en `rls_auto_enable`** para `anon`/`authenticated` (higiene, baja prioridad; es un
    event-trigger que solo *activa* RLS, severidad real baja).
+
+---
+
+## Sesión — 2026-06-15 (cap duro de la caché TMDB)
+
+Quick-fix. Disparada por "analiza CineBox y qué recomiendas" → del diagnóstico se eligió el
+follow-up #3 (cap blando de `_tmdb_cache`) por ser el único bug latente con riesgo de runtime.
+
+### Hecho hoy
+- **Cap duro en `_tmdb()`** (`server.py`): tras la purga oportunista de expiradas, un bucle FIFO
+  desaloja las más antiguas hasta bajar del tope. El caché ya no puede crecer por encima de
+  `TMDB_CACHE_MAX` (500) aunque todas las entradas estén vivas. +2 líneas, sin imports nuevos.
+  Cierra la fuga de memoria latente (queries de `/api/search` = entrada no acotada).
+- **Test de regresión** `test_cache_size_is_hard_capped` en `tests/test_tmdb_cache.py`: llena el
+  caché al tope con entradas vivas, mete una más, assertea `len == MAX` y que la más antigua se
+  desaloja (FIFO). Suite total **40/40** verde. `ruff` verde.
+
+### Decisiones / notas
+- **Tratado como quick-fix** (no SDD): cambio en memoria, no toca DB/auth/PII/dinero/perímetro →
+  encaja en el waiver de `quick-fix-baseline.md §5`. El pipeline de agentes lo orquesta `/build-plan`
+  (no hay en quick-fix); se compensó con `/code-review` (0 hallazgos) + `/security-review` (sin vulns,
+  de hecho *mejora* la postura: cierra un vector de agotamiento de memoria).
+- **Nota no-bloqueante** (del review): si `TMDB_CACHE_MAX` se hiciera configurable por env y valiera
+  `0`, el `while` con `next(iter(...))` daría `StopIteration`. Hoy es constante hardcodeada 500 → seguro.
+  Guarda defensiva opcional: `while _tmdb_cache and len(...) >= TMDB_CACHE_MAX`. No aplicada.
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. **Verificación manual en producción** sigue pendiente (arrastrada del deploy 2026-06-14).
+3. Deuda estructural restante: reconciliación de schema (#2 `total_seasons` muerta + #3 default
+   `status` desalineado) → esta sí es migración → `/create-specs` + `/build-plan` (sesión nueva).
 
 ---
 
