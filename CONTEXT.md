@@ -4,7 +4,7 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
-## Estado actual (snapshot) — 2026-06-15
+## Estado actual (snapshot) — 2026-06-27
 
 Resumen consolidado del proyecto. El **registro por sesiones** está más abajo.
 
@@ -31,7 +31,9 @@ frontend vanilla JS sin bundler, PostgreSQL en Supabase, deploy en Render. Auth 
   por rate limiting (60/usuario + 300/global por 60s → 429).
 
 ### Hardening vigente
-JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) · rate limiting TMDB ·
+JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) **+ conexión validada viva antes
+de usarla** (keepalives TCP + `connect_timeout` + probe `SELECT 1` en `_checkout_live`, cierra el 502
+por conexión muerta — ver sesión 2026-06-27) · rate limiting TMDB ·
 `socket timeout` 15s (Slowloris) · validación POST (`title`≤300, `year`≤10, `poster_url` solo
 `image.tmdb.org`) · CSP estricta · `MAX_BODY` 64KB.
 
@@ -57,6 +59,52 @@ en hit.
    hoy inofensivo porque `server.py` siempre setea `status`). Cambio de DB menor → sesión nueva.
 4. **`REVOKE EXECUTE` en `rls_auto_enable`** para `anon`/`authenticated` (higiene, baja prioridad; es un
    event-trigger que solo *activa* RLS, severidad real baja).
+
+---
+
+## Sesión — 2026-06-27 (fix 502 por conexión DB muerta + allowlist gitleaks)
+
+Quick-fix disparado por un 502 en producción. El usuario pegó la cadena de síntomas (UI
+"¿Está arrancado server.py?" → 502 en Network → traceback de Render). Diagnóstico hasta causa raíz:
+`psycopg2.DatabaseError: could not send data to server: Connection timed out` en `_list_movies` →
+el pooler de Supabase / NAT de Render cerraba conexiones ociosas, el pool entregaba una muerta y el
+primer `execute` reventaba el handler → Render devolvía 502.
+
+### Hecho hoy
+- **Fix del pool** (`server.py`, commit `63144da`):
+  - `init_pool`: keepalives TCP (`keepalives=1, idle=30, interval=10, count=5`) + `connect_timeout=5`.
+  - **`_checkout_live()`** nuevo: prueba `SELECT 1` antes de entregar la conexión; si está muerta,
+    `putconn(close=True)` y reintenta hasta `DB_CHECKOUT_TRIES=3` (cota fija pequeña, no `maxconn` —
+    evita latencia/inanición con la DB caída). `get_db()` lo usa en vez de `getconn()` directo.
+  - Eliminado el global `_db_maxconn` (innecesario tras fijar la cota).
+- **6 tests nuevos** `tests/test_db_pool.py`: caso feliz, conexión muerta→reintento, todas muertas→
+  propaga acotado, `putconn` que lanza, semáforo liberado en fallo, saturación→`DBBusy`. Parchean
+  `_db_pool`/`_db_sem` directamente (el `_harness` mockea `get_db` entero, no toca este path).
+  Suite total **46/46** verde.
+- **Doc**: corregido el ejemplo desfasado `as (conn, cur)` → `as cur` en `CLAUDE.md`.
+- **Allowlist gitleaks** (`scripts/checks/.gitleaks.toml`, commit `chore ca884cc`): el gate de pre-push
+  escanea el working tree en `--no-git` (ignora `.gitignore`) y saltaba con 210 falsos positivos —
+  206 de `.venv/` (paquetes instalados) + 4 del `.env` local. Allowlist por path de ambos; `useDefault`
+  mantiene el ruleset completo sobre el código real. El escaneo baja de ~62 MB a ~0,6 MB.
+- **Push** a `origin/main` (`ef0292e..ca884cc`) con todos los gates en verde → deploy Render disparado.
+
+### Decisiones / notas
+- **Tratado como quick-fix** (no SDD): toca DB pero no es migración de schema ni auth/PII/dinero/perímetro
+  → encaja en el waiver de `quick-fix-baseline.md §5`. Se compensó con el pipeline de agentes a mano:
+  **reviewer** (sonnet, 1 importante I-1 corregido: cota del bucle) · **security** (opus, limpio — el
+  traceback con fragmentos del DSN va solo al log, no al cliente) · **tester** (sonnet, 40/40 + propuso
+  los tests que se añadieron). dod-checker N/A en quick-fix (no hay `{feature}-task.md` que verificar).
+- **Nit no aplicado** (de security): con la DB totalmente caída, `_db_guard` solo captura `DBBusy`, así
+  que un `DatabaseError` cierra la conexión sin un JSON 500/503 limpio. No es regresión (ya era así) y es
+  el comportamiento más seguro (sin cuerpo = nada que filtrar). Cambio aparte si se quiere un 500 limpio.
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. **Verificar en producción** (`https://cinebox-y9s3.onrender.com`) que el deploy terminó y que ya
+   **no** salen 502 tras un rato de inactividad — única verificación que no se puede hacer en local
+   (el bug depende de que el pooler corte conexiones ociosas). Mirar Logs/Events de Render.
+3. Deuda estructural restante (sin tocar): reconciliación de schema (`total_seasons` muerta + default
+   `status` desalineado) → migración → `/create-specs` + `/build-plan` en sesión nueva.
 
 ---
 
