@@ -121,7 +121,7 @@ El método `_json` añade las cabeceras de seguridad necesarias. No usar `self.w
 ### Queries a la DB
 
 ```python
-with get_db() as (conn, cur):
+with get_db() as cur:
     cur.execute("SELECT * FROM movies WHERE user_id = %s AND id = %s", (user_id, movie_id))
 ```
 

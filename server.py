@@ -76,6 +76,10 @@ def load_env():
 _db_pool = None
 _db_sem = None
 DB_WAIT_TIMEOUT = 10  # s máximos esperando un slot del pool antes de rendirse (503)
+DB_CONNECT_TIMEOUT = 5  # s máximos por intento de TCP connect; con DB caída falla rápido
+DB_CHECKOUT_TRIES = 3   # intentos del liveness check antes de rendirse (fijo y pequeño:
+                        # 1 conexión muerta por timeout de NAT se recupera en 1 reintento;
+                        # acotar a maxconn arriesga latencia/inanición con la DB caída)
 
 
 class DBBusy(Exception):
@@ -84,8 +88,42 @@ class DBBusy(Exception):
 
 def init_pool(maxconn):
     global _db_pool, _db_sem
-    _db_pool = psycopg2.pool.ThreadedConnectionPool(1, maxconn, os.environ["DATABASE_URL"])
+    # keepalives TCP: el pooler de Supabase / el NAT de Render cierran en silencio
+    # las conexiones ociosas. Sin sondas, el pool entrega una conexión muerta y el
+    # primer execute peta con "could not send data to server: Connection timed out"
+    # (→ 502). Las sondas mantienen viva la conexión y detectan la caída a tiempo.
+    # connect_timeout acota cada TCP connect: con la DB caída, abrir una conexión
+    # nueva falla en DB_CONNECT_TIMEOUT s en vez de colgarse hasta el timeout del SO.
+    _db_pool = psycopg2.pool.ThreadedConnectionPool(
+        1, maxconn, os.environ["DATABASE_URL"],
+        connect_timeout=DB_CONNECT_TIMEOUT,
+        keepalives=1, keepalives_idle=30,
+        keepalives_interval=10, keepalives_count=5,
+    )
     _db_sem = threading.BoundedSemaphore(maxconn)
+
+
+def _checkout_live():
+    """Saca del pool una conexión garantizada viva. Si los keepalives no llegaron
+    a tiempo y el pool entrega una conexión que el pooler ya cerró, el SELECT 1
+    falla: se descarta (putconn close=True → el pool abre otra) y se reintenta,
+    hasta DB_CHECKOUT_TRIES veces; si todas están muertas, propaga el último error.
+    Debe llamarse con un slot del semáforo ya adquirido."""
+    last_exc = None
+    for _ in range(DB_CHECKOUT_TRIES):
+        con = _db_pool.getconn()
+        try:
+            with con.cursor() as cur:
+                cur.execute("SELECT 1")
+            con.rollback()   # cerrar la transacción implícita del probe
+            return con
+        except Exception as exc:
+            last_exc = exc
+            try:
+                _db_pool.putconn(con, close=True)
+            except Exception:
+                pass
+    raise last_exc if last_exc else psycopg2.OperationalError("no live DB connection")
 
 
 @contextmanager
@@ -102,7 +140,7 @@ def get_db():
     con = None
     broken = False
     try:
-        con = _db_pool.getconn()
+        con = _checkout_live()
         try:
             with con.cursor(cursor_factory=psycopg2.extras.RealDictCursor) as cur:
                 yield cur
