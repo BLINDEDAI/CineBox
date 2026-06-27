@@ -1,0 +1,19 @@
+# Gitleaks allowlist for CineBox — consumed by the workspace pre-push secrets gate
+# (ALEXANDRIA/scripts/project-checks/check-secrets-leaked.sh, run via the pre-push hook).
+#
+# The gate scans the WORKING TREE in --no-git mode, which does NOT honour .gitignore.
+# That makes it trip on local-only, gitignored files that are never committed or pushed:
+#   - .venv/  : a Python virtualenv; the hits are false positives inside installed packages.
+#   - .env    : the canonical local secrets file (gitignored; real values live here by design).
+# Excluding these two paths from the scan does NOT weaken the gate for real source code:
+# useDefault keeps the full default ruleset active everywhere else.
+
+[extend]
+useDefault = true
+
+[[allowlists]]
+description = "Local-only, gitignored files that are never committed (virtualenv + local .env)"
+paths = [
+  '''(^|/)\.venv/''',
+  '''(^|/)\.env$''',
+]
