@@ -12,6 +12,7 @@ Config en .env:
     TMDB_API_KEY=...
     DISCORD_WEBHOOK_URL=...
 """
+import hashlib
 import json
 import os
 import re
@@ -28,6 +29,7 @@ from pathlib import Path
 import jwt as pyjwt          # PyJWT
 from jwt import PyJWKClient
 import psycopg2
+import psycopg2.errors
 import psycopg2.extras
 import psycopg2.pool
 
@@ -187,6 +189,12 @@ RATE_WINDOW = 60           # ventana deslizante (segundos) para todos los bucket
 RATE_MAX = 60              # tope por usuario en la ventana
 RATE_GLOBAL_MAX = 300      # tope agregado (todos los usuarios) — protege la clave
                            # TMDB de abuso vía múltiples cuentas
+# Perímetro público anónimo (sin clave por usuario): los endpoints /api/public/*
+# no tienen user_id, así que se limitan por IP (primer salto de X-Forwarded-For,
+# fallback a client_address) más un bucket global que acota el daño total ante un
+# scraper que rota IPs. Reutiliza rate_check() con la misma ventana deslizante.
+PUBLIC_RATE_MAX = 60       # tope por IP en la ventana
+PUBLIC_RATE_GLOBAL = 600   # tope agregado del perímetro público
 
 
 def rate_check(buckets):
@@ -335,6 +343,64 @@ def compute_level(points):
     }
 
 
+# ── Perfiles públicos y listas ──────────────────────────────────────────────────
+
+# Nombres reservados: colisionan con rutas reales o paths estáticos. Bloqueados
+# como username para que /u/<username> nunca pise un endpoint o un archivo servido.
+RESERVED_USERNAMES = frozenset({
+    "api", "u", "l", "admin", "assets", "health", "config", "vendor", "public",
+})
+_USERNAME_RE = re.compile(r"^[a-z0-9_-]{3,30}$")
+LIST_VISIBILITY = ("private", "unlisted", "public")
+
+
+def _normalize_username(raw):
+    """Helper puro (unit-testable). Normaliza y valida un username elegido por el
+    usuario: minúsculas, formato [a-z0-9_-] de 3 a 30, no reservado. Devuelve el
+    username normalizado o None si no es válido (incluyendo None/no-str de entrada)."""
+    if not isinstance(raw, str):
+        return None
+    name = raw.strip().lower()
+    if not _USERNAME_RE.match(name):
+        return None
+    if name in RESERVED_USERNAMES:
+        return None
+    return name
+
+
+def _hash_user_id(user_id):
+    """Hash estable y no reversible del user_id para la traza de auditoría —
+    nunca se registra el UUID en claro (LO-*: sin PII en logs)."""
+    return hashlib.sha256(str(user_id).encode("utf-8")).hexdigest()[:16]
+
+
+def _audit(action, user_id, target):
+    """Una línea estructurada y redactada por cambio de visibilidad/consentimiento
+    (set-username / publish-unpublish / list-visibility). Sin PII en claro: el
+    user_id va hasheado y no se incluye email, username ni share_token (LO-*)."""
+    entry = {
+        "action":    action,
+        "user_hash": _hash_user_id(user_id),
+        "target":    target,
+        "timestamp": datetime.now(timezone.utc).isoformat(),
+    }
+    print("audit " + json.dumps(entry, ensure_ascii=False))
+
+
+def _public_collection_projection(rows):
+    """Proyección pública allow-list de la colección: SOLO campos consentidos.
+    NUNCA serializa note, email ni user_id (GD-001 / minimización de datos)."""
+    return [{
+        "title":          r["title"],
+        "poster_url":     r["poster_url"],
+        "status":         r["status"],
+        "rating":         r["rating"],
+        "media_type":     r["media_type"],
+        "current_season": r["current_season"],
+        "total_seasons":  r["total_seasons"],
+    } for r in rows]
+
+
 def webhook_for(status):
     key = "DISCORD_WEBHOOK_VISTA" if status == "vista" else "DISCORD_WEBHOOK_PENDIENTE"
     return os.environ.get(key, "").strip() or os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
@@ -432,6 +498,32 @@ class Handler(SimpleHTTPRequestHandler):
                    extra_headers={"Retry-After": retry})
         return True
 
+    def _client_ip(self):
+        """IP del cliente para el limiter público: primer salto de
+        X-Forwarded-For (Render lo fija delante de nuestra app) con fallback a
+        la dirección del socket. El primer salto es el cliente real cuando hay
+        un proxy de confianza; un cliente directo puede falsearlo, por eso el
+        bucket global acota el daño total (ver caveat del threat model)."""
+        xff = self.headers.get("X-Forwarded-For", "")
+        if xff:
+            first = xff.split(",")[0].strip()
+            if first:
+                return first
+        return self.client_address[0]
+
+    def _public_rate_limited(self):
+        """Limiter por IP + global para el perímetro público anónimo. Si se
+        supera cualquiera de los dos, responde 429 + Retry-After y devuelve True
+        (el endpoint debe retornar ANTES de cualquier lectura de la DB)."""
+        ip = self._client_ip()
+        allowed, retry = rate_check([(f"public:{ip}", PUBLIC_RATE_MAX),
+                                     ("public:_global", PUBLIC_RATE_GLOBAL)])
+        if allowed:
+            return False
+        self._json(429, {"ok": False, "error": "Demasiadas peticiones, espera un momento."},
+                   extra_headers={"Retry-After": retry})
+        return True
+
     def _read_json(self):
         length = max(0, min(int(self.headers.get("Content-Length", 0)), MAX_BODY))
         return json.loads(self.rfile.read(length) or b"{}")
@@ -497,6 +589,20 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/discover": return self._discover()
         if path == "/api/details":  return self._details()
         if path == "/api/similar":  return self._similar()
+        if path == "/api/profile":  return self._get_profile()
+        if path == "/api/lists":    return self._list_lists()
+        m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})$", path)
+        if m:                       return self._get_list(m.group(1))
+        m = re.match(r"^/api/public/profile/([a-z0-9_-]{3,30})$", path)
+        if m:                       return self._public_profile(m.group(1))
+        m = re.match(r"^/api/public/list/([0-9a-fA-F-]{36})$", path)
+        if m:                       return self._public_list(m.group(1))
+        # Páginas públicas (sin auth): sirven el HTML estático y dejan que
+        # public.js resuelva perfil-vs-lista por location.pathname. Va ANTES del
+        # fallthrough estático para que /u y /l no caigan en el servidor de archivos.
+        if re.match(r"^/u/[a-z0-9_-]{3,30}$", path) or re.match(r"^/l/[0-9a-fA-F-]{36}$", path):
+            self.path = "/public.html"
+            return super().do_GET()
         parts = [p for p in decoded_path.split("/") if p]
         if (decoded_path.lower().endswith(BLOCKED)
                 or any(p.startswith(".") for p in parts)):
@@ -769,6 +875,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     @_db_guard
     def do_POST(self):
+        if self.path == "/api/lists":
+            return self._create_list()
+        m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})/items$", self.path)
+        if m:
+            return self._add_list_item(m.group(1))
         if self.path != "/api/movies":
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
         user_id = self._get_user_id()
@@ -851,6 +962,11 @@ class Handler(SimpleHTTPRequestHandler):
 
     @_db_guard
     def do_PATCH(self):
+        if self.path == "/api/profile":
+            return self._patch_profile()
+        m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})$", self.path)
+        if m:
+            return self._patch_list(m.group(1))
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -931,6 +1047,12 @@ class Handler(SimpleHTTPRequestHandler):
 
     @_db_guard
     def do_DELETE(self):
+        mm = re.match(r"^/api/lists/([0-9a-fA-F-]{36})/items/([0-9a-fA-F-]{36})$", self.path)
+        if mm:
+            return self._delete_list_item(mm.group(1), mm.group(2))
+        ml = re.match(r"^/api/lists/([0-9a-fA-F-]{36})$", self.path)
+        if ml:
+            return self._delete_list(ml.group(1))
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -944,6 +1066,376 @@ class Handler(SimpleHTTPRequestHandler):
             if cur.rowcount == 0:
                 return self._json(404, {"ok": False, "error": "No encontrada"})
         self._json(200, {"ok": True})
+
+    # ── Perfil (owner) ──────────────────────────────────────────────────────────
+
+    def _get_profile(self):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        with get_db() as cur:
+            cur.execute(
+                "SELECT username, is_public, show_collection, show_stats "
+                "FROM profiles WHERE user_id = %s",
+                (user_id,))
+            row = cur.fetchone()
+        if row:
+            profile = dict(row)
+        else:
+            # Defaults perezosos: nunca se crea una fila pública implícitamente.
+            profile = {"username": None, "is_public": False,
+                       "show_collection": False, "show_stats": False}
+        self._json(200, {"ok": True, "profile": profile})
+
+    def _patch_profile(self):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        try:
+            data = self._read_json()
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"ok": False, "error": "JSON inválido"})
+
+        # Estado actual (para validar publish-sin-username y para auditar cambios).
+        with get_db() as cur:
+            cur.execute(
+                "SELECT username, is_public, show_collection, show_stats "
+                "FROM profiles WHERE user_id = %s",
+                (user_id,))
+            current = cur.fetchone()
+        cur_username = current["username"] if current else None
+        cur_is_public = current["is_public"] if current else False
+
+        cols, vals = [], []     # columna → valor a escribir (orden estable)
+        new_username = cur_username
+        username_changed = False
+        if "username" in data:
+            raw = data["username"]
+            if raw is None or (isinstance(raw, str) and raw.strip() == ""):
+                return self._json(400, {"ok": False, "error": "El nombre de usuario no puede quedar vacío"})
+            norm = _normalize_username(raw)
+            if norm is None:
+                return self._json(400, {"ok": False,
+                                        "error": "Nombre de usuario inválido (3-30, a-z 0-9 _ - y no reservado)"})
+            new_username = norm
+            username_changed = (norm != cur_username)
+            cols.append("username"); vals.append(norm)
+
+        for flag in ("is_public", "show_collection", "show_stats"):
+            if flag in data:
+                v = data[flag]
+                if not isinstance(v, bool):
+                    return self._json(400, {"ok": False, "error": f"{flag} debe ser booleano"})
+                cols.append(flag); vals.append(v)
+
+        if not cols:
+            return self._json(400, {"ok": False, "error": "Nada que actualizar"})
+
+        # AC-1: no se puede publicar el perfil sin un username válido.
+        target_is_public = data.get("is_public", cur_is_public)
+        if target_is_public and not new_username:
+            return self._json(400, {"ok": False,
+                                    "error": "Define un nombre de usuario antes de hacer público tu perfil"})
+
+        cols.append("updated_at"); vals.append(datetime.now(timezone.utc).isoformat())
+        # UPSERT: la fila puede no existir todavía (defaults perezosos en GET).
+        # Columnas controladas por código (no input del usuario); valores siempre %s.
+        insert_cols = ", ".join(["user_id", *cols])
+        insert_ph   = ", ".join(["%s"] * (len(cols) + 1))
+        update_set  = ", ".join(f"{c} = %s" for c in cols)
+        params = [user_id, *vals, *vals]
+        with get_db() as cur:
+            try:
+                cur.execute(
+                    f"INSERT INTO profiles ({insert_cols}) VALUES ({insert_ph}) "
+                    f"ON CONFLICT (user_id) DO UPDATE SET {update_set}",
+                    params)
+            except psycopg2.errors.UniqueViolation:
+                # AC-2: username ya tomado (case-insensitive vía lowercase + UNIQUE).
+                return self._json(409, {"ok": False, "error": "Ese nombre de usuario ya está en uso"})
+
+        if username_changed:
+            _audit("profile.username_set", user_id, "profile")
+        if "is_public" in data and data["is_public"] != cur_is_public:
+            _audit("profile.publish" if data["is_public"] else "profile.unpublish", user_id, "profile")
+        self._json(200, {"ok": True})
+
+    # ── Listas (owner) ───────────────────────────────────────────────────────────
+
+    def _list_lists(self):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        with get_db() as cur:
+            cur.execute(
+                "SELECT l.id, l.name, l.visibility, l.share_token, l.updated_at, "
+                "       COUNT(li.id) AS item_count "
+                "FROM lists l LEFT JOIN list_items li ON li.list_id = l.id "
+                "WHERE l.user_id = %s "
+                "GROUP BY l.id ORDER BY l.updated_at DESC",
+                (user_id,))
+            rows = cur.fetchall()
+        self._json(200, {"ok": True, "lists": [dict(r) for r in rows]})
+
+    def _create_list(self):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        try:
+            data = self._read_json()
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"ok": False, "error": "JSON inválido"})
+        name = str(data.get("name", "")).strip()[:200]
+        if not name:
+            return self._json(400, {"ok": False, "error": "El nombre de la lista es obligatorio"})
+        with get_db() as cur:
+            cur.execute(
+                "INSERT INTO lists (user_id, name) VALUES (%s, %s) RETURNING id",
+                (user_id, name))
+            new_id = cur.fetchone()["id"]
+        self._json(201, {"ok": True, "id": new_id})
+
+    def _get_list(self, list_id):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        with get_db() as cur:
+            cur.execute(
+                "SELECT id, name, visibility, share_token, updated_at "
+                "FROM lists WHERE id = %s AND user_id = %s",
+                (list_id, user_id))
+            lst = cur.fetchone()
+            if not lst:
+                return self._json(404, {"ok": False, "error": "No encontrada"})
+            cur.execute(
+                "SELECT id, tmdb_id, media_type, title, year, poster_url, position "
+                "FROM list_items WHERE list_id = %s ORDER BY position, created_at",
+                (list_id,))
+            items = cur.fetchall()
+        body = dict(lst)
+        body["items"] = [dict(i) for i in items]
+        self._json(200, {"ok": True, "list": body})
+
+    def _patch_list(self, list_id):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        try:
+            data = self._read_json()
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"ok": False, "error": "JSON inválido"})
+
+        new_visibility = None
+        cols, vals = [], []
+        if "name" in data:
+            name = str(data.get("name", "")).strip()[:200]
+            if not name:
+                return self._json(400, {"ok": False, "error": "El nombre de la lista no puede quedar vacío"})
+            cols.append("name"); vals.append(name)
+        if "visibility" in data:
+            vis = data["visibility"]
+            if vis not in LIST_VISIBILITY:
+                return self._json(400, {"ok": False, "error": "Visibilidad no válida"})
+            new_visibility = vis
+            cols.append("visibility"); vals.append(vis)
+        item_order = None
+        if "item_order" in data:
+            item_order = data["item_order"]
+            if not isinstance(item_order, list) or not all(isinstance(x, str) for x in item_order):
+                return self._json(400, {"ok": False, "error": "item_order debe ser una lista de ids"})
+
+        if not cols and item_order is None:
+            return self._json(400, {"ok": False, "error": "Nada que actualizar"})
+
+        # AC-1: no se puede hacer pública/unlisted una lista sin username.
+        if new_visibility in ("unlisted", "public"):
+            with get_db() as cur:
+                cur.execute("SELECT username FROM profiles WHERE user_id = %s", (user_id,))
+                prow = cur.fetchone()
+            if not (prow and prow["username"]):
+                return self._json(400, {"ok": False,
+                                        "error": "Define un nombre de usuario antes de compartir una lista"})
+
+        with get_db() as cur:
+            if cols:
+                cols.append("updated_at"); vals.append(datetime.now(timezone.utc).isoformat())
+                set_clause = ", ".join(f"{c} = %s" for c in cols)
+                cur.execute(
+                    f"UPDATE lists SET {set_clause} WHERE id = %s AND user_id = %s",
+                    [*vals, list_id, user_id])
+                if cur.rowcount == 0:
+                    return self._json(404, {"ok": False, "error": "No encontrada"})
+            else:
+                # Solo reordenar: verifica propiedad explícitamente (AC-13 → 404).
+                cur.execute(
+                    "SELECT 1 FROM lists WHERE id = %s AND user_id = %s",
+                    (list_id, user_id))
+                if not cur.fetchone():
+                    return self._json(404, {"ok": False, "error": "No encontrada"})
+            if item_order is not None:
+                # Reordena solo los items que pertenecen a esta lista; ids ajenos
+                # se ignoran (el WHERE list_id acota el efecto).
+                for pos, item_id in enumerate(item_order):
+                    cur.execute(
+                        "UPDATE list_items SET position = %s WHERE id = %s AND list_id = %s",
+                        (pos, item_id, list_id))
+
+        if new_visibility is not None:
+            _audit("list.visibility_set", user_id, f"visibility={new_visibility}")
+        self._json(200, {"ok": True})
+
+    def _delete_list(self, list_id):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        with get_db() as cur:
+            # list_items cae por FK ON DELETE CASCADE.
+            cur.execute(
+                "DELETE FROM lists WHERE id = %s AND user_id = %s",
+                (list_id, user_id))
+            if cur.rowcount == 0:
+                return self._json(404, {"ok": False, "error": "No encontrada"})
+        self._json(200, {"ok": True})
+
+    def _add_list_item(self, list_id):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        try:
+            data = self._read_json()
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"ok": False, "error": "JSON inválido"})
+        tmdb_id = data.get("tmdb_id")
+        try:
+            tmdb_id = int(tmdb_id)
+        except (TypeError, ValueError):
+            return self._json(400, {"ok": False, "error": "tmdb_id inválido"})
+        media_type = data.get("media_type")
+        if media_type not in ("movie", "tv"):
+            return self._json(400, {"ok": False, "error": "media_type debe ser movie o tv"})
+        title = str(data.get("title", "")).strip()[:300]
+        if not title:
+            return self._json(400, {"ok": False, "error": "El título es obligatorio"})
+        year   = str(data.get("year", "")).strip()[:10]
+        poster = str(data.get("poster_url", "")).strip()
+        # Misma allow-list que el alta de películas: solo posters de TMDB.
+        if poster and not poster.startswith("https://image.tmdb.org/"):
+            poster = ""
+        poster = poster[:500]
+
+        with get_db() as cur:
+            # Propiedad de la lista (AC-13 → 404 si es de otro usuario).
+            cur.execute(
+                "SELECT 1 FROM lists WHERE id = %s AND user_id = %s",
+                (list_id, user_id))
+            if not cur.fetchone():
+                return self._json(404, {"ok": False, "error": "No encontrada"})
+            cur.execute(
+                "SELECT COALESCE(MAX(position) + 1, 0) AS next_pos "
+                "FROM list_items WHERE list_id = %s",
+                (list_id,))
+            next_pos = cur.fetchone()["next_pos"]
+            try:
+                cur.execute(
+                    "INSERT INTO list_items "
+                    "(list_id, tmdb_id, media_type, title, year, poster_url, position) "
+                    "VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id",
+                    (list_id, tmdb_id, media_type, title, year, poster, next_pos))
+                new_id = cur.fetchone()["id"]
+            except psycopg2.errors.UniqueViolation:
+                # Dedup (list_id, tmdb_id, media_type) → 409.
+                return self._json(409, {"ok": False, "error": "Ese título ya está en la lista"})
+        self._json(201, {"ok": True, "id": new_id})
+
+    def _delete_list_item(self, list_id, item_id):
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        with get_db() as cur:
+            # Propiedad vía JOIN a lists.user_id: un item de otra lista/usuario → 404.
+            cur.execute(
+                "DELETE FROM list_items li USING lists l "
+                "WHERE li.id = %s AND li.list_id = %s "
+                "AND l.id = li.list_id AND l.user_id = %s",
+                (item_id, list_id, user_id))
+            if cur.rowcount == 0:
+                return self._json(404, {"ok": False, "error": "No encontrada"})
+        self._json(200, {"ok": True})
+
+    # ── Endpoints públicos (sin auth, rate-limit por IP) ─────────────────────────
+
+    def _public_profile(self, username):
+        if self._public_rate_limited():
+            return
+        username = username.lower()
+        with get_db() as cur:
+            cur.execute(
+                "SELECT user_id, username, is_public, show_collection, show_stats "
+                "FROM profiles WHERE username = %s",
+                (username,))
+            prof = cur.fetchone()
+            # AC-3: perfil inexistente o no público → 404 (no enumera).
+            if not prof or not prof["is_public"]:
+                return self._json(404, {"ok": False, "error": "No encontrado"})
+            owner_id = prof["user_id"]
+            body = {"username": prof["username"]}
+            # AC-4: la colección solo si show_collection.
+            if prof["show_collection"]:
+                cur.execute(
+                    "SELECT title, poster_url, status, rating, media_type, "
+                    "       current_season, total_seasons "
+                    "FROM movies WHERE user_id = %s ORDER BY created_at DESC",
+                    (owner_id,))
+                body["collection"] = _public_collection_projection(cur.fetchall())
+            # AC-6: stats solo si show_stats. Reutiliza el mismo agregado que _level
+            # + compute_level (PS-004), parametrizado por el user_id del perfil.
+            if prof["show_stats"]:
+                cur.execute(
+                    "SELECT "
+                    "  COUNT(*) FILTER (WHERE status = 'vista')                AS vistas, "
+                    "  COUNT(*) FILTER (WHERE rating IS NOT NULL)              AS valoradas, "
+                    "  COUNT(*) FILTER (WHERE note IS NOT NULL AND note <> '') AS notas "
+                    "FROM movies WHERE user_id = %s",
+                    (owner_id,))
+                srow = cur.fetchone()
+                points = ((srow["vistas"] or 0) * POINTS_VISTA
+                          + (srow["valoradas"] or 0) * POINTS_RATING
+                          + (srow["notas"] or 0) * POINTS_NOTE)
+                body["stats"] = compute_level(points)
+            # AC-9 / AC-10: solo las listas públicas en el perfil; nunca unlisted.
+            cur.execute(
+                "SELECT l.id, l.name, l.share_token, COUNT(li.id) AS item_count "
+                "FROM lists l LEFT JOIN list_items li ON li.list_id = l.id "
+                "WHERE l.user_id = %s AND l.visibility = 'public' "
+                "GROUP BY l.id ORDER BY l.updated_at DESC",
+                (owner_id,))
+            body["lists"] = [dict(r) for r in cur.fetchall()]
+        self._json(200, {"ok": True, "profile": body})
+
+    def _public_list(self, share_token):
+        if self._public_rate_limited():
+            return
+        with get_db() as cur:
+            cur.execute(
+                "SELECT l.name, l.visibility, p.username AS owner_username "
+                "FROM lists l LEFT JOIN profiles p ON p.user_id = l.user_id "
+                "WHERE l.share_token = %s",
+                (share_token,))
+            lst = cur.fetchone()
+            # AC-7 / AC-11: privada o inexistente → 404 (el token re-privatizado muere).
+            if not lst or lst["visibility"] == "private":
+                return self._json(404, {"ok": False, "error": "No encontrada"})
+            cur.execute(
+                "SELECT tmdb_id, media_type, title, year, poster_url "
+                "FROM list_items li JOIN lists l ON l.id = li.list_id "
+                "WHERE l.share_token = %s ORDER BY li.position, li.created_at",
+                (share_token,))
+            items = cur.fetchall()
+        self._json(200, {"ok": True, "list": {
+            "name":           lst["name"],
+            "owner_username": lst["owner_username"],
+            "items":          [dict(i) for i in items],
+        }})
 
     def log_message(self, *args):
         pass
