@@ -86,6 +86,7 @@ function showView(viewId) {
     else loadTrending();
   }
   if (viewId === "stats-view") renderStatsView();
+  if (viewId === "sharing-view") showSharingView();
 }
 
 // ---- Eventos ----
