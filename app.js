@@ -225,7 +225,8 @@ pickPanelEl.addEventListener("click", async (e) => {
 modalEl.addEventListener("click", (e) => { if (e.target.closest("[data-close]")) closeModal(); });
 document.addEventListener("keydown", (e) => {
   if (e.key !== "Escape") return;
-  if (!modalEl.hidden) closeModal();
+  if (listPickerEl && !listPickerEl.hidden) closeAddToListPicker();
+  else if (!modalEl.hidden) closeModal();
   else if (!pickPanelEl.hidden) closePickPanel();
   else if (editingPlatformId !== null) { editingPlatformId = null; renderCollection(); }
   else if (editingProgressId !== null) { editingProgressId = null; renderCollection(); }
