@@ -323,7 +323,7 @@ function _renderPicker(loading) {
     }).join("");
     body = `
       <p class="muted smuted-sm" id="list-picker-desc">Elige una lista para añadir «${esc(title)}».</p>
-      <div class="list-picker-choices" role="list">${choices}</div>
+      <div class="list-picker-choices">${choices}</div>
       ${_pickerCreateFormHtml()}`;
   } else {
     body = `
