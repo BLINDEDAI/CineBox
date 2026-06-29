@@ -1,0 +1,43 @@
+# Fast unit gate — stdlib `unittest` suite + `node --check` JS syntax check.
+#
+# Intentionally SEPARATE from `e2e.yml` (the heavier Chromium job, ADR-003): this
+# job installs no browser, so it stays fast and never blocks on a Playwright
+# install. It closes the gap noted in `e2e.yml` ("the fast unit `unittest` gate …
+# is not represented here") and makes the `node --check` quality gate
+# (project-standards § Quality gates, US-055) actually run in CI.
+name: unit
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  unit:
+    name: Unit (unittest + node --check)
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      # requirements-dev is installed so `unittest discover` can import the
+      # tests/e2e/ modules (which import pytest/playwright at module load); the
+      # browser itself is NOT installed — this job never runs the e2e suite.
+      - name: Install dependencies
+        run: pip install -r requirements.txt -r requirements-dev.txt
+
+      # node --check on every root JS module (the vendored minified bundle is
+      # third-party and excluded). Node is preinstalled on ubuntu-latest.
+      - name: JS syntax check (node --check)
+        run: |
+          for f in *.js; do
+            echo "node --check $f"
+            node --check "$f"
+          done
+
+      - name: Run unit suite (unittest)
+        run: python -m unittest discover -s tests

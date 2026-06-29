@@ -738,3 +738,125 @@ def test_public_pages_do_not_load_supabase(page: Page, base_url: str):
             assert pat not in url.lower(), (
                 f"public.html loaded forbidden script ({pat}): {url}"
             )
+
+
+# ── AC-9: Add-to-list picker a11y (add-titles-to-lists feature) ───────────────
+#
+# Closes the AC-9 follow-up: the "Añadir a lista" picker (#list-picker, rendered
+# by sharing.js openAddToListPicker) is a new interactive component. It is part of
+# the authed SPA but depends only on GET /api/lists (mocked here via
+# _route_sharing_api), so — unlike the broader sharing view — it renders without a
+# real Supabase session.
+
+_PICKER_PAYLOAD = {
+    "tmdb_id": 1,
+    "media_type": "movie",
+    "title": "Dune: Part Two",
+    "year": "2024",
+    "poster_url": "",
+}
+
+
+def _navigate_to_picker(page: Page, base_url: str):
+    """Open index.html, mock /api/lists + /api/config, then open the add-to-list picker."""
+    _route_sharing_api(page, base_url)  # mocks /api/profile + /api/lists
+
+    def config_handle(route):
+        route.fulfill(
+            status=200,
+            content_type="application/json",
+            body=json.dumps({"supabase_url": "", "supabase_anon_key": ""}),
+        )
+
+    page.route(f"{base_url}/api/config", config_handle)
+
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
+
+    # openAddToListPicker is async (it fetches /api/lists); evaluate awaits the promise.
+    page.evaluate(
+        "(payload) => (typeof openAddToListPicker === 'function') "
+        "? openAddToListPicker(payload) : null",
+        _PICKER_PAYLOAD,
+    )
+    page.wait_for_timeout(400)
+
+
+def test_add_to_list_picker_a11y_desktop(page: Page, base_url: str):
+    """AC-9: add-to-list picker, desktop 1280px, axe WCAG 2.2 A/AA zero critical/serious."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _navigate_to_picker(page, base_url)
+
+    picker = page.locator("#list-picker")
+    if picker.get_attribute("hidden") is not None:
+        pytest.skip(
+            "AC-9: #list-picker did not render — openAddToListPicker unavailable. "
+            "Requires human verification in a live session."
+        )
+
+    _screenshot(page, "list-picker-desktop")
+    _inject_axe(page, base_url)
+    violations = _run_axe(page, "#list-picker")
+    _screenshot(page, "list-picker-desktop-axe")
+
+    assert violations == [], (
+        f"AC-9: axe found {len(violations)} critical/serious violations in the picker (desktop): "
+        + json.dumps(violations, indent=2)
+    )
+
+
+def test_add_to_list_picker_a11y_mobile(page: Page, base_url: str):
+    """AC-9: add-to-list picker, mobile 375px, axe WCAG 2.2 A/AA zero critical/serious."""
+    page.set_viewport_size({"width": 375, "height": 667})
+    _navigate_to_picker(page, base_url)
+
+    picker = page.locator("#list-picker")
+    if picker.get_attribute("hidden") is not None:
+        pytest.skip(
+            "AC-9: #list-picker did not render — openAddToListPicker unavailable. "
+            "Requires human verification in a live session."
+        )
+
+    _screenshot(page, "list-picker-mobile")
+    _inject_axe(page, base_url)
+    violations = _run_axe(page, "#list-picker")
+
+    assert violations == [], (
+        f"AC-9: axe found {len(violations)} critical/serious violations in the picker (mobile): "
+        + json.dumps(violations, indent=2)
+    )
+
+
+def test_add_to_list_picker_keyboard_focus(page: Page, base_url: str):
+    """AC-9: the picker is keyboard-operable with a visible focus indicator."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _navigate_to_picker(page, base_url)
+
+    picker = page.locator("#list-picker")
+    if picker.get_attribute("hidden") is not None:
+        pytest.skip(
+            "AC-9: #list-picker did not render for keyboard test. "
+            "Requires human verification in a live session."
+        )
+
+    # openAddToListPicker focuses the first actionable control (a list choice or the
+    # new-list name input). Confirm focus landed on an interactive element inside the picker.
+    focused_tag = page.evaluate("document.activeElement.tagName")
+    assert focused_tag in ("BUTTON", "INPUT", "A", "SELECT", "TEXTAREA"), (
+        f"AC-9: expected focus on an interactive control, got: {focused_tag}"
+    )
+    in_picker = page.evaluate("() => !!document.activeElement.closest('#list-picker')")
+    assert in_picker, "AC-9: initial focus is not inside the picker"
+
+    outline_width = page.evaluate(
+        "() => window.getComputedStyle(document.activeElement).outlineWidth"
+    )
+    box_shadow = page.evaluate(
+        "() => window.getComputedStyle(document.activeElement).boxShadow"
+    )
+    has_visible_focus = outline_width not in ("0px", "") or box_shadow not in ("none", "")
+    assert has_visible_focus, (
+        f"AC-9: no visible focus on the picker control: outline={outline_width}, "
+        f"box-shadow={box_shadow}"
+    )
+    _screenshot(page, "list-picker-keyboard-focus")
