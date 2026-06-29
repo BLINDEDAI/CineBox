@@ -15,8 +15,14 @@ let sharingLists = [];       // [{id, name, visibility, share_token, item_count,
 let sharingExpandedListId = null; // id de la lista cuyos items están desplegados
 let sharingExpandedItems = []; // items de la lista desplegada
 
+// ── Estado del selector "Añadir a lista" ────────────────────────────────────
+let pickerPayload = null;   // {tmdb_id, media_type, title, year, poster_url} del título a añadir
+let pickerLists = [];       // listas del usuario cargadas al abrir el selector
+
 // Referencia DOM de carga (guarda con `if (el)` — PS-003 / error conocido).
 const sharingViewEl = el("sharing-view");
+// Referencia DOM del selector (guarda con `if (listPickerEl)` — PS-003).
+const listPickerEl = el("list-picker");
 
 // ── Red ────────────────────────────────────────────────────────────────────
 async function loadSharing() {
@@ -157,6 +163,7 @@ function _renderExpandedItems() {
   }
   container.innerHTML = sharingExpandedItems.map((it) => `
     <div class="sharing-item" data-item-id="${esc(it.id)}">
+      <span class="sharing-item-poster">${posterHtml(it)}</span>
       <span class="sharing-item-title">${esc(it.title)}${it.year ? " (" + esc(it.year) + ")" : ""}</span>
       <button class="icon-btn" type="button" data-sharing-action="remove-item" aria-label="Quitar ${esc(it.title)}">✕</button>
     </div>`).join("");
@@ -263,6 +270,133 @@ async function _copyLink(token) {
   window.prompt("Copia el enlace:", url);
 }
 
+// ── Selector "Añadir a lista" ───────────────────────────────────────────────
+// Mensaje exacto del backend para el duplicado (409). El wrapper `api()` no
+// expone el código HTTP; el cuerpo del 409 trae este texto como contrato
+// documentado (server.py _add_list_item), así que distinguimos el duplicado
+// por él para tratarlo como aviso no bloqueante (AC-5).
+const PICKER_DUPLICATE_ERROR = "Ese título ya está en la lista";
+
+// Abre el selector con el título a añadir. Invocada desde modal.js / collection.js
+// (cuerpos de manejador → tiempo de llamada, PS-003). `payload` =
+// {tmdb_id, media_type, title, year, poster_url}.
+async function openAddToListPicker(payload) {
+  if (!listPickerEl) return;
+  pickerPayload = payload || null;
+  pickerLists = [];
+  _renderPicker(true);
+  listPickerEl.hidden = false;
+  void listPickerEl.offsetWidth;
+  listPickerEl.classList.add("is-open");
+  const { ok, data } = await api("/api/lists");
+  if (ok && data.ok) pickerLists = data.lists || [];
+  else { showMessage((data && data.error) || "No se pudieron cargar tus listas.", "error"); }
+  _renderPicker(false);
+  // Enfoca el primer control accionable para operabilidad por teclado.
+  const focusTarget = listPickerEl.querySelector(".list-picker-choice, #list-picker-new-name");
+  if (focusTarget) focusTarget.focus();
+}
+
+function closeAddToListPicker() {
+  if (!listPickerEl) return;
+  listPickerEl.classList.remove("is-open");
+  listPickerEl.hidden = true;
+  pickerPayload = null;
+  pickerLists = [];
+  listPickerEl.innerHTML = "";
+}
+
+function _renderPicker(loading) {
+  if (!listPickerEl) return;
+  const title = pickerPayload ? pickerPayload.title : "";
+  let body;
+  if (loading) {
+    body = `<p class="muted smuted-sm">Cargando tus listas…</p>`;
+  } else if (pickerLists.length) {
+    const choices = pickerLists.map((l) => {
+      const count = Number(l.item_count) || 0;
+      return `
+        <button class="list-picker-choice" type="button" data-picker-action="choose-list" data-list-id="${esc(l.id)}">
+          <span class="list-picker-choice-name">${esc(l.name)}</span>
+          <span class="list-picker-choice-count">${count} ${count === 1 ? "título" : "títulos"}</span>
+        </button>`;
+    }).join("");
+    body = `
+      <p class="muted smuted-sm" id="list-picker-desc">Elige una lista para añadir «${esc(title)}».</p>
+      <div class="list-picker-choices" role="list">${choices}</div>
+      ${_pickerCreateFormHtml()}`;
+  } else {
+    body = `
+      <p class="muted smuted-sm" id="list-picker-desc">Aún no tienes listas. Crea una para añadir «${esc(title)}».</p>
+      ${_pickerCreateFormHtml()}`;
+  }
+  listPickerEl.innerHTML = `
+    <div class="list-picker-backdrop" data-picker-action="close"></div>
+    <div class="list-picker-card" role="dialog" aria-modal="true" aria-labelledby="list-picker-title" aria-describedby="list-picker-desc">
+      <button class="modal-close" type="button" data-picker-action="close" aria-label="Cerrar">✕</button>
+      <h2 class="list-picker-title" id="list-picker-title">Añadir a lista</h2>
+      ${body}
+    </div>`;
+}
+
+function _pickerCreateFormHtml() {
+  return `
+    <form class="list-picker-create" id="list-picker-create-form" novalidate>
+      <label class="control-label" for="list-picker-new-name">Nueva lista</label>
+      <div class="list-picker-create-row">
+        <input id="list-picker-new-name" class="login-input sharing-input" type="text" maxlength="120"
+               autocomplete="off" placeholder="Mi nueva lista">
+        <button class="btn" type="submit" data-picker-action="create-and-add">Crear y añadir</button>
+      </div>
+    </form>`;
+}
+
+// POST /api/lists/{id}/items con el payload actual. 201 → aviso + cierre
+// (AC-1/AC-2); duplicado (409) → aviso no bloqueante, selector abierto (AC-5).
+async function _pickerAddToList(listId) {
+  if (!pickerPayload) return;
+  const { ok, data } = await api("/api/lists/" + listId + "/items", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      tmdb_id: pickerPayload.tmdb_id,
+      media_type: pickerPayload.media_type,
+      title: pickerPayload.title,
+      year: pickerPayload.year,
+      poster_url: pickerPayload.poster_url,
+    }),
+  });
+  if (ok && data.ok) {
+    const list = pickerLists.find((l) => String(l.id) === String(listId));
+    const listName = list ? list.name : "la lista";
+    showMessage(`Añadido a «${listName}».`);
+    closeAddToListPicker();
+    // Si la lista afectada está desplegada en el gestor, refréscala para reflejar el alta.
+    if (sharingExpandedListId !== null) await loadSharing();
+    return;
+  }
+  if (data && data.error === PICKER_DUPLICATE_ERROR) {
+    showMessage("Ya está en esa lista");   // AC-5: aviso no bloqueante, selector abierto
+    return;
+  }
+  showMessage((data && data.error) || "No se pudo añadir el título.", "error");
+}
+
+// Crea la lista y, si se crea, añade el título a ella (AC-4).
+async function _pickerCreateAndAdd(input) {
+  const name = input.value.trim();
+  if (!name) { showMessage("Escribe un nombre para la lista.", "error"); return; }
+  const { ok, data } = await api("/api/lists", {
+    method: "POST", headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ name }),
+  });
+  if (ok && data.ok && data.id) {
+    pickerLists.push({ id: data.id, name, item_count: 0 });
+    await _pickerAddToList(data.id);
+  } else {
+    showMessage((data && data.error) || "No se pudo crear la lista.", "error");
+  }
+}
+
 // ── Listeners delegados (enganchados al cargar; #sharing-view ya en el DOM) ──
 if (sharingViewEl) {
   sharingViewEl.addEventListener("submit", (e) => {
@@ -303,5 +437,26 @@ if (sharingViewEl) {
       const itemId = btn.closest(".sharing-item")?.dataset.itemId;
       if (itemId) _removeItem(listId, itemId);
     }
+  });
+}
+
+// ── Listeners delegados del selector (#list-picker ya en el DOM inicial) ─────
+if (listPickerEl) {
+  listPickerEl.addEventListener("click", (e) => {
+    const trigger = e.target.closest("[data-picker-action]");
+    if (!trigger) return;
+    const action = trigger.dataset.pickerAction;
+    if (action === "close") { closeAddToListPicker(); }
+    else if (action === "choose-list") {
+      const listId = trigger.dataset.listId;
+      if (listId) _pickerAddToList(listId);
+    }
+  });
+
+  listPickerEl.addEventListener("submit", (e) => {
+    const form = e.target.closest("#list-picker-create-form");
+    if (!form) return;
+    e.preventDefault();
+    _pickerCreateAndAdd(form.querySelector("#list-picker-new-name"));
   });
 }

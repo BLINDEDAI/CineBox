@@ -120,6 +120,7 @@ function renderCollection() {
             <option value="vista"     ${m.status === "vista"     ? "selected" : ""}>Vista</option>
             <option value="abandonada"${m.status === "abandonada"? "selected" : ""}>Abandonada</option>
           </select>
+          <button class="icon-btn" data-action="add-to-list" type="button" aria-label="Añadir ${esc(m.title)} a una lista">＋ Lista</button>
           <button class="icon-btn" data-action="delete" type="button" aria-label="Eliminar">✕</button>
         </div>
       </div>
@@ -272,6 +273,16 @@ collectionEl.addEventListener("click", (e) => {
   }
   const action = e.target.closest("[data-action]")?.dataset.action;
   if (action === "delete") deleteMovie(id);
+  else if (action === "add-to-list" && movie) {
+    // Cuerpo de manejador → tiempo de llamada (PS-003); openAddToListPicker vive en sharing.js.
+    openAddToListPicker({
+      tmdb_id:    movie.tmdb_id,
+      media_type: movie.media_type,
+      title:      movie.title,
+      year:       movie.year,
+      poster_url: movie.poster_url,
+    });
+  }
   else if (action === "note") { editingNoteId = id; renderCollection(); }
   else if (action === "note-cancel") { editingNoteId = null; renderCollection(); }
   else if (action === "note-save" && movie) {

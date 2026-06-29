@@ -79,6 +79,9 @@ async function openDetail(tmdbId, type, hint = {}) {
       <button class="btn btn-sm" data-add-status="pendiente">+ Por ver</button>
       <button class="btn btn-sm btn-success" data-add-status="vista">✓ Vista</button>
     </div>` : `<div class="modal-status-chip"><span class="chip chip-status">${esc(existing.status)}</span></div>`}
+    <div class="modal-list-action">
+      <button class="btn-secondary btn-sm" type="button" id="modal-add-to-list">+ Añadir a lista</button>
+    </div>
     ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
     ${providersHtml}
     ${creditsHtml ? `<div class="modal-credits">${creditsHtml}</div>` : ""}
@@ -89,6 +92,20 @@ async function openDetail(tmdbId, type, hint = {}) {
     addBtns.addEventListener("click", (e) => {
       const btn = e.target.closest("[data-add-status]");
       if (btn) addFromModal(btn.dataset.addStatus);
+    });
+  }
+  const addToListBtn = document.getElementById("modal-add-to-list");
+  if (addToListBtn) {
+    addToListBtn.addEventListener("click", () => {
+      if (!modalContext) return;
+      // Cuerpo de manejador → tiempo de llamada (PS-003); openAddToListPicker vive en sharing.js.
+      openAddToListPicker({
+        tmdb_id:    modalContext.tmdbId,
+        media_type: modalContext.type,
+        title:      modalContext.title,
+        year:       modalContext.year,
+        poster_url: modalContext.poster_url,
+      });
     });
   }
   const similarSection = document.getElementById("modal-similar-section");
