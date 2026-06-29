@@ -2562,6 +2562,37 @@ html.cinebox-visited #welcome-screen { display: none; }
 }
 .side-link-logout[hidden] { display: none; }
 
+/* sidebar profile chip (generated avatar + username) */
+.profile-chip {
+  cursor: pointer;
+  gap: 12px;
+}
+.profile-chip[hidden] { display: none; }
+.profile-chip:hover {
+  background: rgba(255, 255, 255, 0.04);
+}
+.profile-chip-avatar {
+  flex: 0 0 auto;
+  width: 32px;
+  height: 32px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 0.78rem;
+  font-weight: 800;
+  color: #fff;
+  background-color: #31141c;
+  background-size: cover;
+  line-height: 1;
+}
+.profile-chip-label {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
 @media (max-width: 600px) {
   .login-card { padding: 32px 20px 24px; }
 }
