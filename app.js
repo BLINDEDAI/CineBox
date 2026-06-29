@@ -62,6 +62,72 @@ let editingNoteId = null;
 let editingPlatformId = null;
 let editingDateId = null;
 
+// ── Profile chip (sidebar) ──────────────────────────────────────────────────
+// Holds the last fetched profile so the click handler can branch without
+// re-fetching. Reset to null on logout.
+let _profileState = null;
+
+// Pure, deterministic avatar helpers (AC-5). Same username → same output.
+function _avatarInitials(username) {
+  const u = (username || "").trim();
+  if (!u) return "?";
+  return u.slice(0, 2).toUpperCase();
+}
+
+// Stable 32-bit hash (FNV-1a-ish) → two HSL hues for a deterministic gradient.
+function _avatarGradient(username) {
+  const u = username || "";
+  let hash = 2166136261;
+  for (let i = 0; i < u.length; i++) {
+    hash ^= u.charCodeAt(i);
+    hash = (hash * 16777619) >>> 0;
+  }
+  if (!u) {
+    // No-username placeholder: fixed neutral gradient (no username to derive from).
+    return "linear-gradient(135deg, #3a3f4b, #21242c)";
+  }
+  const h1 = hash % 360;
+  const h2 = (h1 + 40) % 360;
+  return `linear-gradient(135deg, hsl(${h1} 55% 42%), hsl(${h2} 55% 28%))`;
+}
+
+// Render/reveal the chip from the current _profileState. Username text is
+// rendered text-only (textContent) — never innerHTML of user data (US-*/SE-*).
+function _renderProfileChip() {
+  const chip = document.getElementById("profile-chip");
+  if (!chip) return;
+  const username = _profileState && _profileState.username;
+
+  chip.textContent = "";
+
+  const avatar = document.createElement("span");
+  avatar.className = "profile-chip-avatar";
+  avatar.setAttribute("aria-hidden", "true");
+  avatar.textContent = username ? _avatarInitials(username) : "?";
+  // Gradient via CSSOM only — strict CSP forbids inline style= (PS-006).
+  avatar.style.backgroundImage = _avatarGradient(username);
+
+  const label = document.createElement("span");
+  label.className = "profile-chip-label";
+  label.textContent = username ? username : "Elige tu nombre de usuario";
+
+  chip.appendChild(avatar);
+  chip.appendChild(label);
+
+  // Accessible name on every render (AC-7).
+  chip.setAttribute(
+    "aria-label",
+    username ? "Tu perfil, " + username : "Configura tu perfil",
+  );
+  chip.hidden = false;
+}
+
+function _hideProfileChip() {
+  const chip = document.getElementById("profile-chip");
+  if (chip) chip.hidden = true;
+  _profileState = null;
+}
+
 function showView(viewId) {
   document.body.dataset.activeView = viewId;
   document.querySelectorAll(".view").forEach((view) => {
@@ -234,6 +300,23 @@ document.addEventListener("keydown", (e) => {
   else if (editingNoteId !== null) { editingNoteId = null; renderCollection(); }
 });
 
+// Profile chip — navigate by current profile state (AC-2/AC-3/AC-4).
+// #profile-chip is a static element in index.html and showView is declared
+// above in this file → PS-003-safe at load.
+const profileChipEl = document.getElementById("profile-chip");
+if (profileChipEl) {
+  profileChipEl.addEventListener("click", () => {
+    const username = _profileState && _profileState.username;
+    const isPublic = _profileState && _profileState.is_public === true;
+    if (username && isPublic) {
+      location.assign("/u/" + encodeURIComponent(username));
+    } else {
+      // username-but-private OR no-username → settings (never build a /u/ URL).
+      showView("sharing-view");
+    }
+  });
+}
+
 document.body.dataset.activeView = "collection-view";
 renderGenreChips();
 
@@ -396,9 +479,28 @@ function _updateSidebarUser(email) {
     emailEl.textContent = email;
     emailEl.hidden  = false;
     logoutBtn.hidden = false;
+    _loadProfileChip();
   } else {
     emailEl.hidden   = true;
     logoutBtn.hidden = true;
+    _hideProfileChip();
+  }
+}
+
+// Fetch the profile once on authentication and render the chip. Degrades
+// gracefully: a failed/{ok:false} response leaves the chip hidden and never
+// throws; email/logout are unaffected.
+async function _loadProfileChip() {
+  try {
+    const { data } = await api("/api/profile");
+    if (!data || !data.ok || !data.profile) {
+      _hideProfileChip();
+      return;
+    }
+    _profileState = data.profile;
+    _renderProfileChip();
+  } catch (e) {
+    _hideProfileChip();
   }
 }
 
