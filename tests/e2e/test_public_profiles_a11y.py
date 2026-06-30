@@ -5,8 +5,11 @@ Covers:
            keyboard reachable, visible focus, target ≥ 24 px.
   AC-16 — public list page, es-ES, desktop+mobile: same a11y matrix.
   AC-17 — public profile page CWV lab: LCP ≤ 2.5s, CLS ≤ 0.1, TBT ≤ 200ms.
-  AC-18 — authed sharing-settings view (index.html #sharing-view), es-ES,
+  AC-18 — authed settings view (index.html #settings-view), es-ES,
            desktop+mobile: axe WCAG 2.2 A/AA, keyboard + visible focus.
+           UPDATED: formerly tested #sharing-view / showSharingView; migrated to
+           #settings-view / showSettingsView by settings-and-lists-reorganization
+           (2026-06-30). The old #sharing-view / sharing.js are gone.
 
 Strategy:
   - The real CineBox server is booted (via conftest.py base_url fixture).
@@ -32,8 +35,9 @@ PRODUCTION BUG (BUG-001 — Frontend Developer):
     <link rel="stylesheet" href="styles.css"> -> href="/styles.css"
     <script src="public.js" defer> -> src="/public.js"
 
-Note: The SPA authed view (AC-18) is tested without real Supabase auth by injecting
-a mock for the api() global used by sharing.js, so the sharing view renders.
+Note: The SPA authed view (AC-18) is tested without real Supabase auth by stubbing
+/api/profile + /api/lists (used by settings.js) and driving showSettingsView() via
+page.evaluate, so the settings view renders without a real Supabase session.
 """
 
 import json
@@ -256,8 +260,11 @@ def _route_public_list(page: Page, base_url: str, mock_data: dict = None):
     page.route(f"{base_url}/api/public/list/{_SHARE_TOKEN}", handle)
 
 
-def _route_sharing_api(page: Page, base_url: str):
-    """Intercept /api/profile and /api/lists so sharing.js renders without auth."""
+def _route_settings_api(page: Page, base_url: str):
+    """Intercept /api/profile and /api/lists so settings.js renders without auth.
+
+    Formerly _route_sharing_api (renamed by settings-and-lists-reorganization 2026-06-30).
+    """
 
     def profile_handle(route):
         route.fulfill(
@@ -295,6 +302,10 @@ def _route_sharing_api(page: Page, base_url: str):
 
     page.route(f"{base_url}/api/profile", profile_handle)
     page.route(f"{base_url}/api/lists", lists_handle)
+
+
+# Keep a backward-compat alias for the picker tests below (unchanged referencing)
+_route_sharing_api = _route_settings_api
 
 
 # ── AC-15: Public profile page a11y — desktop ─────────────────────────────────
@@ -575,17 +586,22 @@ def test_public_profile_cwv_lab(page: Page, base_url: str):
     print(f"\nCWV lab (public profile): LCP={lcp:.0f}ms, CLS={cls_val:.4f}, TBT={tbt:.0f}ms")
 
 
-# ── AC-18: Authed sharing-settings view a11y ─────────────────────────────────
+# ── AC-18: Authed settings view a11y (migrated from sharing-view) ─────────────
+#
+# MIGRATION NOTE (settings-and-lists-reorganization 2026-06-30):
+# The old "Compartir" view (#sharing-view / showSharingView / sharing.js) is now
+# the Ajustes view (#settings-view / showSettingsView / settings.js). These tests
+# are updated to drive the new surface. The old #sharing-view element is gone.
 
 
-def _navigate_to_sharing_view(page: Page, base_url: str):
-    """Open index.html, mock the auth and API, then click 'Compartir' nav."""
-    # Mock auth-required API calls so SPA doesn't redirect to login
-    # The SPA checks supabase session; we bypass by intercepting API calls
-    # and making sharing.js render with mock data.
-    _route_sharing_api(page, base_url)
+def _navigate_to_settings_view(page: Page, base_url: str):
+    """Open index.html, mock the auth and API, then drive showSettingsView().
 
-    # We also intercept /api/config (used by boot.js to get supabase credentials)
+    Replaces the former _navigate_to_sharing_view (which called showSharingView()
+    on #sharing-view). The new surface is #settings-view / showSettingsView().
+    """
+    _route_settings_api(page, base_url)
+
     def config_handle(route):
         route.fulfill(
             status=200,
@@ -595,97 +611,101 @@ def _navigate_to_sharing_view(page: Page, base_url: str):
 
     page.route(f"{base_url}/api/config", config_handle)
 
-    # Go to the main SPA page
     page.goto(base_url)
     page.wait_for_load_state("networkidle")
 
-    # Inject sharing module state directly and render the view
-    # (the nav button requires auth to be established — inject mock session state)
     page.evaluate("""() => {
-        // Simulate logged-in state so showView('sharing-view') renders the section
-        if (typeof showSharingView === 'function') {
-            // Make the sharing-view section visible
-            const view = document.getElementById('sharing-view');
+        const ws = document.getElementById('welcome-screen');
+        if (ws) ws.remove();
+        // Drive the production settings seam (settings-and-lists-reorganization).
+        // showSettingsView() is the public API of settings.js (renamed from sharing.js).
+        if (typeof showSettingsView === 'function') {
+            const view = document.getElementById('settings-view');
             if (view) {
-                // Hide all other views first
                 document.querySelectorAll('.view').forEach(v => v.hidden = true);
                 view.hidden = false;
-                // Force a render of the sharing view with mock data
-                showSharingView();
+                showSettingsView();
             }
         }
     }""")
-    page.wait_for_timeout(500)
+    page.wait_for_timeout(600)
 
 
 def test_sharing_view_a11y_desktop(page: Page, base_url: str):
-    """AC-18: sharing-settings view, desktop 1280px, axe WCAG 2.2 A/AA zero critical/serious."""
-    page.set_viewport_size({"width": 1280, "height": 800})
-    _navigate_to_sharing_view(page, base_url)
+    """AC-18 (migrated): settings view (#settings-view), desktop 1280px, axe WCAG 2.2 A/AA.
 
-    sharing_section = page.locator("#sharing-view")
-    # If sharing view could not be activated (no auth), skip with a note
-    is_hidden = sharing_section.get_attribute("hidden")
+    Formerly tested #sharing-view; now tests #settings-view (settings-and-lists-
+    reorganization 2026-06-30).
+    """
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _navigate_to_settings_view(page, base_url)
+
+    settings_section = page.locator("#settings-view")
+    is_hidden = settings_section.get_attribute("hidden")
     if is_hidden is not None:
         pytest.skip(
-            "AC-18: sharing-view requires authenticated session — "
-            "sharing.js could not render without Supabase. "
+            "AC-18: #settings-view could not be rendered without Supabase auth. "
             "Requires human verification in a live authed session."
         )
 
     _screenshot(page, "sharing-view-desktop")
 
     _inject_axe(page, base_url)
-    violations = _run_axe(page, "#sharing-view")
+    violations = _run_axe(page, "#settings-view")
     _screenshot(page, "sharing-view-desktop-axe")
 
     assert violations == [], (
-        f"AC-18: axe found {len(violations)} critical/serious violations in sharing view desktop: "
-        + json.dumps(violations, indent=2)
+        f"AC-18: axe found {len(violations)} critical/serious violations in "
+        f"#settings-view (desktop): " + json.dumps(violations, indent=2)
     )
 
 
 def test_sharing_view_a11y_mobile(page: Page, base_url: str):
-    """AC-18: sharing-settings view, mobile 375px, axe WCAG 2.2 A/AA zero critical/serious."""
-    page.set_viewport_size({"width": 375, "height": 667})
-    _navigate_to_sharing_view(page, base_url)
+    """AC-18 (migrated): settings view (#settings-view), mobile 375px, axe WCAG 2.2 A/AA.
 
-    sharing_section = page.locator("#sharing-view")
-    is_hidden = sharing_section.get_attribute("hidden")
+    Formerly tested #sharing-view; now tests #settings-view (settings-and-lists-
+    reorganization 2026-06-30).
+    """
+    page.set_viewport_size({"width": 375, "height": 667})
+    _navigate_to_settings_view(page, base_url)
+
+    settings_section = page.locator("#settings-view")
+    is_hidden = settings_section.get_attribute("hidden")
     if is_hidden is not None:
         pytest.skip(
-            "AC-18: sharing-view requires authenticated session — "
-            "sharing.js could not render without Supabase. "
+            "AC-18: #settings-view could not be rendered at 375px without Supabase auth. "
             "Requires human verification in a live authed session."
         )
 
     _screenshot(page, "sharing-view-mobile")
 
     _inject_axe(page, base_url)
-    violations = _run_axe(page, "#sharing-view")
+    violations = _run_axe(page, "#settings-view")
 
     assert violations == [], (
-        f"AC-18: axe found {len(violations)} critical/serious violations in sharing view mobile: "
-        + json.dumps(violations, indent=2)
+        f"AC-18: axe found {len(violations)} critical/serious violations in "
+        f"#settings-view (mobile): " + json.dumps(violations, indent=2)
     )
 
 
 def test_sharing_view_keyboard_focus(page: Page, base_url: str):
-    """AC-18: sharing view keyboard operable with visible focus."""
-    page.set_viewport_size({"width": 1280, "height": 800})
-    _navigate_to_sharing_view(page, base_url)
+    """AC-18 (migrated): settings view (#settings-view) keyboard operable with visible focus.
 
-    sharing_section = page.locator("#sharing-view")
-    is_hidden = sharing_section.get_attribute("hidden")
+    Formerly tested #sharing-view; now tests #settings-view (settings-and-lists-
+    reorganization 2026-06-30).
+    """
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _navigate_to_settings_view(page, base_url)
+
+    settings_section = page.locator("#settings-view")
+    is_hidden = settings_section.get_attribute("hidden")
     if is_hidden is not None:
         pytest.skip(
-            "AC-18: sharing-view requires authenticated session for keyboard test. "
+            "AC-18: #settings-view requires authenticated session for keyboard test. "
             "Requires human verification in a live authed session."
         )
 
-    # Tab to first interactive element in the sharing view
-    # Focus the section first then tab into it
-    sharing_section.focus()
+    settings_section.focus()
     page.keyboard.press("Tab")
 
     focused_tag = page.evaluate("document.activeElement.tagName")
@@ -706,7 +726,7 @@ def test_sharing_view_keyboard_focus(page: Page, base_url: str):
         or (focus_box_shadow not in ("none", ""))
     )
     assert has_visible_focus, (
-        f"No visible focus in sharing view: outline={focus_outline_width}, "
+        f"No visible focus in #settings-view: outline={focus_outline_width}, "
         f"box-shadow={focus_box_shadow}"
     )
     _screenshot(page, "sharing-view-keyboard-focus")
