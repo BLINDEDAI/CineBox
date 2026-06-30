@@ -4,10 +4,15 @@ Covers:
   AC-1 — authenticated + username: chip shows generated avatar + username in the
          sidebar footer near the email / "Cerrar sesión" controls.
   AC-2 — username + public profile: clicking the chip navigates to /u/<username>.
-  AC-3 — username + private profile: clicking opens the sharing settings view and
-         does NOT navigate to /u/<username>.
+  AC-3 — username + private profile: clicking opens the Ajustes settings view
+         (#settings-view) and does NOT navigate to /u/<username>.
+         UPDATED: formerly asserted 'sharing-view'; now asserts 'settings-view'
+         (settings-and-lists-reorganization 2026-06-30 — chip repointed to
+         showView("settings-view") for private/no-username states).
   AC-4 — no username: chip shows an invite (not a handle); clicking opens the
-         sharing settings view and never navigates to a /u/ URL.
+         settings view and never navigates to a /u/ URL.
+         UPDATED: see AC-3 note and test_chip_no_username_shows_invite_and_opens_sharing
+         (test function kept; body updated for new flow).
   AC-5 — deterministic avatar: same username yields identical initials + gradient,
          generated client-side (via page.evaluate over the app.js helpers).
   AC-6 — automated axe WCAG 2.2 A/AA scan (zero critical/serious) on the
@@ -248,11 +253,20 @@ def test_chip_public_navigates_to_public_profile(page: Page, base_url: str):
     )
 
 
-# ── AC-3: username + private → sharing settings (not /u/) ──────────────────────
+# ── AC-3: username + private → settings view (not /u/) ───────────────────────
+#
+# MIGRATION NOTE (settings-and-lists-reorganization 2026-06-30):
+# The chip was repointed from showView("sharing-view") to showView("settings-view")
+# for the private-profile and no-username states. The assertion is updated from
+# 'sharing-view' to 'settings-view'. The old #sharing-view section is gone.
 
 
 def test_chip_private_opens_sharing_view(page: Page, base_url: str):
-    """AC-3: clicking the chip (private) opens sharing settings, not /u/."""
+    """AC-3 (updated): clicking the chip (private) opens #settings-view, not /u/.
+
+    Formerly asserted active view == 'sharing-view'; now asserts 'settings-view'
+    because the chip was repointed by settings-and-lists-reorganization (2026-06-30).
+    """
     page.set_viewport_size({"width": 1280, "height": 800})
     _mount_chip(page, base_url, _PROFILE_PRIVATE)
 
@@ -266,7 +280,9 @@ def test_chip_private_opens_sharing_view(page: Page, base_url: str):
     page.wait_for_timeout(300)
 
     active = page.evaluate("() => document.body.dataset.activeView")
-    assert active == "sharing-view", f"AC-3: expected sharing-view, got {active}"
+    assert active == "settings-view", (
+        f"AC-3: expected 'settings-view' (chip was repointed from sharing-view), got {active!r}"
+    )
     assert not navigated["u"], (
         "AC-3: must NOT navigate to a /u/ URL for a private profile"
     )

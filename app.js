@@ -281,7 +281,8 @@ function showView(viewId) {
     else loadTrending();
   }
   if (viewId === "stats-view") renderStatsView();
-  if (viewId === "sharing-view") showSharingView();
+  if (viewId === "lists-view") showListsView();
+  if (viewId === "settings-view") showSettingsView();
 }
 
 // ---- Eventos ----
@@ -441,7 +442,7 @@ if (profileChipEl) {
       location.assign("/u/" + encodeURIComponent(username));
     } else {
       // username-but-private OR no-username → settings (never build a /u/ URL).
-      showView("sharing-view");
+      showView("settings-view");
     }
   });
 }
@@ -658,12 +659,18 @@ async function initApp() {
     _setLoginMode(_authMode === "login" ? "register" : "login");
   });
 
-  // 8. Cerrar sesión
-  document.getElementById("logout-btn").addEventListener("click", async () => {
-    if (!_supabase) return;
-    await _supabase.auth.signOut();
-    _updateSidebarUser(null);
-  });
+  // 8. Cerrar sesión (footer). Comparte el camino con el botón de Ajustes → Cuenta.
+  document.getElementById("logout-btn").addEventListener("click", () => { signOut(); });
+}
+
+// Cierre de sesión único. Lo invocan tanto el botón del footer (#logout-btn)
+// como el de Ajustes → Cuenta (#settings-logout-btn, en settings.js). Cuerpo de
+// función → tiempo de llamada (PS-003), así que settings.js (cargado antes) lo
+// resuelve sin problema. `_updateSidebarUser(null)` dispara `resetSettingsState()`.
+async function signOut() {
+  if (!_supabase) return;
+  await _supabase.auth.signOut();
+  _updateSidebarUser(null);
 }
 
 function _updateSidebarUser(email) {
@@ -678,6 +685,11 @@ function _updateSidebarUser(email) {
     emailEl.hidden   = true;
     logoutBtn.hidden = true;
     _hideProfileChip();
+    // Logout: limpia el estado cacheado + el DOM de Ajustes/Mis listas para que
+    // una cuenta posterior nunca vea datos de la anterior (AC-8 / AC-9).
+    // resetSettingsState vive en settings.js (cargado antes); cuerpo de función
+    // → tiempo de llamada, PS-003-safe.
+    resetSettingsState();
   }
 }
 

@@ -2778,7 +2778,9 @@ html.cinebox-visited #welcome-screen { display: none; }
 .pub-state-home { margin-top: 8px; }
 
 /* ════════════════════════════════════════════════════════════════════════
-   Vista "Compartir" (#sharing-view, sharing.js) en el SPA autenticado.
+   Vistas "Mis listas" (#lists-view) y "Ajustes" (#settings-view, settings.js)
+   en el SPA autenticado. Reusan las clases .sharing-* / .spanel (la antigua
+   vista "Compartir" se dividió en estas dos — ver design-decisions.md).
    ════════════════════════════════════════════════════════════════════════ */
 .sharing-panels {
   display: grid;
@@ -2900,6 +2902,46 @@ html.cinebox-visited #welcome-screen { display: none; }
   font-size: 0.55rem;
 }
 .sharing-item-title { flex: 1 1 auto; }
+
+/* ── Ajustes → Perfil: avatar generado (reusa el gradiente del chip) ── */
+.settings-profile-head {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-top: 8px;
+}
+.settings-avatar {
+  flex: 0 0 auto;
+  width: 56px;
+  height: 56px;
+  border-radius: 50%;
+  display: inline-grid;
+  place-items: center;
+  font-size: 1.1rem;
+  font-weight: 800;
+  color: #fff;
+  background-color: #31141c;
+  background-size: cover;
+  line-height: 1;
+}
+.settings-profile-id { flex: 1 1 auto; min-width: 0; }
+.settings-profile-id p { margin: 0; }
+
+/* ── Ajustes → Cuenta: email (text-only) + cerrar sesión ── */
+.settings-account-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  margin-top: 12px;
+}
+.settings-account-email {
+  font-weight: 600;
+  word-break: break-all;
+}
+.settings-logout-btn {
+  margin-top: 16px;
+  min-height: 40px;
+}
 
 /* ── Selector "Añadir a lista" (#list-picker) — reusa el patrón del modal ── */
 .list-picker {
