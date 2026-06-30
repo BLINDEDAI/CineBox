@@ -2991,3 +2991,79 @@ html.cinebox-visited #welcome-screen { display: none; }
 .list-picker-create-row .sharing-input {
   flex: 1 1 160px;
 }
+
+/* ── Username at registration: field hint + one-time blocking gate ── */
+.login-field-username[hidden] { display: none; }
+
+.login-username-hint {
+  margin: 2px 0 0;
+  min-height: 1.1em;
+  font-size: 0.82rem;
+  color: #ffb4b0;
+}
+.login-username-hint:empty { min-height: 0; }
+
+/* #username-gate — blocking interstitial; reuses the .list-picker dialog pattern */
+.username-gate {
+  position: fixed;
+  inset: 0;
+  z-index: 120; /* above login screen + list-picker (90) + modal (80) */
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 200ms ease, visibility 200ms ease;
+}
+.username-gate[hidden] { display: none; }
+.username-gate.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+.username-gate-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+}
+.username-gate-card {
+  position: relative;
+  width: min(440px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(17, 23, 38, 0.98), rgba(8, 11, 20, 0.98));
+  box-shadow: var(--shadow);
+  transform: scale(0.96) translateY(14px);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.username-gate.is-open .username-gate-card {
+  transform: scale(1) translateY(0);
+}
+.username-gate-title {
+  margin: 0 0 6px;
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
+}
+.username-gate-intro {
+  margin: 0 0 16px;
+  font-size: 0.9rem;
+  color: var(--text-soft);
+}
+.username-gate-form {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+}
+.username-gate-btn {
+  width: 100%;
+  min-height: 44px;
+  padding: 13px;
+  border-radius: 12px;
+  font-size: 1rem;
+  font-weight: 700;
+  letter-spacing: 0.05em;
+  background: linear-gradient(135deg, #ff443d 0%, #c2393a 100%);
+}

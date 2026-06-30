@@ -6,6 +6,44 @@ let _currentUser = null;
 let _currentSession = null; // cacheada por onAuthStateChange; evita llamar a getSession() en cada api()
 let _authMode = "login"; // "login" | "register"
 
+// ── Username validation (mirror of server-side _normalize_username) ──────────
+// Client-side mirror of server.py's _USERNAME_RE + RESERVED_USERNAMES. Advisory
+// only — the authoritative validation + uniqueness is the PATCH /api/profile
+// claim (a 409 there is the real "taken" signal; see api() status field).
+const _USERNAME_RE = /^[a-z0-9_-]{3,30}$/;
+const _RESERVED_USERNAMES = new Set([
+  "api", "u", "l", "admin", "assets", "health", "config", "vendor", "public",
+]);
+
+// Returns an es-ES error string when the candidate is locally invalid, or null
+// when it is well-formed (still subject to the authoritative availability check).
+function _usernameFormatError(raw) {
+  const name = (raw || "").trim().toLowerCase();
+  if (!name) return "Elige un nombre de usuario.";
+  if (!_USERNAME_RE.test(name)) {
+    return "Usa entre 3 y 30 caracteres: minúsculas, números, guion y guion bajo.";
+  }
+  if (_RESERVED_USERNAMES.has(name)) return "Ese nombre está reservado, elige otro.";
+  return null;
+}
+
+// Advisory availability check against the anonymous endpoint. Returns one of
+// "ok" | "taken" | "invalid" | "unknown" — "unknown" on any network/HTTP error
+// so a failed check degrades to advisory-unknown and never hard-blocks (the
+// authoritative claim still protects integrity).
+async function _checkUsernameAvailable(name) {
+  try {
+    const { ok, data } = await api(
+      "/api/public/username-available?u=" + encodeURIComponent(name),
+    );
+    if (!ok || !data || data.ok !== true) return "unknown";
+    if (data.available === true) return "ok";
+    return data.reason === "invalid" ? "invalid" : "taken";
+  } catch (e) {
+    return "unknown";
+  }
+}
+
 function _showLoginScreen() {
   const s = document.getElementById("login-screen");
   if (s) s.hidden = false;
@@ -23,15 +61,20 @@ function _setLoginMode(mode) {
   const toggle    = document.getElementById("login-toggle");
   const errorEl   = document.getElementById("login-error");
   const successEl = document.getElementById("login-success");
+  const usernameField = document.getElementById("login-username-field");
+  const usernameHint  = document.getElementById("login-username-hint");
   if (mode === "register") {
     heading.textContent = "Crear cuenta";
     submit.textContent  = "Registrarse";
     toggle.innerHTML    = '¿Ya tienes cuenta? <span>Inicia sesión</span>';
+    if (usernameField) usernameField.hidden = false;
   } else {
     heading.textContent = "Iniciar sesión";
     submit.textContent  = "Entrar";
     toggle.innerHTML    = '¿No tienes cuenta? <span>Regístrate</span>';
+    if (usernameField) usernameField.hidden = true;
   }
+  if (usernameHint) usernameHint.textContent = "";
   errorEl.hidden   = true;
   successEl.hidden = true;
 }
@@ -126,6 +169,92 @@ function _hideProfileChip() {
   const chip = document.getElementById("profile-chip");
   if (chip) chip.hidden = true;
   _profileState = null;
+}
+
+// ── One-time blocking username gate ──────────────────────────────────────────
+// Shown when an authenticated user has no username (legacy account, raced new
+// user, or absent/failed metadata claim). Non-dismissable until a valid, available
+// username is accepted via the authoritative PATCH /api/profile claim.
+let _usernameGateLastFocus = null;
+
+function _showUsernameGate() {
+  const gate = document.getElementById("username-gate");
+  if (!gate) return;
+  _usernameGateLastFocus = document.activeElement;
+  const hint = document.getElementById("username-gate-hint");
+  if (hint) hint.textContent = "";
+  gate.hidden = false;
+  gate.classList.add("is-open");
+  // Focus the first control on open (mirrors the #list-picker dialog pattern).
+  const input = document.getElementById("username-gate-input");
+  if (input) input.focus();
+}
+
+function _hideUsernameGate() {
+  const gate = document.getElementById("username-gate");
+  if (!gate || gate.hidden) return;
+  gate.classList.remove("is-open");
+  gate.hidden = true;
+  if (_usernameGateLastFocus && typeof _usernameGateLastFocus.focus === "function") {
+    _usernameGateLastFocus.focus();
+  }
+  _usernameGateLastFocus = null;
+}
+
+// Validate + check availability + claim authoritatively. On 200 reveal the app;
+// on 409 keep the gate open with "ya está en uso"; on 400/other keep it open.
+async function _submitUsernameGate() {
+  const input = document.getElementById("username-gate-input");
+  const hint  = document.getElementById("username-gate-hint");
+  const submitBtn = document.getElementById("username-gate-submit");
+  const name = (input ? input.value : "").trim().toLowerCase();
+
+  const fmtError = _usernameFormatError(name);
+  if (fmtError) {
+    if (hint) hint.textContent = fmtError;
+    if (input) input.focus();
+    return;
+  }
+  if (hint) hint.textContent = "Comprobando disponibilidad…";
+  const availability = await _checkUsernameAvailable(name);
+  if (availability === "taken") {
+    if (hint) hint.textContent = "Ese nombre ya está en uso, elige otro.";
+    if (input) input.focus();
+    return;
+  }
+  if (availability === "invalid") {
+    if (hint) hint.textContent = "Ese nombre no es válido, elige otro.";
+    if (input) input.focus();
+    return;
+  }
+
+  if (submitBtn) { submitBtn.disabled = true; submitBtn.textContent = "Guardando…"; }
+  try {
+    const { status } = await api("/api/profile", {
+      method: "PATCH",
+      body: JSON.stringify({ username: name }),
+    });
+    if (status === 200) {
+      // Re-fetch the canonical profile, hide the gate, reveal the app + chip.
+      const { data } = await api("/api/profile");
+      if (data && data.ok && data.profile) _profileState = data.profile;
+      if (hint) hint.textContent = "";
+      _hideUsernameGate();
+      _renderProfileChip();
+      return;
+    }
+    if (status === 409) {
+      if (hint) hint.textContent = "Ese nombre ya está en uso, elige otro.";
+      if (input) input.focus();
+      return;
+    }
+    if (hint) hint.textContent = "Ese nombre no es válido, elige otro.";
+    if (input) input.focus();
+  } catch (e) {
+    if (hint) hint.textContent = "No se pudo guardar, inténtalo de nuevo.";
+  } finally {
+    if (submitBtn) { submitBtn.disabled = false; submitBtn.textContent = "Guardar y continuar"; }
+  }
 }
 
 function showView(viewId) {
@@ -317,6 +446,38 @@ if (profileChipEl) {
   });
 }
 
+// One-time username gate wiring (PS-003-safe: #username-gate is static in
+// index.html; el/esc/api/showView/showMessage are all earlier-loaded globals).
+const usernameGateEl = el("username-gate");
+if (usernameGateEl) {
+  const gateForm = el("username-gate-form");
+  if (gateForm) {
+    gateForm.addEventListener("submit", (e) => {
+      e.preventDefault();
+      _submitUsernameGate();
+    });
+  }
+  // Real focus-trap: keep Tab inside the gate and swallow Escape (non-dismissable).
+  usernameGateEl.addEventListener("keydown", (e) => {
+    if (usernameGateEl.hidden) return;
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); return; }
+    if (e.key !== "Tab") return;
+    const focusable = usernameGateEl.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+}
+
 document.body.dataset.activeView = "collection-view";
 renderGenreChips();
 
@@ -433,15 +594,48 @@ async function initApp() {
     const errorEl   = document.getElementById("login-error");
     const successEl = document.getElementById("login-success");
     const submitBtn = document.getElementById("login-submit");
+    const usernameInput = document.getElementById("login-username");
+    const usernameHint  = document.getElementById("login-username-hint");
 
     errorEl.hidden   = true;
     successEl.hidden = true;
+
+    // Register mode: a valid + available username is required before signUp (AC-1/AC-2/AC-3).
+    let desiredUsername = null;
+    if (_authMode === "register") {
+      desiredUsername = (usernameInput ? usernameInput.value : "").trim().toLowerCase();
+      const fmtError = _usernameFormatError(desiredUsername);
+      if (fmtError) {
+        if (usernameHint) usernameHint.textContent = fmtError;
+        if (usernameInput) usernameInput.focus();
+        return; // submit blocked client-side; signUp not called
+      }
+      if (usernameHint) usernameHint.textContent = "Comprobando disponibilidad…";
+      const availability = await _checkUsernameAvailable(desiredUsername);
+      if (availability === "taken") {
+        if (usernameHint) usernameHint.textContent = "Ese nombre ya está en uso, elige otro.";
+        if (usernameInput) usernameInput.focus();
+        return;
+      }
+      if (availability === "invalid") {
+        if (usernameHint) usernameHint.textContent = "Ese nombre no es válido, elige otro.";
+        if (usernameInput) usernameInput.focus();
+        return;
+      }
+      // "ok" or "unknown" (advisory) → proceed; the claim is authoritative.
+      if (usernameHint) usernameHint.textContent = "";
+    }
+
     submitBtn.disabled = true;
     submitBtn.textContent = _authMode === "register" ? "Registrando…" : "Entrando…";
 
     try {
       if (_authMode === "register") {
-        const { error } = await _supabase.auth.signUp({ email, password });
+        const { error } = await _supabase.auth.signUp({
+          email,
+          password,
+          options: { data: { desired_username: desiredUsername } },
+        });
         if (error) throw error;
         successEl.textContent = "¡Cuenta creada! Revisa tu email para confirmarla.";
         successEl.hidden = false;
@@ -498,10 +692,48 @@ async function _loadProfileChip() {
       return;
     }
     _profileState = data.profile;
+    // No username yet (legacy account or raced new user): try a silent auto-claim
+    // from the Supabase user_metadata carrier, else fall back to the blocking gate.
+    if (!_profileState.username) {
+      await _claimOrGateUsername();
+      return;
+    }
+    _hideUsernameGate();
     _renderProfileChip();
   } catch (e) {
     _hideProfileChip();
   }
+}
+
+// First-login auto-claim + one-time gate trigger. The desired_username in
+// user_metadata is untrusted: the server re-validates it at the PATCH claim.
+async function _claimOrGateUsername() {
+  const desired =
+    _currentUser &&
+    _currentUser.user_metadata &&
+    _currentUser.user_metadata.desired_username;
+  if (desired) {
+    try {
+      const { status } = await api("/api/profile", {
+        method: "PATCH",
+        body: JSON.stringify({ username: desired }),
+      });
+      if (status === 200) {
+        // Claimed authoritatively — re-fetch the canonical profile and proceed.
+        const { data } = await api("/api/profile");
+        if (data && data.ok && data.profile && data.profile.username) {
+          _profileState = data.profile;
+          _hideUsernameGate();
+          _renderProfileChip();
+          return;
+        }
+      }
+      // 409 (taken) / 400 (invalid/reserved) / anything else → fall through to gate.
+    } catch (e) {
+      // network error → gate
+    }
+  }
+  _showUsernameGate();
 }
 
 initApp();

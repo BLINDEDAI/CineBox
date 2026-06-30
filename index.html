@@ -51,6 +51,11 @@
             <label class="login-label" for="login-password">Contraseña</label>
             <input class="login-input" type="password" id="login-password" placeholder="••••••••" autocomplete="current-password" required>
           </div>
+          <div class="login-field login-field-username" id="login-username-field" hidden>
+            <label class="login-label" for="login-username">Nombre de usuario</label>
+            <input class="login-input" type="text" id="login-username" placeholder="tu_nombre" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="30" aria-describedby="login-username-hint">
+            <p id="login-username-hint" class="login-username-hint" aria-live="polite"></p>
+          </div>
           <p id="login-error" class="login-error" hidden></p>
           <p id="login-success" class="login-success" hidden></p>
           <button id="login-submit" class="btn login-btn" type="submit">Entrar</button>
@@ -58,6 +63,22 @@
         <button id="login-toggle" class="login-toggle-btn" type="button">
           ¿No tienes cuenta? <span>Regístrate</span>
         </button>
+      </div>
+    </div>
+
+    <div id="username-gate" class="username-gate" role="dialog" aria-modal="true" aria-labelledby="username-gate-title" hidden>
+      <div class="username-gate-backdrop"></div>
+      <div class="username-gate-card">
+        <h2 id="username-gate-title" class="username-gate-title">Elige tu nombre de usuario</h2>
+        <p class="username-gate-intro">Para continuar necesitas un nombre de usuario público. Tu colección está a salvo y aparecerá en cuanto lo elijas.</p>
+        <form id="username-gate-form" class="username-gate-form" novalidate>
+          <div class="login-field">
+            <label class="login-label" for="username-gate-input">Nombre de usuario</label>
+            <input class="login-input" type="text" id="username-gate-input" placeholder="tu_nombre" autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false" maxlength="30" aria-describedby="username-gate-hint">
+            <p id="username-gate-hint" class="login-username-hint" aria-live="polite"></p>
+          </div>
+          <button id="username-gate-submit" class="btn username-gate-btn" type="submit">Guardar y continuar</button>
+        </form>
       </div>
     </div>
 
