@@ -591,6 +591,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/similar":  return self._similar()
         if path == "/api/profile":  return self._get_profile()
         if path == "/api/lists":    return self._list_lists()
+        if path == "/api/public/username-available": return self._username_available()
         m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})$", path)
         if m:                       return self._get_list(m.group(1))
         m = re.match(r"^/api/public/profile/([a-z0-9_-]{3,30})$", path)
@@ -1363,6 +1364,30 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True})
 
     # ── Endpoints públicos (sin auth, rate-limit por IP) ─────────────────────────
+
+    def _username_available(self):
+        """Endpoint público anónimo (advisory) para la elección de username en
+        registro / la pasarela de primer acceso. Limiter ANTES de cualquier
+        lectura de DB (ADR-006/AS-013). Comprueba SOLO usernames, nunca emails;
+        nunca reserva ni escribe. `_normalize_username` (None → reason:"invalid",
+        sin DB); si normaliza, una sola existencia parametrizada (PS-002) →
+        reason:"taken"|"ok". Respuesta siempre vía `_json`."""
+        if self._public_rate_limited():
+            print("audit " + json.dumps({"action": "username_available.throttled", "timestamp": datetime.now(timezone.utc).isoformat()}, ensure_ascii=False)); return
+        raw = (self._qs().get("u") or [""])[0]
+        # Acota la longitud ANTES de normalizar: el formato válido es 3-30, así
+        # que un valor desmesurado es entrada malformada → 400 (US-040).
+        if len(raw) > 64:
+            return self._json(400, {"ok": False, "error": "Parámetro inválido"})
+        norm = _normalize_username(raw)
+        if norm is None:
+            # Inválido / reservado → advisory sin tocar la DB.
+            return self._json(200, {"ok": True, "available": False, "reason": "invalid"})
+        with get_db() as cur:
+            cur.execute("SELECT 1 FROM profiles WHERE username = %s", (norm,))
+            taken = cur.fetchone() is not None
+        if taken: return self._json(200, {"ok": True, "available": False, "reason": "taken"})
+        return self._json(200, {"ok": True, "available": True, "reason": "ok"})
 
     def _public_profile(self, username):
         if self._public_rate_limited():

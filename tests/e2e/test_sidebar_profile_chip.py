@@ -276,29 +276,50 @@ def test_chip_private_opens_sharing_view(page: Page, base_url: str):
 
 
 def test_chip_no_username_shows_invite_and_opens_sharing(page: Page, base_url: str):
-    """AC-4: no-username chip shows invite (not a handle), click opens settings."""
+    """AC-4 (updated for choose-username-at-registration): when username is null,
+    the blocking #username-gate is shown instead of the old invite chip.
+
+    The choose-username-at-registration feature (2026-06-30) supersedes the old
+    invite-chip path: _loadProfileChip() now calls _claimOrGateUsername() when
+    username is null, which shows the gate — the profile chip is not rendered for
+    the no-username state any more. This test is updated to assert the new expected
+    behaviour (gate visible, chip absent) instead of the now-stale invite chip.
+    """
     page.set_viewport_size({"width": 1280, "height": 800})
-    _mount_chip(page, base_url, _PROFILE_NO_USERNAME)
+    _route_config(page, base_url)
+    _route_profile(page, base_url, _PROFILE_NO_USERNAME)
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
 
-    label = page.locator("#profile-chip .profile-chip-label")
-    text = label.inner_text()
-    assert text == "Elige tu nombre de usuario", f"AC-4: invite label wrong: {text!r}"
+    page.evaluate(
+        """() => {
+            const ws = document.getElementById('welcome-screen');
+            if (ws) ws.remove();
+            _currentUser = null;  // no desired_username -> straight to gate
+            _updateSidebarUser('user@example.com');
+            // Do NOT call _loadProfileChip() a second time; _updateSidebarUser already
+            // called it internally, consuming the single GET route slot.
+        }"""
+    )
+    # Wait for the gate to appear
+    page.wait_for_function(
+        "() => !document.getElementById('username-gate').hidden",
+        timeout=5000,
+    )
 
-    aria = page.locator("#profile-chip").get_attribute("aria-label")
-    assert aria == "Configura tu perfil", f"AC-4: invite aria-label wrong: {aria!r}"
-
+    # Gate is visible; profile chip is NOT rendered for no-username state
+    gate_hidden = page.evaluate("() => document.getElementById('username-gate').hidden")
+    assert not gate_hidden, (
+        "AC-4 (updated): #username-gate must be visible when username is null"
+    )
+    # No navigated /u/ URL (same invariant as before)
     navigated = {"u": False}
     page.on(
         "framenavigated",
         lambda f: navigated.__setitem__("u", navigated["u"] or "/u/" in f.url),
     )
-
-    page.locator("#profile-chip").click()
-    page.wait_for_timeout(300)
-
-    active = page.evaluate("() => document.body.dataset.activeView")
-    assert active == "sharing-view", f"AC-4: expected sharing-view, got {active}"
-    assert not navigated["u"], "AC-4: must NEVER build a /u/ URL with no username"
+    page.wait_for_timeout(200)
+    assert not navigated["u"], "AC-4: must NEVER navigate to a /u/ URL with no username"
     _screenshot(page, "chip-no-username")
 
 
@@ -399,15 +420,40 @@ def test_chip_a11y_axe_mobile(page: Page, base_url: str):
 
 
 def test_chip_a11y_axe_no_username_state(page: Page, base_url: str):
-    """AC-6: the no-username invite state also passes axe (zero crit/serious)."""
+    """AC-6 (updated for choose-username-at-registration): the no-username state now
+    shows the blocking #username-gate instead of the invite chip. We scan the gate's
+    WCAG 2.2 A/AA compliance here (zero critical/serious violations).
+
+    The choose-username-at-registration feature (2026-06-30) replaced the invite chip
+    with a blocking gate for all username=null users. The gate axe scan is fully covered
+    by test_choose_username_at_registration.py::test_ac8_username_gate_axe_desktop.
+    This test is updated to use the gate state so the full e2e suite stays coherent.
+    """
     page.set_viewport_size({"width": 1280, "height": 800})
-    _mount_chip(page, base_url, _PROFILE_NO_USERNAME)
+    _route_config(page, base_url)
+    _route_profile(page, base_url, _PROFILE_NO_USERNAME)
+    page.goto(base_url)
+    page.wait_for_load_state("networkidle")
+
+    page.evaluate(
+        """() => {
+            const ws = document.getElementById('welcome-screen');
+            if (ws) ws.remove();
+            _currentUser = null;
+            _updateSidebarUser('user@example.com');
+        }"""
+    )
+    page.wait_for_function(
+        "() => !document.getElementById('username-gate').hidden",
+        timeout=5000,
+    )
 
     _inject_axe(page, base_url)
-    violations = _run_axe(page)
+    violations = _run_axe(page, "#username-gate")
 
     assert violations == [], (
-        f"AC-6: axe found {len(violations)} critical/serious violations (no-username): "
+        f"AC-6 (updated): axe found {len(violations)} critical/serious violations "
+        f"on #username-gate (no-username state): "
         + json.dumps(violations, indent=2)
     )
 
