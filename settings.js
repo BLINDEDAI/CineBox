@@ -18,6 +18,11 @@ let settingsLists = [];       // [{id, name, visibility, share_token, item_count
 let sharingExpandedListId = null; // id de la lista cuyos items están desplegados
 let sharingExpandedItems = []; // items de la lista desplegada
 
+// Longitud mínima de la nueva contraseña (validación cliente; el mínimo del
+// servidor de Supabase Auth es el respaldo). Literal — no referencia ningún
+// global, seguro en tiempo de carga (PS-003).
+const MIN_PASSWORD_LENGTH = 8;
+
 // ── Estado del selector "Añadir a lista" ────────────────────────────────────
 let pickerPayload = null;   // {tmdb_id, media_type, title, year, poster_url} del título a añadir
 let pickerLists = [];       // listas del usuario cargadas al abrir el selector
@@ -131,6 +136,24 @@ function renderSettingsView() {
         <button id="settings-logout-btn" class="btn-secondary settings-logout-btn" type="button" data-settings-action="logout">
           Cerrar sesión
         </button>
+
+        <h3 class="settings-password-title">Cambiar contraseña</h3>
+        <form id="settings-password-form" class="sharing-form settings-password-form" novalidate>
+          <label class="control-label" for="settings-current-password">Contraseña actual</label>
+          <input id="settings-current-password" class="login-input" type="password"
+                 autocomplete="current-password" aria-describedby="settings-password-hint">
+
+          <label class="control-label" for="settings-new-password">Nueva contraseña</label>
+          <input id="settings-new-password" class="login-input" type="password"
+                 autocomplete="new-password" aria-describedby="settings-password-hint">
+
+          <label class="control-label" for="settings-new-password-repeat">Repetir nueva contraseña</label>
+          <input id="settings-new-password-repeat" class="login-input" type="password"
+                 autocomplete="new-password" aria-describedby="settings-password-hint">
+
+          <button class="btn settings-password-submit" type="submit" data-settings-action="change-password">Cambiar contraseña</button>
+          <p id="settings-password-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
+        </form>
       </section>
     </div>`;
 
@@ -342,6 +365,110 @@ async function _copyLink(token) {
   window.prompt("Copia el enlace:", url);
 }
 
+// ── Cambiar contraseña (Ajustes → Cuenta) ───────────────────────────────────
+// Re-verifica la contraseña actual en un cliente supabase-js AISLADO (probe,
+// persistSession:false) para no tocar la sesión viva (ADR-008), y solo entonces
+// aplica la nueva con updateUser en el cliente principal `_supabase`. Los tres
+// valores son secretos: nunca se loguean, ni van a la URL, ni al backend; se
+// limpian con form.reset() al éxito. Cuerpo de manejador → tiempo de llamada,
+// por lo que las referencias a `window.supabase`, `_supabase`, `_currentUser`
+// son PS-003-safe.
+async function _changePassword(form) {
+  const currentEl = form.querySelector("#settings-current-password");
+  const newEl = form.querySelector("#settings-new-password");
+  const repeatEl = form.querySelector("#settings-new-password-repeat");
+  const hintEl = form.querySelector("#settings-password-hint");
+  const submitEl = form.querySelector("[data-settings-action='change-password']");
+  if (!currentEl || !newEl || !repeatEl) return;
+
+  // (1) Leer los tres valores SIN recortar (una contraseña puede llevar
+  // espacios iniciales/finales legítimos).
+  const current = currentEl.value;
+  const newValue = newEl.value;
+  const repeat = repeatEl.value;
+
+  const fail = (msg, focusEl) => {
+    if (hintEl) hintEl.textContent = msg;
+    showMessage(msg, "error");
+    if (focusEl) focusEl.focus();
+  };
+
+  // (2) Validación cliente ANTES de cualquier llamada de red (AC-4/5/7):
+  // todos no vacíos; longitud mínima; nueva === repetición. Cualquier fallo
+  // muestra el mensaje, enfoca el campo y RETORNA sin llamar a Supabase.
+  if (!current) { fail("Introduce tu contraseña actual.", currentEl); return; }
+  if (!newValue) { fail("Introduce la nueva contraseña.", newEl); return; }
+  if (!repeat) { fail("Repite la nueva contraseña.", repeatEl); return; }
+  if (newValue.length < MIN_PASSWORD_LENGTH) {
+    fail("La nueva contraseña debe tener al menos 8 caracteres.", newEl);
+    return;
+  }
+  if (newValue !== repeat) {
+    fail("Las contraseñas no coinciden.", repeatEl);
+    return;
+  }
+
+  // (3) Deshabilitar el submit durante la llamada en vuelo (evita doble envío).
+  if (submitEl) submitEl.disabled = true;
+  const reenable = () => { if (submitEl) submitEl.disabled = false; };
+
+  // (4) Construir el cliente probe AISLADO (persistSession/autoRefreshToken off).
+  let probe;
+  try {
+    const cfg = await fetch("/api/config").then((r) => r.json());
+    probe = window.supabase.createClient(cfg.supabase_url, cfg.supabase_anon_key, {
+      auth: { persistSession: false, autoRefreshToken: false },
+    });
+  } catch (e) {
+    // Fallo de red/inesperado al preparar la verificación → genérico (AC-6).
+    if (hintEl) hintEl.textContent = "No se pudo cambiar la contraseña. Inténtalo de nuevo.";
+    showMessage("No se pudo cambiar la contraseña. Inténtalo de nuevo.", "error");
+    reenable();
+    return;
+  }
+
+  // (5) Re-verificar la contraseña actual en el cliente probe (AC-3). Sin email
+  // cacheado no hay forma de re-verificar → mismo camino de error.
+  const email = _currentUser && _currentUser.email;
+  if (!email) {
+    fail("La contraseña actual no es correcta.", currentEl);
+    reenable();
+    return;
+  }
+  let badPw;
+  try {
+    ({ error: badPw } = await probe.auth.signInWithPassword({ email, password: current }));
+  } catch (e) {
+    badPw = e;
+  }
+  if (badPw) {
+    fail("La contraseña actual no es correcta.", currentEl);
+    reenable();
+    return;
+  }
+
+  // (6) Aplicar la nueva contraseña en el cliente PRINCIPAL (AC-2). Cualquier
+  // error → mensaje GENÉRICO (nunca el error crudo del SDK — invariants; AC-6).
+  let updErr;
+  try {
+    ({ error: updErr } = await _supabase.auth.updateUser({ password: newValue }));
+  } catch (e) {
+    updErr = e;
+  }
+  if (updErr) {
+    if (hintEl) hintEl.textContent = "No se pudo cambiar la contraseña. Inténtalo de nuevo.";
+    showMessage("No se pudo cambiar la contraseña. Inténtalo de nuevo.", "error");
+    reenable();
+    return;
+  }
+
+  // (7) Éxito (AC-2/AC-8): confirmación + limpiar los tres campos + re-habilitar.
+  showMessage("Contraseña actualizada.");
+  if (hintEl) hintEl.textContent = "Contraseña actualizada.";
+  form.reset();
+  reenable();
+}
+
 // ── Selector "Añadir a lista" ───────────────────────────────────────────────
 // Mensaje exacto del backend para el duplicado (409). El wrapper `api()` no
 // expone el código HTTP; el cuerpo del 409 trae este texto como contrato
@@ -477,6 +604,8 @@ if (settingsViewEl) {
     e.preventDefault();
     if (form.id === "settings-username-form") {
       _saveUsername(form.querySelector("#settings-username-input"));
+    } else if (form.id === "settings-password-form") {
+      _changePassword(form);
     }
   });
 

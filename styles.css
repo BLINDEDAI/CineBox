@@ -2943,6 +2943,25 @@ html.cinebox-visited #welcome-screen { display: none; }
   min-height: 40px;
 }
 
+/* ── Ajustes → Cuenta: formulario "Cambiar contraseña" ── */
+.settings-password-title {
+  margin: 24px 0 0;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+  font-size: 1rem;
+}
+.settings-password-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.settings-password-form .login-input { margin-bottom: 6px; }
+.settings-password-submit {
+  align-self: flex-start;
+  margin-top: 6px;
+  min-height: 40px;
+}
+
 /* ── Selector "Añadir a lista" (#list-picker) — reusa el patrón del modal ── */
 .list-picker {
   position: fixed;
