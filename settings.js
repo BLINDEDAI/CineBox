@@ -166,6 +166,20 @@ function renderSettingsView() {
           <p id="settings-export-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
         </div>
 
+        <div class="settings-import">
+          <h3 class="settings-import-title">Importar mis datos</h3>
+          <p class="settings-import-copy muted smuted-sm">
+            Sube un archivo de exportación de CineBox (colección y listas) para añadirlo a tu cuenta.
+            La importación es aditiva: no borra ni sobrescribe nada de lo que ya tienes.
+          </p>
+          <label class="settings-import-file-label" for="settings-import-file">Archivo de exportación de CineBox (JSON)</label>
+          <input id="settings-import-file" class="settings-import-file" type="file"
+                 accept="application/json,.json">
+          <button id="settings-import-btn" class="btn-secondary settings-import-btn" type="button"
+                  data-settings-action="import-data">Importar mis datos</button>
+          <p id="settings-import-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
+        </div>
+
         <div class="settings-danger">
           <h3 class="settings-danger-title">Eliminar cuenta</h3>
           <p class="settings-danger-copy muted smuted-sm">
@@ -659,6 +673,80 @@ async function _exportData(btn) {
   }
 }
 
+// ── Importar mis datos (Ajustes → Cuenta, acción no destructiva) ────────────
+// Inverso round-trip de "Exportar mis datos": sube un archivo de exportación de
+// CineBox y añade su colección + listas a la cuenta (aditivo, no destructivo —
+// no borra ni sobrescribe nada). El disparador visible (#settings-import-btn)
+// abre el <input type="file"> oculto; su `change` invoca esta función. El cuerpo
+// lee el archivo con File.text() (sin red, sin directiva CSP) y hace POST del
+// texto JSON CRUDO a `POST /api/account/import`. `api()` solo fija Content-Type
+// para un body string, así que lo fijamos explícitamente (como _deleteAccount).
+// Todo el bloque de lectura + llamada + enrutado va en try/catch: un `fetch()`
+// abortado o un fallo de lectura rechaza; en el catch se muestra el mensaje
+// genérico. El error crudo del servidor NUNCA se pinta; el enrutado es por
+// `status`, nunca por el texto del cuerpo (AC-15). Se resetea `input.value` y se
+// re-habilita el botón en TODAS las ramas. Cuerpo de manejador → tiempo de
+// llamada, por lo que `api`, `showMessage`, `loadMovies` son PS-003-safe.
+async function _importData(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+
+  const btn = settingsViewEl.querySelector("#settings-import-btn");
+  const hintEl = settingsViewEl.querySelector("#settings-import-hint");
+  const setHint = (msg) => { if (hintEl) hintEl.textContent = msg; };
+  const fail = (msg) => { setHint(msg); showMessage(msg, "error"); };
+
+  // (1) Deshabilitar el botón en vuelo (evita doble envío); resetear el input y
+  // re-habilitar el botón en TODAS las ramas (así re-seleccionar el mismo
+  // archivo vuelve a disparar `change`).
+  if (btn) btn.disabled = true;
+  const finish = () => { if (btn) btn.disabled = false; input.value = ""; };
+
+  try {
+    // (2) Leer el archivo como texto (ya es una cadena JSON) y hacer POST del
+    // texto CRUDO con Content-Type explícito.
+    const text = await file.text();
+    const { ok, status, data } = await api("/api/account/import", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: text,
+    });
+
+    // (3) Éxito: construir la línea de resumen desde los 8 contadores y refrescar
+    // la colección para que los títulos importados aparezcan (AC-11, AC-2).
+    if (ok && status === 200 && data && data.summary) {
+      const s = data.summary;
+      const titlesImported = Number(s.titles_imported) || 0;
+      const listsImported = (Number(s.lists_created) || 0) + (Number(s.lists_merged) || 0);
+      const skippedPresent = (Number(s.titles_skipped_present) || 0) + (Number(s.list_items_skipped_present) || 0);
+      const skippedInvalid = (Number(s.titles_skipped_invalid) || 0) + (Number(s.list_items_skipped_invalid) || 0);
+      const msg = `Importado: ${titlesImported} títulos, ${listsImported} listas. ` +
+        `Omitidos: ${skippedPresent} ya presentes, ${skippedInvalid} inválidos.`;
+      setHint(msg);
+      showMessage(msg);
+      finish();
+      await loadMovies();
+      return;
+    }
+
+    // (4) Enrutar por resultado (por `status`, nunca por el texto del cuerpo).
+    // Nunca se pinta el error crudo del servidor (AC-15).
+    if (status === 401) { fail("Tu sesión ha caducado. Vuelve a iniciar sesión."); finish(); return; }
+    if (status === 413) { fail("El archivo es demasiado grande."); finish(); return; }
+    if (status === 422) { fail("El archivo no es un export válido de CineBox."); finish(); return; }
+    if (status === 400) { fail("El archivo no es un JSON válido."); finish(); return; }
+    if (status === 429) { fail("Demasiadas solicitudes, espera un momento."); finish(); return; }
+    // 500 / cualquier otro status → genérico (AC-15).
+    fail("No se pudo importar. Inténtalo de nuevo.");
+    finish();
+  } catch (_e) {
+    // Red abortada / fallo de lectura o inesperado: mismo mensaje genérico y
+    // re-habilitar/resetear para que el usuario reintente (AC-15).
+    fail("No se pudo importar. Inténtalo de nuevo.");
+    finish();
+  }
+}
+
 // ── Selector "Añadir a lista" ───────────────────────────────────────────────
 // Mensaje exacto del backend para el duplicado (409). El wrapper `api()` no
 // expone el código HTTP; el cuerpo del 409 trae este texto como contrato
@@ -804,6 +892,7 @@ if (settingsViewEl) {
   settingsViewEl.addEventListener("change", (e) => {
     const toggle = e.target.closest("[data-settings-toggle]");
     if (toggle) { _setProfileFlag(toggle.dataset.settingsToggle, toggle.checked); return; }
+    if (e.target.id === "settings-import-file") { _importData(e.target); return; }
   });
 
   settingsViewEl.addEventListener("click", (e) => {
@@ -812,6 +901,7 @@ if (settingsViewEl) {
     const action = btn.dataset.settingsAction;
     if (action === "logout") { signOut(); }
     else if (action === "export-data") { _exportData(btn).catch(() => { if (btn) btn.disabled = false; }); }
+    else if (action === "import-data") { document.getElementById("settings-import-file")?.click(); }
     else if (action === "reveal-delete") {
       // Revela el formulario de confirmación y enfoca el primer campo (AC-2).
       const deleteForm = settingsViewEl.querySelector("#settings-delete-form");

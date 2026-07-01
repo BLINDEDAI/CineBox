@@ -205,6 +205,17 @@ ACCOUNT_DELETE_GLOBAL = 30    # tope agregado
 # usuario + global, aplicado justo tras la auth, como guarda DoS.
 ACCOUNT_EXPORT_MAX = 10       # tope por usuario en la ventana
 ACCOUNT_EXPORT_GLOBAL = 60    # tope agregado
+# Importación de datos (round-trip inverso del export): una escritura autenticada
+# que ingiere un archivo NO confiable. Como es escritura, los buckets son más
+# estrechos que el export de solo-lectura (mismos que account-delete). Además del
+# rate limit, tiene su propio tope de cuerpo (1 MB, mayor que MAX_BODY de 64 KB,
+# para admitir un export realista) y topes de conteo de elementos/listas — guardas
+# DoS aplicadas ANTES de tocar la DB.
+ACCOUNT_IMPORT_MAX = 5        # tope por usuario en la ventana
+ACCOUNT_IMPORT_GLOBAL = 30    # tope agregado
+MAX_IMPORT_BODY = 1 * 1024 * 1024   # 1 MB — tope propio del import (NO el MAX_BODY de 64 KB)
+MAX_IMPORT_ITEMS = 5000      # tope de elementos (títulos + items de listas)
+MAX_IMPORT_LISTS = 500       # tope de listas
 
 
 def rate_check(buckets):
@@ -325,6 +336,29 @@ def parse_watched_at(value):
         return date.fromisoformat(text).isoformat()
     except ValueError:
         raise ValueError("watched_at debe tener formato YYYY-MM-DD o estar vacío")
+
+
+def _import_int_or_none(value):
+    """Coerción para current_season/current_episode/total_seasons en el import:
+    None → None; int >= 1 → el int; cualquier otra cosa → False (marcador de
+    inválido, distinguible de None porque `False is None` es falso)."""
+    if value is None:
+        return None
+    if isinstance(value, bool) or not isinstance(value, int) or value < 1:
+        return False
+    return value
+
+
+def _import_parse_timestamp(value):
+    """created_at para el import: el valor del archivo si parsea como timestamp
+    ISO válido, si no `datetime.now(timezone.utc).isoformat()`. Nunca lanza."""
+    if isinstance(value, str) and value.strip():
+        try:
+            datetime.fromisoformat(value.strip())
+            return value.strip()
+        except ValueError:
+            pass
+    return datetime.now(timezone.utc).isoformat()
 
 
 # Sistema de niveles. Cada entrada: (puntos mínimos, número, nombre).
@@ -909,6 +943,8 @@ class Handler(SimpleHTTPRequestHandler):
     def do_POST(self):
         if self.path == "/api/account/delete":
             return self._delete_account()
+        if self.path == "/api/account/import":
+            return self._import_account()
         if self.path == "/api/lists":
             return self._create_list()
         m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})/items$", self.path)
@@ -1334,6 +1370,294 @@ class Handler(SimpleHTTPRequestHandler):
         }
         _audit("account.exported", user_id, "account")
         self._json(200, {"ok": True, "export": export})
+
+    def _import_account(self):
+        """POST /api/account/import — importación de datos (round-trip inverso del
+        export, ADR-011). Escritura autenticada, aditiva y NO destructiva, acotada
+        a la propia cuenta: solo INSERTs, nunca UPDATE/DELETE de filas existentes.
+
+        Orden (vinculante): auth (401) → rate limit por-usuario+global (429) →
+        lectura ACOTADA del cuerpo con tope propio MAX_IMPORT_BODY (Content-Length
+        > tope → 413 SIN leer el cuerpo; NO usa _read_json/MAX_BODY) → json.loads
+        (fallo → 400) → puerta de formato/versión (objeto + schema_version==1 +
+        collection/lists arrays, si no → 422) → topes de conteo elementos/listas
+        (413) → UNA transacción atómica get_db() de INSERTs validados y
+        `user_id`-scoped (PS-002) → 200 con el resumen de 8 contadores.
+
+        El archivo es NO confiable: cualquier user_id que declare y su bloque
+        `profile` se IGNORAN (AC-12) — el target de escritura es SIEMPRE el `sub`
+        del JWT. Un item inválido se OMITE + cuenta (nunca aborta el import); un
+        problema a nivel de archivo (formato/tamaño/parse) rechaza todo. Cuerpos de
+        error genéricos es-ES; el error crudo de DB/parse nunca se serializa
+        (invariants). Emite _audit redactado (user_hash) en éxito y en cada
+        denegación (AU-007), como export/delete-account."""
+        # 1) Auth primero (PS-001, AC-14). Sin JWT válido no hay identidad: null.
+        user_id = self._get_user_id()
+        if not user_id:
+            _audit("account.import_denied", None, "unauthenticated")
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+
+        # 2) Rate limit inmediatamente tras la auth (guarda DoS de la escritura).
+        allowed, retry = rate_check([(f"account-import:{user_id}", ACCOUNT_IMPORT_MAX),
+                                     ("account-import:_global", ACCOUNT_IMPORT_GLOBAL)])
+        if not allowed:
+            _audit("account.import_denied", user_id, "rate_limited")
+            return self._json(429, {"ok": False, "error": "Demasiadas solicitudes, espera un momento."},
+                              extra_headers={"Retry-After": retry})
+
+        # 3) Lectura ACOTADA del cuerpo con tope PROPIO (1 MB), NO el _read_json de
+        #    64 KB. Content-Length sobre el tope → 413 SIN leer el cuerpo grande
+        #    (guarda DoS/memoria); si no, leer exactamente min(CL, tope) y parsear.
+        try:
+            content_length = int(self.headers.get("Content-Length", 0))
+        except (TypeError, ValueError):
+            content_length = 0
+        if content_length > MAX_IMPORT_BODY:
+            _audit("account.import_denied", user_id, "too_large")
+            return self._json(413, {"ok": False, "error": "El archivo es demasiado grande."})
+        length = max(0, min(content_length, MAX_IMPORT_BODY))
+        try:
+            body = json.loads(self.rfile.read(length) or b"{}")
+        except (ValueError, json.JSONDecodeError, RecursionError):
+            _audit("account.import_denied", user_id, "invalid_format")
+            return self._json(400, {"ok": False, "error": "El archivo no es un JSON válido."})
+
+        # 4) Puerta de formato/versión: objeto + schema_version==1 + collection/
+        #    lists como arrays. exported_at, profile y cualquier user_id se IGNORAN
+        #    (AC-8, AC-12). Nada se escribe si el archivo no es un export válido.
+        if not isinstance(body, dict) or body.get("schema_version") != 1 \
+                or not isinstance(body.get("collection"), list) \
+                or not isinstance(body.get("lists"), list):
+            _audit("account.import_denied", user_id, "invalid_format")
+            return self._json(422, {"ok": False, "error": "El archivo no es un export válido de CineBox."})
+        collection = body["collection"]
+        lists      = body["lists"]
+
+        # 5) Topes de conteo: elementos (títulos + items de listas) y nº de listas
+        #    (AC-9). Sobre cualquiera → 413, nada escrito.
+        total_items = len(collection) + sum(
+            len(lst.get("items", [])) for lst in lists if isinstance(lst, dict) and isinstance(lst.get("items"), list))
+        if total_items > MAX_IMPORT_ITEMS or len(lists) > MAX_IMPORT_LISTS:
+            _audit("account.import_denied", user_id, "too_large")
+            return self._json(413, {"ok": False, "error": "El archivo supera el número máximo de elementos."})
+
+        # 6) Escritura: UNA transacción atómica, toda query %s-parametrizada y
+        #    `user_id`-scoped (PS-002, AC-13). Un fallo de DB revierte todo el
+        #    import (sin corrupción parcial). Contadores del resumen.
+        summary = {
+            "titles_imported":          0,
+            "titles_skipped_present":   0,
+            "titles_skipped_invalid":   0,
+            "lists_created":            0,
+            "lists_merged":             0,
+            "list_items_imported":      0,
+            "list_items_skipped_present": 0,
+            "list_items_skipped_invalid": 0,
+        }
+        try:
+            with get_db() as cur:
+                # ── Colección: INSERT de columna COMPLETA (fidelidad round-trip,
+                #    AC-6) — NO el alta lossy de _add_movie. Item inválido → omitido
+                #    + contado, nunca fatal (AC-10). Dedup por (tmdb_id, media_type,
+                #    user_id) vía SELECT-antes-de-INSERT; item sin tmdb_id se inserta
+                #    sin dedup (mismo comportamiento que el alta existente).
+                for item in collection:
+                    if not isinstance(item, dict):
+                        summary["titles_skipped_invalid"] += 1
+                        continue
+                    row = self._import_validate_movie(item)
+                    if row is None:
+                        summary["titles_skipped_invalid"] += 1
+                        continue
+                    if row["tmdb_id"] is not None:
+                        cur.execute(
+                            "SELECT 1 FROM movies WHERE tmdb_id = %s AND media_type = %s AND user_id = %s",
+                            (row["tmdb_id"], row["media_type"], user_id))
+                        if cur.fetchone():
+                            summary["titles_skipped_present"] += 1
+                            continue
+                    cur.execute(
+                        "INSERT INTO movies "
+                        "(user_id, tmdb_id, media_type, title, year, poster_url, status, "
+                        " rating, note, watched_at, platform, current_season, current_episode, "
+                        " total_seasons, genres, created_at) "
+                        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
+                        (user_id, row["tmdb_id"], row["media_type"], row["title"], row["year"],
+                         row["poster_url"], row["status"], row["rating"], row["note"],
+                         row["watched_at"], row["platform"], row["current_season"],
+                         row["current_episode"], row["total_seasons"], row["genres"],
+                         row["created_at"]))
+                    summary["titles_imported"] += 1
+
+                # ── Listas: reconciliación por nombre exacto-recortado. Pre-cargar
+                #    las listas del usuario en un mapa nombre→id (una query). Un
+                #    nombre coincidente → merge en esa lista (lists_merged una vez);
+                #    un nombre nuevo → INSERT ... RETURNING id (lists_created). Items:
+                #    validar e insertar con ON CONFLICT DO NOTHING (NO un
+                #    UniqueViolation capturado, que abortaría la transacción única).
+                cur.execute("SELECT id, name FROM lists WHERE user_id = %s", (user_id,))
+                name_to_id = {r["name"].strip(): r["id"] for r in cur.fetchall()}
+                for entry in lists:
+                    if not isinstance(entry, dict):
+                        continue
+                    name = str(entry.get("name", "")).strip()[:200]
+                    if not name:
+                        continue
+                    items = entry.get("items")
+                    if not isinstance(items, list):
+                        items = []
+                    if name in name_to_id:
+                        list_id = name_to_id[name]
+                        summary["lists_merged"] += 1
+                    else:
+                        cur.execute(
+                            "INSERT INTO lists (user_id, name) VALUES (%s, %s) RETURNING id",
+                            (user_id, name))
+                        list_id = cur.fetchone()["id"]
+                        name_to_id[name] = list_id
+                        summary["lists_created"] += 1
+                    # position sembrado desde COALESCE(MAX(position)+1, 0) e
+                    # incrementado por cada insert exitoso en esta lista.
+                    cur.execute(
+                        "SELECT COALESCE(MAX(position) + 1, 0) AS next_pos "
+                        "FROM list_items WHERE list_id = %s",
+                        (list_id,))
+                    next_pos = cur.fetchone()["next_pos"]
+                    for it in items:
+                        li = self._import_validate_list_item(it)
+                        if li is None:
+                            summary["list_items_skipped_invalid"] += 1
+                            continue
+                        cur.execute(
+                            "INSERT INTO list_items "
+                            "(list_id, tmdb_id, media_type, title, year, poster_url, position) "
+                            "VALUES (%s, %s, %s, %s, %s, %s, %s) "
+                            "ON CONFLICT (list_id, tmdb_id, media_type) DO NOTHING",
+                            (list_id, li["tmdb_id"], li["media_type"], li["title"],
+                             li["year"], li["poster_url"], next_pos))
+                        if cur.rowcount == 0:
+                            summary["list_items_skipped_present"] += 1
+                        else:
+                            summary["list_items_imported"] += 1
+                            next_pos += 1
+        except psycopg2.Error:
+            # El error crudo de DB nunca se serializa (invariants; AC-15). La
+            # transacción ya se revirtió (context manager) → nada escrito.
+            _audit("account.import_denied", user_id, "db_error")
+            return self._json(500, {"ok": False, "error": "No se pudo importar. Inténtalo de nuevo."})
+
+        _audit("account.imported", user_id, "account")
+        self._json(200, {"ok": True, "summary": summary})
+
+    @staticmethod
+    def _import_validate_movie(item):
+        """Valida un item de colección espejando los validadores de _add_movie / el
+        PATCH. Devuelve un dict de columnas listo para el INSERT completo, o None si
+        el item es inválido (el llamante lo omite + cuenta, nunca es fatal, AC-10).
+        Un poster de origen no permitido no invalida el item: se guarda "" (AC-10)."""
+        title = str(item.get("title", "")).strip()[:300]
+        if not title:
+            return None
+        media_type = item.get("media_type")
+        if media_type not in ("movie", "tv"):
+            return None
+        status = item.get("status")
+        if status not in ("pendiente", "viendo", "vista", "abandonada"):
+            return None
+        rating = item.get("rating")
+        if rating is not None and (not isinstance(rating, int) or isinstance(rating, bool) or not 1 <= rating <= 5):
+            return None
+        note = item.get("note")
+        if note is not None:
+            if not isinstance(note, str):
+                return None
+            note = note.strip()[:500]
+        try:
+            watched_at = parse_watched_at(item.get("watched_at"))
+        except ValueError:
+            return None
+        platform = item.get("platform")
+        if platform is not None and platform not in PLATFORMS:
+            return None
+        current_season = _import_int_or_none(item.get("current_season"))
+        if current_season is False:
+            return None
+        current_episode = _import_int_or_none(item.get("current_episode"))
+        if current_episode is False:
+            return None
+        total_seasons = _import_int_or_none(item.get("total_seasons"))
+        if total_seasons is False:
+            return None
+        # total_seasons solo aplica a series; en películas se fuerza null (como _add_movie).
+        if media_type != "tv":
+            total_seasons = None
+        tmdb_id = item.get("tmdb_id")
+        if tmdb_id not in (None, ""):
+            try:
+                tmdb_id = int(tmdb_id)
+            except (TypeError, ValueError):
+                return None
+        else:
+            tmdb_id = None
+        year = str(item.get("year", "")).strip()[:10]
+        genres = item.get("genres")
+        if genres is not None and not isinstance(genres, str):
+            return None
+        # Tope de longitud espejando el write-path (_add_movie: 8 géneros × 40 chars).
+        # Truncar, no rechazar (AC-10 / US-040) — un genres sobredimensionado nunca se
+        # almacena sin acotar.
+        if genres is not None:
+            genres = genres[:360]
+        poster = str(item.get("poster_url", "")).strip()
+        # Allow-list de posters: solo TMDB; cualquier otra URL se descarta (no invalida).
+        if poster and not poster.startswith("https://image.tmdb.org/"):
+            poster = ""
+        poster = poster[:500]
+        # created_at = valor del archivo si parsea como timestamp válido, si no ahora.
+        created_at = _import_parse_timestamp(item.get("created_at"))
+        return {
+            "tmdb_id":         tmdb_id,
+            "media_type":      media_type,
+            "title":           title,
+            "year":            year,
+            "poster_url":      poster,
+            "status":          status,
+            "rating":          rating,
+            "note":            note,
+            "watched_at":      watched_at,
+            "platform":        platform,
+            "current_season":  current_season,
+            "current_episode": current_episode,
+            "total_seasons":   total_seasons,
+            "genres":          genres,
+            "created_at":      created_at,
+        }
+
+    @staticmethod
+    def _import_validate_list_item(it):
+        """Valida un item de lista (tmdb_id int obligatorio, media_type, title,
+        year, allow-list de poster). Devuelve dict listo para el INSERT o None
+        (el llamante lo omite + cuenta list_items_skipped_invalid)."""
+        if not isinstance(it, dict):
+            return None
+        tmdb_id = it.get("tmdb_id")
+        try:
+            tmdb_id = int(tmdb_id)
+        except (TypeError, ValueError):
+            return None
+        media_type = it.get("media_type")
+        if media_type not in ("movie", "tv"):
+            return None
+        title = str(it.get("title", "")).strip()[:300]
+        if not title:
+            return None
+        year = str(it.get("year", "")).strip()[:10]
+        poster = str(it.get("poster_url", "")).strip()
+        if poster and not poster.startswith("https://image.tmdb.org/"):
+            poster = ""
+        poster = poster[:500]
+        return {"tmdb_id": tmdb_id, "media_type": media_type,
+                "title": title, "year": year, "poster_url": poster}
 
     # ── Perfil (owner) ──────────────────────────────────────────────────────────
 
