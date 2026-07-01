@@ -127,6 +127,45 @@ function renderSettingsView() {
         ${hasUsername && p.is_public ? `<p class="sharing-hint muted smuted-sm">Visible en <a class="sharing-link" href="${esc(profileLink)}">${esc(profileLink)}</a></p>` : ""}
       </section>
 
+      <section class="spanel sharing-card settings-prefs" aria-labelledby="settings-prefs-title">
+        <h2 class="spanel-title" id="settings-prefs-title">Preferencias</h2>
+        <p class="muted smuted-sm">Configura cómo se comporta CineBox por defecto. Cada preferencia es opcional; «Por defecto (sin preferencia)» usa el comportamiento actual de la app.</p>
+
+        <div class="settings-prefs-field">
+          <label class="control-label" for="settings-pref-home-view">Vista de inicio</label>
+          <select id="settings-pref-home-view" class="select settings-prefs-select" data-settings-pref="home_view">
+            <option value="">Por defecto (sin preferencia)</option>
+            <option value="collection-view">Mi colección</option>
+            <option value="discover-view">Descubrir</option>
+            <option value="stats-view">Estadísticas</option>
+            <option value="lists-view">Mis listas</option>
+          </select>
+        </div>
+
+        <div class="settings-prefs-field">
+          <label class="control-label" for="settings-pref-collection-sort">Orden por defecto de la colección</label>
+          <select id="settings-pref-collection-sort" class="select settings-prefs-select" data-settings-pref="collection_sort">
+            <option value="">Por defecto (sin preferencia)</option>
+            <option value="recent">Recientes primero</option>
+            <option value="title-asc">Título A-Z</option>
+            <option value="year-desc">Año nuevo → antiguo</option>
+            <option value="rating-desc">Mejor puntuadas</option>
+            <option value="pending-first">Por ver primero</option>
+            <option value="watched-first">Vistas primero</option>
+          </select>
+        </div>
+
+        <div class="settings-prefs-field">
+          <label class="control-label" for="settings-pref-default-platform">Plataforma por defecto</label>
+          <select id="settings-pref-default-platform" class="select settings-prefs-select" data-settings-pref="default_platform">
+            <option value="">Por defecto (sin preferencia)</option>
+            ${PLATFORMS.map((pf) => `<option value="${esc(pf)}">${esc(pf)}</option>`).join("")}
+          </select>
+        </div>
+
+        <p id="settings-prefs-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
+      </section>
+
       <section class="spanel sharing-card" aria-labelledby="settings-account-title">
         <h2 class="spanel-title" id="settings-account-title">Cuenta</h2>
         <div class="settings-account-row">
@@ -214,6 +253,36 @@ function renderSettingsView() {
   // Gradiente del avatar vía CSSOM — la CSP estricta prohíbe inline style= (PS-006).
   const avatarEl = settingsViewEl.querySelector("[data-settings-avatar]");
   if (avatarEl) avatarEl.style.backgroundImage = _avatarGradient(p.username);
+
+  // Inicializa los tres selects de Preferencias desde el valor guardado
+  // (validado por allow-list). Un valor ausente/inválido → cadena vacía = la
+  // opción «Por defecto (sin preferencia)». getPref vive en ui.js (2º módulo).
+  _syncPrefsControls();
+}
+
+// Refleja el estado persistido en los tres selects de Preferencias. Se llama
+// tras cada render de la vista. getPref/PLATFORMS/HOME_VIEWS/COLLECTION_SORTS
+// viven en ui.js/collection.js (cargados antes); cuerpo de función → tiempo de
+// llamada, PS-003-safe.
+function _syncPrefsControls() {
+  if (!settingsViewEl) return;
+  const homeSel = settingsViewEl.querySelector("#settings-pref-home-view");
+  const sortSel = settingsViewEl.querySelector("#settings-pref-collection-sort");
+  const platformSel = settingsViewEl.querySelector("#settings-pref-default-platform");
+  if (homeSel) homeSel.value = getPref("home_view", HOME_VIEWS, "");
+  if (sortSel) sortSel.value = getPref("collection_sort", COLLECTION_SORTS, "");
+  if (platformSel) platformSel.value = getPref("default_platform", PLATFORMS, "");
+}
+
+// Escribe (o borra, si `value` es "") una preferencia vía setPref (ui.js) y da
+// una confirmación inline es-ES. Explicit-only: solo se invoca desde el listener
+// `change` de los selects de Preferencias. setPref → tiempo de llamada, PS-003-safe.
+function _savePref(name, value) {
+  setPref(name, value || null);
+  const hintEl = settingsViewEl && settingsViewEl.querySelector("#settings-prefs-hint");
+  const msg = value ? "Preferencia guardada." : "Preferencia restablecida al valor por defecto.";
+  if (hintEl) hintEl.textContent = msg;
+  showMessage(msg);
 }
 
 function _toggleHtml(field, label, checked, disabled) {
@@ -893,6 +962,11 @@ if (settingsViewEl) {
     const toggle = e.target.closest("[data-settings-toggle]");
     if (toggle) { _setProfileFlag(toggle.dataset.settingsToggle, toggle.checked); return; }
     if (e.target.id === "settings-import-file") { _importData(e.target); return; }
+    // Preferencias: escritura EXPLÍCITA-ONLY. Solo estos selects persisten una
+    // preferencia; ningún otro control (el sort en vivo, el cambio de pestaña)
+    // escribe. Cadena vacía = «Por defecto (sin preferencia)» → borra el campo.
+    const prefSel = e.target.closest("[data-settings-pref]");
+    if (prefSel) { _savePref(prefSel.dataset.settingsPref, prefSel.value); return; }
   });
 
   settingsViewEl.addEventListener("click", (e) => {

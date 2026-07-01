@@ -42,3 +42,58 @@ function starsHtml(rating) {
   }
   return out;
 }
+
+// ── Preferencias del usuario (client-side, localStorage) ─────────────────────
+// Helper para las tres preferencias por defecto (vista de inicio, orden de la
+// colección, plataforma). Vive en ui.js (2º módulo) para que app.js (último)
+// pueda llamar a getPref en tiempo de carga al inicializar `collectionSort`
+// (PS-003). Se guardan bajo una única clave `cinebox_prefs` (convención
+// `cinebox_`). Cada valor almacenado es UNTRUSTED (el usuario puede editar
+// localStorage a mano en devtools) → se valida contra un allow-list fijo en la
+// lectura antes de aplicarse (SE-*). Todo acceso a localStorage va en try/catch
+// (el modo privado puede lanzar) → degrada a los valores por defecto, sin crash.
+
+// Allow-lists de las preferencias con lista fija. `PLATFORMS` ya existe en
+// collection.js (3º módulo) y solo se lee en cuerpos de manejador (tiempo de
+// llamada), así que no hay problema de orden de carga con ella.
+const HOME_VIEWS = ["collection-view", "discover-view", "stats-view", "lists-view"];
+const COLLECTION_SORTS = ["recent", "title-asc", "year-desc", "rating-desc", "pending-first", "watched-first"];
+
+const PREFS_STORAGE_KEY = "cinebox_prefs";
+
+// Devuelve el objeto de preferencias parseado, o {} ante cualquier fallo
+// (localStorage inaccesible, JSON malformado, valor no-objeto).
+function readPrefs() {
+  try {
+    const raw = localStorage.getItem(PREFS_STORAGE_KEY);
+    if (!raw) return {};
+    const parsed = JSON.parse(raw);
+    return (parsed && typeof parsed === "object" && !Array.isArray(parsed)) ? parsed : {};
+  } catch (e) {
+    return {};
+  }
+}
+
+// Devuelve el valor almacenado SOLO si está en `allowedList`; en caso contrario
+// (ausente, corrupto, fuera del allow-list) devuelve `fallback`. Este es el
+// guardián del valor inválido/corrupto (AC-11): nunca se pasa una cadena
+// arbitraria a showView(...), al DOM o a un atributo.
+function getPref(name, allowedList, fallback) {
+  const prefs = readPrefs();
+  const value = prefs[name];
+  return allowedList.includes(value) ? value : fallback;
+}
+
+// Fusiona `value` en el objeto de preferencias y persiste; `null`/vacío borra
+// ese campo (vuelve a "sin preferencia"), dejando los demás intactos. No-op
+// silencioso si localStorage lanza (modo privado).
+function setPref(name, value) {
+  try {
+    const prefs = readPrefs();
+    if (value === null || value === undefined || value === "") delete prefs[name];
+    else prefs[name] = value;
+    localStorage.setItem(PREFS_STORAGE_KEY, JSON.stringify(prefs));
+  } catch (e) {
+    /* no-op: sin persistencia si el almacenamiento no está disponible */
+  }
+}
