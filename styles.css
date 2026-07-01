@@ -2962,6 +2962,22 @@ html.cinebox-visited #welcome-screen { display: none; }
   min-height: 40px;
 }
 
+/* ── Ajustes → Cuenta: "Exportar mis datos" (acción no destructiva) ── */
+.settings-export {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+.settings-export-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+}
+.settings-export-copy { margin: 0 0 14px; }
+.settings-export-btn {
+  align-self: flex-start;
+  min-height: 40px;
+}
+
 /* ── Ajustes → Cuenta: zona de peligro "Eliminar cuenta" ── */
 .settings-danger {
   margin-top: 24px;
