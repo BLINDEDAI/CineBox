@@ -651,7 +651,7 @@ async function _exportData(btn) {
     // 500 / cualquier otro status → genérico (AC-9).
     fail("No se pudo exportar tus datos. Inténtalo de nuevo.");
     reenable();
-  } catch (e) {
+  } catch (_e) {
     // Red abortada / fallo inesperado (TypeError de fetch): mismo mensaje
     // genérico y re-habilitar el botón para que el usuario reintente (AC-9).
     fail("No se pudo exportar tus datos. Inténtalo de nuevo.");
@@ -811,7 +811,7 @@ if (settingsViewEl) {
     if (!btn) return;
     const action = btn.dataset.settingsAction;
     if (action === "logout") { signOut(); }
-    else if (action === "export-data") { _exportData(btn); }
+    else if (action === "export-data") { _exportData(btn).catch(() => { if (btn) btn.disabled = false; }); }
     else if (action === "reveal-delete") {
       // Revela el formulario de confirmación y enfoca el primer campo (AC-2).
       const deleteForm = settingsViewEl.querySelector("#settings-delete-form");
