@@ -259,7 +259,7 @@ Todas van en `.env` (ver `.env.example`). Las marcadas **requeridas** crashean e
 | `SUPABASE_URL` | URL del proyecto Supabase | **Sí** |
 | `SUPABASE_ANON_KEY` | Clave pública (se envía al browser) | **Sí** |
 | `SUPABASE_JWT_SECRET` | Ya no se usa en runtime (HS256 eliminado) | No |
-| `SUPABASE_SERVICE_KEY` | No usado en runtime (reservado) | No |
+| `SUPABASE_SERVICE_KEY` | Borrado de cuenta (`POST /api/account/delete`): elimina el usuario en Supabase Auth vía la admin API. Solo servidor; nunca al cliente ni a logs | Sí (para borrar cuenta) |
 | `TMDB_API_KEY` | Sin él, search/discover/details no funcionan | No |
 | `DISCORD_WEBHOOK_VISTA` | Webhook cuando se marca como vista | No |
 | `DISCORD_WEBHOOK_PENDIENTE` | Webhook cuando se añade a pendientes | No |

@@ -2962,6 +2962,60 @@ html.cinebox-visited #welcome-screen { display: none; }
   min-height: 40px;
 }
 
+/* ── Ajustes → Cuenta: zona de peligro "Eliminar cuenta" ── */
+.settings-danger {
+  margin-top: 24px;
+  padding-top: 18px;
+  border-top: 1px solid var(--red-dark);
+}
+.settings-danger-title {
+  margin: 0 0 8px;
+  font-size: 1rem;
+  color: var(--red-2);
+}
+.settings-danger-copy { margin: 0 0 14px; }
+.settings-delete-form {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 14px;
+}
+.settings-delete-form .login-input { margin-bottom: 6px; }
+.settings-delete-submit,
+.settings-danger-reveal {
+  align-self: flex-start;
+  min-height: 40px;
+}
+
+/* Botón destructivo: reusa la geometría de .btn con tinte de peligro. */
+.btn-danger {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  min-height: 40px;
+  padding: 0 20px;
+  border: 1px solid var(--red);
+  border-radius: var(--radius);
+  background: transparent;
+  color: var(--red-2);
+  font-weight: 900;
+  cursor: pointer;
+  transition: background 0.2s, color 0.2s;
+}
+.btn-danger:hover {
+  background: var(--red);
+  color: #fff;
+}
+.btn-danger:active {
+  transform: scale(0.98);
+  transition-duration: 80ms;
+}
+.btn-danger:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+}
+
 /* ── Selector "Añadir a lista" (#list-picker) — reusa el patrón del modal ── */
 .list-picker {
   position: fixed;
