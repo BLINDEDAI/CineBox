@@ -92,7 +92,11 @@ let filter = "todas";
 let mediaFilter = "todo";
 let collectionMediaFilter = "todo";
 let collectionQuery = "";
-let collectionSort = "recent";
+// Preferencia por defecto del orden de colección (AC-4/AC-5). getPref vive en
+// ui.js (2º módulo, cargado antes) → seguro en tiempo de carga (PS-003). Valor
+// ausente/inválido → "recent" (el default actual). El control en vivo cambia
+// esta variable pero NO persiste (explicit-only, AC-9).
+let collectionSort = getPref("collection_sort", COLLECTION_SORTS, "recent");
 let lastResults = [];
 let resultsMode = "search";
 let activeGenreId = null;
@@ -298,7 +302,15 @@ el("search-input").addEventListener("input", (e) => {
   renderCollection();
 });
 
+// Refleja el orden por defecto aplicado (desde la preferencia) en el control en
+// vivo al arrancar, para que el select coincida con el orden que se está usando.
+// #collection-sort es estático en index.html y `collectionSort` se declaró antes
+// en este archivo → PS-003-safe en tiempo de carga.
+el("collection-sort").value = collectionSort;
+
 el("collection-sort").addEventListener("change", (e) => {
+  // Cambio en vivo: actualiza el orden de sesión y re-renderiza, pero NO llama a
+  // setPref — la preferencia guardada solo cambia desde Ajustes (explicit-only, AC-9).
   collectionSort = e.target.value;
   renderCollection();
 });
@@ -374,6 +386,13 @@ collectionEl.addEventListener("change", (e) => {
   const movie = movies.find((m) => m.id === id);
   const payload = { status };
   if (status === "vista" && movie && !movie.watched_at) payload.watched_at = todayIsoDate();
+  // Plataforma por defecto (AC-6/AC-7): solo al pasar a "vista", si la película
+  // aún no tiene plataforma y hay una preferencia válida. getPref valida contra
+  // PLATFORMS → sin preferencia devuelve null y no se toca el payload.
+  if (status === "vista" && movie && !movie.platform) {
+    const defaultPlatform = getPref("default_platform", PLATFORMS, null);
+    if (defaultPlatform) payload.platform = defaultPlatform;
+  }
   patchMovie(id, payload);
 });
 
@@ -412,6 +431,12 @@ pickPanelEl.addEventListener("click", async (e) => {
     const title = pickedMovie.title;
     const payload = { status: "vista" };
     if (!pickedMovie.watched_at) payload.watched_at = todayIsoDate();
+    // Plataforma por defecto (AC-6/AC-7): mismo criterio que el seam del select
+    // de estado — solo si la película no tiene plataforma y hay preferencia válida.
+    if (!pickedMovie.platform) {
+      const defaultPlatform = getPref("default_platform", PLATFORMS, null);
+      if (defaultPlatform) payload.platform = defaultPlatform;
+    }
     const ok = await patchMovie(pickedMovie.id, payload);
     if (ok) showMessage(`Marcada como vista: ${title}`);
   }
@@ -578,6 +603,12 @@ async function initApp() {
     _hideLoginScreen();
     _updateSidebarUser(session.user.email);
     await loadMovies();
+    // Vista de inicio por defecto (AC-2/AC-3). Un valor ausente/inválido →
+    // "collection-view" (el default actual). getPref valida contra HOME_VIEWS,
+    // así que nunca se pasa una cadena arbitraria a showView (SE-*). La puerta de
+    // nombre de usuario (ADR-007) tiene precedencia y se muestra por encima si
+    // aplica; esto solo enruta el aterrizaje autenticado normal.
+    showView(getPref("home_view", HOME_VIEWS, "collection-view"));
   } else if (visited) {
     // Ya visitó antes pero no tiene sesión → login
     if (welcomeScreen) welcomeScreen.remove();

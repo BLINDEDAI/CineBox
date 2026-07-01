@@ -2962,6 +2962,19 @@ html.cinebox-visited #welcome-screen { display: none; }
   min-height: 40px;
 }
 
+/* ── Ajustes → Preferencias: tres selects de comportamiento por defecto ── */
+.settings-prefs-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 16px;
+}
+.settings-prefs-select {
+  min-height: 40px;
+  width: 100%;
+  max-width: 320px;
+}
+
 /* ── Ajustes → Cuenta: "Exportar mis datos" (acción no destructiva) ── */
 .settings-export {
   margin-top: 24px;
