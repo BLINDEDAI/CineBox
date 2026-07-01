@@ -200,6 +200,11 @@ PUBLIC_RATE_GLOBAL = 600   # tope agregado del perímetro público
 # oráculo de verificación de contraseña (un 401 distinto en contraseña incorrecta).
 ACCOUNT_DELETE_MAX = 5        # tope por usuario en la ventana
 ACCOUNT_DELETE_GLOBAL = 30    # tope agregado
+# Exportación de datos (portabilidad GDPR): lectura de tres tablas de TODAS las
+# filas del usuario — el endpoint autenticado más pesado. Límite modesto por
+# usuario + global, aplicado justo tras la auth, como guarda DoS.
+ACCOUNT_EXPORT_MAX = 10       # tope por usuario en la ventana
+ACCOUNT_EXPORT_GLOBAL = 60    # tope agregado
 
 
 def rate_check(buckets):
@@ -616,6 +621,7 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/similar":  return self._similar()
         if path == "/api/profile":  return self._get_profile()
         if path == "/api/lists":    return self._list_lists()
+        if path == "/api/account/export": return self._export_account()
         if path == "/api/public/username-available": return self._username_available()
         m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})$", path)
         if m:                       return self._get_list(m.group(1))
@@ -1229,6 +1235,105 @@ class Handler(SimpleHTTPRequestHandler):
 
         _audit("account.deleted", user_id, "account")
         self._json(200, {"ok": True})
+
+    def _export_account(self):
+        """GET /api/account/export — exportación de datos (portabilidad GDPR,
+        Art. 20). Solo lectura, autenticado, acotado a la propia cuenta.
+
+        Orden: auth (401) → rate limit por-usuario+global (429) → UNA lectura en
+        un solo bloque get_db() de perfil + colección + listas + items (todas
+        WHERE user_id = %s, PS-002) → 200 con el documento `export` versionado.
+
+        Proyecciones allow-list: excluyen share_token, user_id y los ids internos
+        (el id de lista solo se usa para agrupar items en Python y se descarta).
+        Cuerpos de error genéricos es-ES; el error crudo nunca se serializa
+        (invariants). Emite _audit redactado (user_hash) en éxito y en cada
+        denegación (AU-007), como delete-account."""
+        # 1) Auth primero (PS-001). Sin JWT válido no hay identidad: user_hash null.
+        user_id = self._get_user_id()
+        if not user_id:
+            _audit("account.export_denied", None, "unauthenticated")
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+
+        # 2) Rate limit inmediatamente tras la auth (guarda DoS del endpoint más
+        #    pesado). Al superar cualquier bucket → 429 + Retry-After.
+        allowed, retry = rate_check([(f"account-export:{user_id}", ACCOUNT_EXPORT_MAX),
+                                     ("account-export:_global", ACCOUNT_EXPORT_GLOBAL)])
+        if not allowed:
+            _audit("account.export_denied", user_id, "rate_limited")
+            return self._json(429, {"ok": False, "error": "Demasiadas solicitudes, espera un momento."},
+                              extra_headers={"Retry-After": retry})
+
+        # 3) Lecturas: un solo bloque get_db(), toda query parametrizada y
+        #    filtrada por user_id (PS-002). Items en UNA query joined (sin N+1).
+        with get_db() as cur:
+            cur.execute(
+                "SELECT username, is_public, show_collection, show_stats "
+                "FROM profiles WHERE user_id = %s",
+                (user_id,))
+            prow = cur.fetchone()
+            if prow:
+                profile = dict(prow)
+            else:
+                # Defaults perezosos (mismos que _get_profile): documento válido.
+                profile = {"username": None, "is_public": False,
+                           "show_collection": False, "show_stats": False}
+
+            # Colección: allow-list explícita — id y user_id EXCLUIDOS (GD-001).
+            cur.execute(
+                "SELECT tmdb_id, media_type, title, year, poster_url, status, "
+                "       rating, note, watched_at, platform, current_season, "
+                "       current_episode, total_seasons, genres, created_at "
+                "FROM movies WHERE user_id = %s ORDER BY created_at DESC",
+                (user_id,))
+            collection = [dict(r) for r in cur.fetchall()]
+
+            # Listas: allow-list — share_token y user_id EXCLUIDOS. El id se trae
+            # solo para agrupar los items y se descarta antes de emitir.
+            cur.execute(
+                "SELECT id, name, visibility, created_at, updated_at "
+                "FROM lists WHERE user_id = %s ORDER BY updated_at DESC",
+                (user_id,))
+            list_rows = cur.fetchall()
+
+            # TODOS los items en UNA query joined, acotada por l.user_id (sin N+1).
+            cur.execute(
+                "SELECT li.list_id, li.tmdb_id, li.media_type, li.title, "
+                "       li.year, li.poster_url, li.position "
+                "FROM list_items li JOIN lists l ON l.id = li.list_id "
+                "WHERE l.user_id = %s ORDER BY li.position, li.created_at",
+                (user_id,))
+            item_rows = cur.fetchall()
+
+        # Agrupar los items por list_id en Python (sin N+1).
+        items_by_list = {}
+        for it in item_rows:
+            items_by_list.setdefault(it["list_id"], []).append({
+                "tmdb_id":    it["tmdb_id"],
+                "media_type": it["media_type"],
+                "title":      it["title"],
+                "year":       it["year"],
+                "poster_url": it["poster_url"],
+                "position":   it["position"],
+            })
+        # El id de lista se usa solo para agrupar; se descarta del objeto emitido.
+        lists = [{
+            "name":       lr["name"],
+            "visibility": lr["visibility"],
+            "created_at": lr["created_at"],
+            "updated_at": lr["updated_at"],
+            "items":      items_by_list.get(lr["id"], []),
+        } for lr in list_rows]
+
+        export = {
+            "schema_version": 1,
+            "exported_at":    datetime.now(timezone.utc).isoformat(),
+            "profile":        profile,
+            "collection":     collection,
+            "lists":          lists,
+        }
+        _audit("account.exported", user_id, "account")
+        self._json(200, {"ok": True, "export": export})
 
     # ── Perfil (owner) ──────────────────────────────────────────────────────────
 

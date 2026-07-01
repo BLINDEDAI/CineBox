@@ -155,6 +155,17 @@ function renderSettingsView() {
           <p id="settings-password-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
         </form>
 
+        <div class="settings-export">
+          <h3 class="settings-export-title">Exportar mis datos</h3>
+          <p class="settings-export-copy muted smuted-sm">
+            Descarga un archivo con una copia de todos tus datos de CineBox: tu colección,
+            tus listas y tu perfil. El archivo es un JSON que puedes guardar para ti.
+          </p>
+          <button id="settings-export-btn" class="btn-secondary settings-export-btn" type="button"
+                  data-settings-action="export-data">Exportar mis datos</button>
+          <p id="settings-export-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
+        </div>
+
         <div class="settings-danger">
           <h3 class="settings-danger-title">Eliminar cuenta</h3>
           <p class="settings-danger-copy muted smuted-sm">
@@ -593,6 +604,61 @@ async function _finishAccountDeletion() {
   }
 }
 
+// ── Exportar mis datos (Ajustes → Cuenta, acción no destructiva) ────────────
+// Portabilidad GDPR (Art. 20): descarga un JSON con la copia de los datos del
+// usuario devuelta por el endpoint autenticado `GET /api/account/export`. No
+// muta nada (distinto de la zona de peligro "Eliminar cuenta"). El bloque de
+// llamada + enrutado va en try/catch: un `fetch()` abortado (red caída) rechaza
+// con TypeError; en el catch se muestra el mensaje genérico y se re-habilita el
+// botón. El error crudo del servidor nunca se pinta. Cuerpo de manejador →
+// tiempo de llamada, por lo que `api`, `showMessage`, `todayIsoDate` (api.js /
+// ui.js, cargados antes) son PS-003-safe. La descarga usa un object URL de un
+// blob cliente (sin origen externo → sin cambio de CSP, PS-006).
+async function _exportData(btn) {
+  const hintEl = settingsViewEl.querySelector("#settings-export-hint");
+  const setHint = (msg) => { if (hintEl) hintEl.textContent = msg; };
+  const fail = (msg) => { setHint(msg); showMessage(msg, "error"); };
+
+  // (1) Deshabilitar el botón en vuelo (evita doble clic); re-habilitar siempre.
+  if (btn) btn.disabled = true;
+  const reenable = () => { if (btn) btn.disabled = false; };
+
+  try {
+    const { ok, status, data } = await api("/api/account/export");
+
+    // (2) Éxito: serializar `data.export`, construir el blob y disparar la
+    // descarga vía un object URL transitorio, luego revocarlo.
+    if (ok && status === 200 && data && data.export) {
+      const json = JSON.stringify(data.export, null, 2);
+      const blob = new Blob([json], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `cinebox-export-${todayIsoDate()}.json`;
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      setHint("Exportación descargada.");
+      showMessage("Exportación descargada.");
+      reenable();
+      return;
+    }
+
+    // (3) Enrutar por resultado. Nunca se pinta el error crudo del servidor.
+    if (status === 401) { fail("Tu sesión ha caducado. Vuelve a iniciar sesión."); reenable(); return; }
+    if (status === 429) { fail("Demasiadas solicitudes, espera un momento."); reenable(); return; }
+    // 500 / cualquier otro status → genérico (AC-9).
+    fail("No se pudo exportar tus datos. Inténtalo de nuevo.");
+    reenable();
+  } catch (e) {
+    // Red abortada / fallo inesperado (TypeError de fetch): mismo mensaje
+    // genérico y re-habilitar el botón para que el usuario reintente (AC-9).
+    fail("No se pudo exportar tus datos. Inténtalo de nuevo.");
+    reenable();
+  }
+}
+
 // ── Selector "Añadir a lista" ───────────────────────────────────────────────
 // Mensaje exacto del backend para el duplicado (409). El wrapper `api()` no
 // expone el código HTTP; el cuerpo del 409 trae este texto como contrato
@@ -745,6 +811,7 @@ if (settingsViewEl) {
     if (!btn) return;
     const action = btn.dataset.settingsAction;
     if (action === "logout") { signOut(); }
+    else if (action === "export-data") { _exportData(btn); }
     else if (action === "reveal-delete") {
       // Revela el formulario de confirmación y enfoca el primer campo (AC-2).
       const deleteForm = settingsViewEl.querySelector("#settings-delete-form");
