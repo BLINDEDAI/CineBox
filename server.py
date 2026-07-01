@@ -195,6 +195,11 @@ RATE_GLOBAL_MAX = 300      # tope agregado (todos los usuarios) — protege la c
 # scraper que rota IPs. Reutiliza rate_check() con la misma ventana deslizante.
 PUBLIC_RATE_MAX = 60       # tope por IP en la ventana
 PUBLIC_RATE_GLOBAL = 600   # tope agregado del perímetro público
+# Borrado de cuenta (acción irreversible con re-verificación de contraseña): límites
+# estrechos por usuario + global, aplicados justo tras la auth. Acotan el endpoint como
+# oráculo de verificación de contraseña (un 401 distinto en contraseña incorrecta).
+ACCOUNT_DELETE_MAX = 5        # tope por usuario en la ventana
+ACCOUNT_DELETE_GLOBAL = 30    # tope agregado
 
 
 def rate_check(buckets):
@@ -256,18 +261,22 @@ def _get_jwks_client():
     return _jwks_client
 
 
-def verify_jwt(token: str):
+def verify_jwt_identity(token: str):
     """Verifica el access token de Supabase con la clave pública del JWKS
-    (firma asimétrica ES256/RS256). Devuelve el UUID del usuario (sub) o None.
+    (firma asimétrica ES256/RS256) y devuelve la identidad verificada como
+    (user_id, email), o (None, None) si el token falta / es inválido.
 
-    Solo se acepta firma asimétrica: no hay fallback HS256. Además del
-    chequeo de firma/expiración se exige aud="authenticated" y
-    role="authenticated", de modo que un token que no sea una sesión de
-    usuario real (anon, otra audience) se rechaza."""
+    Ruta de verificación ÚNICA para el proyecto (verify_jwt delega aquí): solo
+    firma asimétrica (sin fallback HS256), y además del chequeo de firma/
+    expiración se exige aud="authenticated" y role="authenticated", de modo que
+    un token que no sea una sesión de usuario real (anon, otra audience) se
+    rechaza. El email SIEMPRE sale de este payload verificado — nunca de un
+    decode sin verificar ni del cuerpo del cliente. Un email ausente/vacío se
+    devuelve como None (el llamante lo trata como fallo de re-autenticación)."""
     try:
         client = _get_jwks_client()
         if client is None:
-            return None
+            return None, None
         signing_key = client.get_signing_key_from_jwt(token)
         payload = pyjwt.decode(
             token,
@@ -279,11 +288,23 @@ def verify_jwt(token: str):
     except (pyjwt.PyJWTError, ValueError, OSError):
         # PyJWTError: token/firma inválidos. ValueError: JWKS devolvió un body
         # no-JSON. OSError: red caída al traer el JWKS. Todo → 401, no 500.
-        return None
+        return None, None
     if payload.get("role") != "authenticated":
-        return None                     # rechaza anon u otros roles
+        return None, None               # rechaza anon u otros roles
     user_id = payload.get("sub")
-    return user_id if user_id else None  # exige sub no vacío (UUID del usuario)
+    if not user_id:
+        return None, None               # exige sub no vacío (UUID del usuario)
+    email = payload.get("email")
+    email = email if isinstance(email, str) and email.strip() else None
+    return user_id, email
+
+
+def verify_jwt(token: str):
+    """Verifica el access token de Supabase y devuelve el UUID del usuario (sub)
+    o None. Delega en verify_jwt_identity para mantener una única ruta de
+    verificación; descarta el email (el caso común solo necesita el user_id)."""
+    user_id, _ = verify_jwt_identity(token)
+    return user_id
 
 
 # ── Utilidades ────────────────────────────────────────────────────────────────
@@ -370,7 +391,11 @@ def _normalize_username(raw):
 
 def _hash_user_id(user_id):
     """Hash estable y no reversible del user_id para la traza de auditoría —
-    nunca se registra el UUID en claro (LO-*: sin PII en logs)."""
+    nunca se registra el UUID en claro (LO-*: sin PII en logs). Con user_id None
+    (denegación no autenticada) devuelve None: no hay identidad que hashear, así
+    que la línea de auditoría lleva "user_hash": null y conserva el mismo esquema."""
+    if user_id is None:
+        return None
     return hashlib.sha256(str(user_id).encode("utf-8")).hexdigest()[:16]
 
 
@@ -876,6 +901,8 @@ class Handler(SimpleHTTPRequestHandler):
 
     @_db_guard
     def do_POST(self):
+        if self.path == "/api/account/delete":
+            return self._delete_account()
         if self.path == "/api/lists":
             return self._create_list()
         m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})/items$", self.path)
@@ -1066,6 +1093,141 @@ class Handler(SimpleHTTPRequestHandler):
                 (int(m.group(1)), user_id))
             if cur.rowcount == 0:
                 return self._json(404, {"ok": False, "error": "No encontrada"})
+        self._json(200, {"ok": True})
+
+    # ── Borrado de cuenta (RTBF) ─────────────────────────────────────────────────
+
+    def _supabase_verify_password(self, email, password):
+        """Re-verifica la contraseña actual contra Supabase Auth server-side
+        (POST /auth/v1/token?grant_type=password con la anon key pública).
+        Devuelve True solo si Supabase responde 200. Cualquier no-200 o error de
+        red/urllib → False (el llamante responde 401 genérico). La contraseña
+        viaja solo en el cuerpo TLS de esta petición; nunca se registra."""
+        base = supabase_base_url()
+        anon = os.environ.get("SUPABASE_ANON_KEY", "").strip()
+        if not base or not anon:
+            return False
+        url = f"{base}/auth/v1/token?grant_type=password"
+        body = json.dumps({"email": email, "password": password}).encode("utf-8")
+        req = urllib.request.Request(url, data=body, method="POST", headers={
+            "apikey":       anon,
+            "Content-Type": "application/json",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return 200 <= resp.status < 300
+        except Exception:
+            # HTTPError (contraseña incorrecta → 400) y URLError (red) → fallo.
+            # El error crudo de Supabase nunca se propaga al cliente.
+            return False
+
+    def _supabase_admin_delete_user(self, user_id):
+        """Borra el usuario de Supabase Auth vía la admin API
+        (DELETE /auth/v1/admin/users/{id}) con la service_role key (solo server).
+        Devuelve True en 2xx; cualquier no-2xx o error → False (el llamante
+        responde 500 genérico). La service_role key nunca llega al cliente ni a
+        un log."""
+        base = supabase_base_url()
+        service = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+        if not base or not service:
+            return False
+        url = f"{base}/auth/v1/admin/users/{user_id}"
+        req = urllib.request.Request(url, method="DELETE", headers={
+            "apikey":        service,
+            "Authorization": f"Bearer {service}",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return 200 <= resp.status < 300
+        except Exception:
+            return False
+
+    def _delete_account(self):
+        """POST /api/account/delete — borrado permanente e irreversible de la
+        cuenta y todos los datos personales del usuario autenticado (RTBF).
+
+        Flujo (orden vinculante): auth JWT (401) → rate limit por usuario+global
+        (429) → validación del cuerpo password/confirm_username (400) → email del
+        payload JWT VERIFICADO (401 si falta) → confirm_username == profiles.username
+        (400) → re-verificación server-side de la contraseña contra Supabase Auth
+        (401) → UNA transacción borrando movies/lists(→list_items cascade)/profiles
+        WHERE user_id=%s → borrado del usuario de Supabase Auth vía admin API (500
+        si falla; DB ya comprometida, reintento idempotente) → 200 {ok:true}.
+
+        Todos los cuerpos de error son genéricos es-ES; el error crudo de
+        Supabase/DB/urllib nunca se serializa al cliente. Emite _audit redactado
+        (user_hash) en éxito y en cada denegación."""
+        # 1) Auth: solo con JWT válido se llega al endpoint (PS-001). El email
+        #    sale del payload VERIFICADO, nunca del cuerpo del cliente.
+        auth = self.headers.get("Authorization", "")
+        token = auth[7:] if auth.startswith("Bearer ") else ""
+        user_id, email = verify_jwt_identity(token)
+        if not user_id:
+            # Sin user_id no hay user_hash (caso no autenticado): _audit emite
+            # "user_hash": null vía el guard None de _hash_user_id, con el MISMO
+            # esquema (action/user_hash/target/timestamp) que las demás denegaciones.
+            _audit("account.delete_denied", None, "unauthenticated")
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+
+        # 2) Rate limit inmediatamente tras la auth (oráculo de contraseña).
+        allowed, retry = rate_check([(f"account-delete:{user_id}", ACCOUNT_DELETE_MAX),
+                                     ("account-delete:_global", ACCOUNT_DELETE_GLOBAL)])
+        if not allowed:
+            _audit("account.delete_denied", user_id, "rate_limited")
+            return self._json(429, {"ok": False, "error": "Demasiados intentos, espera un momento."},
+                              extra_headers={"Retry-After": retry})
+
+        # 3) Cuerpo: password + confirm_username presentes y no vacíos (US-040).
+        try:
+            data = self._read_json()
+        except (ValueError, json.JSONDecodeError):
+            _audit("account.delete_denied", user_id, "incomplete")
+            return self._json(400, {"ok": False, "error": "Datos incompletos"})
+        password = data.get("password")
+        confirm_username = data.get("confirm_username")
+        if not isinstance(password, str) or not password \
+                or not isinstance(confirm_username, str) or not confirm_username.strip():
+            _audit("account.delete_denied", user_id, "incomplete")
+            return self._json(400, {"ok": False, "error": "Datos incompletos"})
+
+        # 4) Email del JWT verificado obligatorio para la re-verificación de la
+        #    contraseña. Ausente → tratar como fallo de re-auth (401 genérico).
+        if not email:
+            _audit("account.delete_denied", user_id, "bad_password")
+            return self._json(401, {"ok": False, "error": "Contraseña incorrecta."})
+
+        # 5) Confirmación del username: coincidencia exacta con profiles.username
+        #    (valor almacenado en minúsculas), whitespace externo recortado.
+        with get_db() as cur:
+            cur.execute("SELECT username FROM profiles WHERE user_id = %s", (user_id,))
+            prow = cur.fetchone()
+        stored_username = prow["username"] if prow else None
+        if not stored_username or confirm_username.strip() != stored_username:
+            _audit("account.delete_denied", user_id, "username_mismatch")
+            return self._json(400, {"ok": False, "error": "La confirmación no coincide."})
+
+        # 6) Re-verificación server-side de la contraseña contra Supabase Auth.
+        if not self._supabase_verify_password(email, password):
+            _audit("account.delete_denied", user_id, "bad_password")
+            return self._json(401, {"ok": False, "error": "Contraseña incorrecta."})
+
+        # 7) Borrado de datos CineBox: UNA transacción atómica, todo por user_id
+        #    (PS-002). list_items cae por FK ON DELETE CASCADE al borrar lists.
+        #    Idempotente: en un reintento los borrados afectan a cero filas.
+        with get_db() as cur:
+            cur.execute("DELETE FROM movies WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM lists WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM profiles WHERE user_id = %s", (user_id,))
+
+        # 8) Borrado del usuario de Supabase Auth (admin API, service_role key).
+        #    Tras el commit de la DB: si falla, las filas ya se fueron y el
+        #    reintento re-intenta el borrado del auth user (idempotente).
+        if not self._supabase_admin_delete_user(user_id):
+            _audit("account.delete_denied", user_id, "auth_delete_failed")
+            return self._json(500, {"ok": False,
+                                    "error": "No se pudo completar la eliminación. Inténtalo de nuevo."})
+
+        _audit("account.deleted", user_id, "account")
         self._json(200, {"ok": True})
 
     # ── Perfil (owner) ──────────────────────────────────────────────────────────

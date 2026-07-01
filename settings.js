@@ -154,6 +154,30 @@ function renderSettingsView() {
           <button class="btn settings-password-submit" type="submit" data-settings-action="change-password">Cambiar contraseña</button>
           <p id="settings-password-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
         </form>
+
+        <div class="settings-danger">
+          <h3 class="settings-danger-title">Eliminar cuenta</h3>
+          <p class="settings-danger-copy muted smuted-sm">
+            Eliminar tu cuenta borra <strong>de forma permanente e irreversible</strong> toda tu
+            información: tu colección, tu perfil, tus listas y tu cuenta de acceso. No hay recuperación.
+          </p>
+          <button id="settings-delete-account-btn" class="btn-danger settings-danger-reveal" type="button"
+                  data-settings-action="reveal-delete">Eliminar cuenta</button>
+
+          <form id="settings-delete-form" class="sharing-form settings-delete-form" novalidate hidden>
+            <label class="control-label" for="settings-delete-password">Contraseña actual</label>
+            <input id="settings-delete-password" class="login-input" type="password"
+                   autocomplete="current-password" aria-describedby="settings-delete-hint">
+
+            <label class="control-label" for="settings-delete-confirm-username">Escribe tu nombre de usuario para confirmar</label>
+            <input id="settings-delete-confirm-username" class="login-input" type="text"
+                   autocomplete="off" autocapitalize="none" autocorrect="off" spellcheck="false"
+                   aria-describedby="settings-delete-hint">
+
+            <button class="btn-danger settings-delete-submit" type="submit" data-settings-action="delete-account">Eliminar mi cuenta permanentemente</button>
+            <p id="settings-delete-hint" class="sharing-hint muted smuted-sm" role="status" aria-live="polite"></p>
+          </form>
+        </div>
       </section>
     </div>`;
 
@@ -469,6 +493,106 @@ async function _changePassword(form) {
   reenable();
 }
 
+// ── Eliminar cuenta (Ajustes → Cuenta, zona de peligro) ─────────────────────
+// Acción destructiva e irreversible: borra colección/perfil/listas + la cuenta
+// de auth vía el endpoint autenticado `POST /api/account/delete`. Doble factor
+// de confirmación reforzado en servidor (contraseña re-verificada + nombre de
+// usuario tecleado); el cliente pre-valida para UX y bloquea sin llamada de red
+// ante un desajuste obvio (AC-7). La contraseña viaja SOLO en el cuerpo TLS del
+// POST — nunca se loguea, ni va a la URL, y se limpia con la vista. Cuerpo de
+// manejador → tiempo de llamada, por lo que `api`, `showMessage`, `signOut`,
+// `_updateSidebarUser`, `_showLoginScreen` (app.js) son PS-003-safe.
+async function _deleteAccount(form) {
+  const passwordEl = form.querySelector("#settings-delete-password");
+  const confirmEl = form.querySelector("#settings-delete-confirm-username");
+  const hintEl = form.querySelector("#settings-delete-hint");
+  const submitEl = form.querySelector("[data-settings-action='delete-account']");
+  if (!passwordEl || !confirmEl) return;
+
+  // (1) Leer la contraseña SIN recortar (puede llevar espacios legítimos);
+  // el nombre de confirmación sí se recorta para el pre-check.
+  const password = passwordEl.value;
+  const confirmUsername = confirmEl.value;
+
+  const fail = (msg, focusEl) => {
+    if (hintEl) hintEl.textContent = msg;
+    showMessage(msg, "error");
+    if (focusEl) focusEl.focus();
+  };
+
+  // (2) Pre-check cliente ANTES de cualquier llamada de red (AC-2/AC-7): ambos
+  // campos no vacíos, y el nombre tecleado (recortado) == el nombre mostrado
+  // (settingsProfile.username, lo que pinta Perfil). Cualquier fallo muestra el
+  // mensaje, enfoca el campo y RETORNA sin llamada de red.
+  const displayedUsername = settingsProfile && settingsProfile.username;
+  if (!password) { fail("Introduce tu contraseña actual.", passwordEl); return; }
+  if (!confirmUsername.trim()) { fail("Escribe tu nombre de usuario para confirmar.", confirmEl); return; }
+  if (!displayedUsername || confirmUsername.trim() !== displayedUsername) {
+    fail("El nombre de usuario no coincide.", confirmEl);
+    return;
+  }
+
+  // (3) Deshabilitar el submit durante la llamada en vuelo (evita doble envío).
+  if (submitEl) submitEl.disabled = true;
+  const reenable = () => { if (submitEl) submitEl.disabled = false; };
+
+  // (4) Llamar al endpoint autenticado. `api()` adjunta el bearer token y solo
+  // fija Content-Type si el body es string → serializamos el cuerpo. Todo el
+  // bloque de llamada + enrutado va en try/catch: un `fetch()` abortado (red
+  // caída, offline) rechaza con TypeError; sin capturarlo el hint quedaría en
+  // blanco y el submit deshabilitado. En el catch se muestra el MISMO mensaje
+  // genérico que la rama 500 (AC-8) y se re-habilita el submit. El error crudo
+  // nunca se pinta ni se loguea (no lleva credenciales, pero se mantiene genérico).
+  try {
+    const { ok, status } = await api("/api/account/delete", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ password, confirm_username: confirmUsername.trim() }),
+    });
+
+    // (5) Enrutar por resultado. Nunca se pinta el error crudo del servidor.
+    if (ok && status === 200) {
+      await _finishAccountDeletion();
+      return;
+    }
+    if (status === 401) { fail("La contraseña no es correcta.", passwordEl); reenable(); return; }
+    if (status === 400) { fail("La confirmación no coincide.", confirmEl); reenable(); return; }
+    if (status === 429) { fail("Demasiados intentos, espera un momento.", passwordEl); reenable(); return; }
+    // 500 / cualquier otro status → genérico (AC-8).
+    fail("No se pudo eliminar la cuenta. Inténtalo de nuevo.", passwordEl);
+    reenable();
+  } catch (e) {
+    // Red abortada / fallo inesperado (TypeError de fetch): mismo mensaje
+    // genérico de AC-8 y re-habilitar el submit para que el usuario reintente.
+    fail("No se pudo eliminar la cuenta. Inténtalo de nuevo.", passwordEl);
+    reenable();
+  }
+}
+
+// Éxito de la eliminación (AC-3): confirmación + fin de sesión + vuelta a la
+// pantalla de bienvenida/login. `signOut()` (app.js) hace el signOut remoto y
+// el teardown local; se envuelve para que un fallo del signOut remoto (la
+// cuenta de auth ya no existe) NO deje al usuario atrapado — igualmente se
+// limpia el estado local y se muestra el login. Los valores del formulario no
+// se retienen (la vista desaparece con el logout).
+async function _finishAccountDeletion() {
+  showMessage("Tu cuenta ha sido eliminada.");
+  try {
+    await signOut();
+  } catch (e) {
+    // El signOut remoto puede fallar porque el usuario ya no existe: garantiza
+    // el teardown local + la pantalla de login de todos modos (AC-3). Un fallo
+    // en el teardown se registra en vez de tragarse en silencio (US-021); no
+    // hay credenciales en este ámbito. El usuario aterriza SIEMPRE en el login.
+    try {
+      _updateSidebarUser(null);
+      _showLoginScreen();
+    } catch (e2) {
+      console.error("account deletion teardown:", e2);
+    }
+  }
+}
+
 // ── Selector "Añadir a lista" ───────────────────────────────────────────────
 // Mensaje exacto del backend para el duplicado (409). El wrapper `api()` no
 // expone el código HTTP; el cuerpo del 409 trae este texto como contrato
@@ -606,6 +730,8 @@ if (settingsViewEl) {
       _saveUsername(form.querySelector("#settings-username-input"));
     } else if (form.id === "settings-password-form") {
       _changePassword(form);
+    } else if (form.id === "settings-delete-form") {
+      _deleteAccount(form);
     }
   });
 
@@ -617,7 +743,18 @@ if (settingsViewEl) {
   settingsViewEl.addEventListener("click", (e) => {
     const btn = e.target.closest("[data-settings-action]");
     if (!btn) return;
-    if (btn.dataset.settingsAction === "logout") signOut();
+    const action = btn.dataset.settingsAction;
+    if (action === "logout") { signOut(); }
+    else if (action === "reveal-delete") {
+      // Revela el formulario de confirmación y enfoca el primer campo (AC-2).
+      const deleteForm = settingsViewEl.querySelector("#settings-delete-form");
+      if (deleteForm) {
+        deleteForm.hidden = false;
+        btn.hidden = true;
+        const pw = deleteForm.querySelector("#settings-delete-password");
+        if (pw) pw.focus();
+      }
+    }
   });
 }
 
