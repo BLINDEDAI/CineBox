@@ -18,6 +18,7 @@ import os
 import re
 import threading
 import time
+import urllib.error
 import urllib.parse
 import urllib.request
 from contextlib import contextmanager
@@ -535,7 +536,7 @@ class Handler(SimpleHTTPRequestHandler):
             "Content-Security-Policy",
             "default-src 'self'; "
             "script-src 'self'; "
-            "img-src 'self' https://image.tmdb.org data: blob:; "
+            "img-src 'self' https://image.tmdb.org https://*.supabase.co data: blob:; "
             "connect-src 'self' https://*.supabase.co; "
             "frame-ancestors 'none'",
         )
@@ -1184,6 +1185,68 @@ class Handler(SimpleHTTPRequestHandler):
         except Exception:
             return False
 
+    # ── Avatar en Supabase Storage (service_role, solo servidor) ─────────────────
+
+    def _storage_avatar_key(self, user_id):
+        """Clave de objeto determinista y con dueño: `{user_id}/avatar.webp`.
+        Un objeto por usuario, clave fija (FS-*: la clave siempre lleva el owner_id
+        como invariante limitadora de fugas; el upsert sobrescribe, no acumula)."""
+        return f"{user_id}/avatar.webp"
+
+    def _storage_public_avatar_url(self, user_id, version):
+        """URL pública canónica del avatar con cache-buster `?v={version}`. La clave
+        es fija, así que el `?v=` (epoch) fuerza a los navegadores a re-leer los bytes
+        nuevos tras un reemplazo. `avatar_url` lo DERIVA el servidor: el cliente nunca
+        envía una URL (mitiga img-src-injection)."""
+        base = supabase_base_url()
+        return (f"{base}/storage/v1/object/public/avatars/"
+                f"{self._storage_avatar_key(user_id)}?v={version}")
+
+    def _supabase_storage_head_avatar(self, user_id):
+        """HEAD service_role al objeto de avatar para confirmar que el cliente lo
+        subió client-direct. Devuelve True en 2xx, False en 404 / cualquier no-2xx /
+        error de red. Usado por la acción `set`. La service_role key nunca llega al
+        cliente ni a un log."""
+        base = supabase_base_url()
+        service = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+        if not base or not service:
+            return False
+        url = f"{base}/storage/v1/object/avatars/{self._storage_avatar_key(user_id)}"
+        req = urllib.request.Request(url, method="HEAD", headers={
+            "apikey":        service,
+            "Authorization": f"Bearer {service}",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return 200 <= resp.status < 300
+        except Exception:
+            # HTTPError (404 objeto ausente) y URLError (red) → False. El error
+            # crudo de Supabase nunca se propaga al cliente.
+            return False
+
+    def _supabase_storage_delete_avatar(self, user_id):
+        """DELETE service_role del objeto de avatar. Idempotente: un 404 (objeto ya
+        ausente) se trata como éxito. Devuelve True en 2xx o 404, False en cualquier
+        otro no-2xx / error de red. Usado por `remove` y por `_delete_account` (RTBF).
+        La service_role key nunca llega al cliente ni a un log."""
+        base = supabase_base_url()
+        service = os.environ.get("SUPABASE_SERVICE_KEY", "").strip()
+        if not base or not service:
+            return False
+        url = f"{base}/storage/v1/object/avatars/{self._storage_avatar_key(user_id)}"
+        req = urllib.request.Request(url, method="DELETE", headers={
+            "apikey":        service,
+            "Authorization": f"Bearer {service}",
+        })
+        try:
+            with urllib.request.urlopen(req, timeout=8) as resp:
+                return 200 <= resp.status < 300
+        except urllib.error.HTTPError as e:
+            # 404 = objeto ya ausente → idempotente, éxito. Otro código → fallo.
+            return e.code == 404
+        except Exception:
+            return False
+
     def _delete_account(self):
         """POST /api/account/delete — borrado permanente e irreversible de la
         cuenta y todos los datos personales del usuario autenticado (RTBF).
@@ -1261,7 +1324,14 @@ class Handler(SimpleHTTPRequestHandler):
             cur.execute("DELETE FROM lists WHERE user_id = %s", (user_id,))
             cur.execute("DELETE FROM profiles WHERE user_id = %s", (user_id,))
 
-        # 8) Borrado del usuario de Supabase Auth (admin API, service_role key).
+        # 8) Borrado del objeto de avatar en Storage (RTBF, GD-*): ningún dato
+        #    personal debe sobrevivir a la erasure. Orden DB → avatar → auth: la
+        #    erasure de DB/auth es la primaria; un fallo aquí se AUDITA (redactado,
+        #    user_hash) pero NO aborta el borrado de cuenta (idempotente en reintento).
+        if not self._supabase_storage_delete_avatar(user_id):
+            _audit("account.avatar_erase_failed", user_id, "avatar")
+
+        # 9) Borrado del usuario de Supabase Auth (admin API, service_role key).
         #    Tras el commit de la DB: si falla, las filas ya se fueron y el
         #    reintento re-intenta el borrado del auth user (idempotente).
         if not self._supabase_admin_delete_user(user_id):
@@ -1667,7 +1737,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(401, {"ok": False, "error": "No autenticado"})
         with get_db() as cur:
             cur.execute(
-                "SELECT username, is_public, show_collection, show_stats "
+                "SELECT username, is_public, show_collection, show_stats, avatar_url "
                 "FROM profiles WHERE user_id = %s",
                 (user_id,))
             row = cur.fetchone()
@@ -1676,7 +1746,8 @@ class Handler(SimpleHTTPRequestHandler):
         else:
             # Defaults perezosos: nunca se crea una fila pública implícitamente.
             profile = {"username": None, "is_public": False,
-                       "show_collection": False, "show_stats": False}
+                       "show_collection": False, "show_stats": False,
+                       "avatar_url": None}
         self._json(200, {"ok": True, "profile": profile})
 
     def _patch_profile(self):
@@ -1688,10 +1759,11 @@ class Handler(SimpleHTTPRequestHandler):
         except (ValueError, json.JSONDecodeError):
             return self._json(400, {"ok": False, "error": "JSON inválido"})
 
-        # Estado actual (para validar publish-sin-username y para auditar cambios).
+        # Estado actual (para validar publish-sin-username, auditar cambios y
+        # componer el `profile` devuelto con los campos no tocados).
         with get_db() as cur:
             cur.execute(
-                "SELECT username, is_public, show_collection, show_stats "
+                "SELECT username, is_public, show_collection, show_stats, avatar_url "
                 "FROM profiles WHERE user_id = %s",
                 (user_id,))
             current = cur.fetchone()
@@ -1701,6 +1773,28 @@ class Handler(SimpleHTTPRequestHandler):
         cols, vals = [], []     # columna → valor a escribir (orden estable)
         new_username = cur_username
         username_changed = False
+
+        # Acción de avatar (validada de forma independiente; compone con
+        # username/is_public/show_*). El cliente ya subió el objeto client-direct;
+        # el servidor DERIVA `avatar_url` (nunca confía en una URL del cliente,
+        # img-src-injection). Cualquier valor distinto de set/remove → 400.
+        avatar_action = None
+        if "avatar" in data:
+            avatar_action = data["avatar"]
+            if avatar_action not in ("set", "remove"):
+                return self._json(400, {"ok": False, "error": "Acción de avatar inválida"})
+            if avatar_action == "set":
+                # HEAD service_role: confirma que el objeto existe antes de derivar
+                # y almacenar la URL. Objeto ausente → 400 (no persiste imagen rota).
+                if not self._supabase_storage_head_avatar(user_id):
+                    return self._json(400, {"ok": False, "error": "No se encontró la imagen subida"})
+                avatar_value = self._storage_public_avatar_url(user_id, int(time.time()))
+                cols.append("avatar_url"); vals.append(avatar_value)
+            else:  # remove
+                # DELETE service_role idempotente (404 = éxito) + avatar_url = NULL.
+                self._supabase_storage_delete_avatar(user_id)
+                cols.append("avatar_url"); vals.append(None)
+
         if "username" in data:
             raw = data["username"]
             if raw is None or (isinstance(raw, str) and raw.strip() == ""):
@@ -1750,7 +1844,21 @@ class Handler(SimpleHTTPRequestHandler):
             _audit("profile.username_set", user_id, "profile")
         if "is_public" in data and data["is_public"] != cur_is_public:
             _audit("profile.publish" if data["is_public"] else "profile.unpublish", user_id, "profile")
-        self._json(200, {"ok": True})
+
+        # Perfil devuelto: estado previo (o defaults perezosos) con las columnas
+        # recién escritas superpuestas (avatar_url incluido). `updated_at` no forma
+        # parte del contrato de lectura del perfil, se excluye.
+        profile = {
+            "username":        cur_username,
+            "is_public":       cur_is_public,
+            "show_collection": current["show_collection"] if current else False,
+            "show_stats":      current["show_stats"] if current else False,
+            "avatar_url":      current.get("avatar_url") if current else None,
+        }
+        for c, v in zip(cols, vals):
+            if c != "updated_at":
+                profile[c] = v
+        self._json(200, {"ok": True, "profile": profile})
 
     # ── Listas (owner) ───────────────────────────────────────────────────────────
 
@@ -1986,7 +2094,7 @@ class Handler(SimpleHTTPRequestHandler):
         username = username.lower()
         with get_db() as cur:
             cur.execute(
-                "SELECT user_id, username, is_public, show_collection, show_stats "
+                "SELECT user_id, username, is_public, show_collection, show_stats, avatar_url "
                 "FROM profiles WHERE username = %s",
                 (username,))
             prof = cur.fetchone()
@@ -1994,7 +2102,9 @@ class Handler(SimpleHTTPRequestHandler):
             if not prof or not prof["is_public"]:
                 return self._json(404, {"ok": False, "error": "No encontrado"})
             owner_id = prof["user_id"]
-            body = {"username": prof["username"]}
+            # avatar_url es identidad de cabecera: se incluye siempre (nullable),
+            # NO gateado por show_collection/show_stats.
+            body = {"username": prof["username"], "avatar_url": prof.get("avatar_url")}
             # AC-4: la colección solo si show_collection.
             if prof["show_collection"]:
                 cur.execute(

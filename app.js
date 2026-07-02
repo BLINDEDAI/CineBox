@@ -114,6 +114,12 @@ let editingDateId = null;
 // re-fetching. Reset to null on logout.
 let _profileState = null;
 
+// Guarded-<img> allowlist for uploaded avatars (custom-avatar-upload). The URL
+// is set as an <img src> ONLY after it matches a Supabase-Storage-avatars origin
+// (same guarded-<img> pattern as image.tmdb.org). A non-matching URL is ignored
+// and the generated fallback is used — the URL is NEVER injected into innerHTML.
+const _AVATAR_URL_RE = /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/avatars\//;
+
 // Pure, deterministic avatar helpers (AC-5). Same username → same output.
 function _avatarInitials(username) {
   const u = (username || "").trim();
@@ -144,15 +150,27 @@ function _renderProfileChip() {
   const chip = document.getElementById("profile-chip");
   if (!chip) return;
   const username = _profileState && _profileState.username;
+  const avatarUrl = _profileState && _profileState.avatar_url;
 
   chip.textContent = "";
 
   const avatar = document.createElement("span");
   avatar.className = "profile-chip-avatar";
   avatar.setAttribute("aria-hidden", "true");
-  avatar.textContent = username ? _avatarInitials(username) : "?";
-  // Gradient via CSSOM only — strict CSP forbids inline style= (PS-006).
-  avatar.style.backgroundImage = _avatarGradient(username);
+  // Uploaded avatar: render a guarded <img> only when the URL matches the
+  // Storage-avatars allowlist; otherwise fall back to generated initials.
+  if (avatarUrl && _AVATAR_URL_RE.test(avatarUrl)) {
+    const img = document.createElement("img");
+    img.className = "profile-chip-avatar-img";
+    img.setAttribute("alt", "");
+    img.setAttribute("loading", "lazy");
+    img.setAttribute("src", avatarUrl); // src via setAttribute after allowlist match
+    avatar.appendChild(img);
+  } else {
+    avatar.textContent = username ? _avatarInitials(username) : "?";
+    // Gradient via CSSOM only — strict CSP forbids inline style= (PS-006).
+    avatar.style.backgroundImage = _avatarGradient(username);
+  }
 
   const label = document.createElement("span");
   label.className = "profile-chip-label";

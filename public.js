@@ -8,6 +8,12 @@
 
   const root = document.getElementById("public-root");
 
+  // Guarded-<img> allow-list para avatares subidos (custom-avatar-upload). Esta
+  // página es autónoma (no carga app.js), así que lleva su PROPIA comprobación de
+  // origen. El src solo se fija (vía setAttribute) tras casar un origen de
+  // Supabase-Storage-avatars — nunca se interpola la URL en HTML.
+  const AVATAR_URL_RE = /^https:\/\/[a-z0-9-]+\.supabase\.co\/storage\/v1\/object\/public\/avatars\//;
+
   // ── Helpers DOM (sin innerHTML de datos de usuario) ───────────────────────
   function elem(tag, opts) {
     const node = document.createElement(tag);
@@ -195,6 +201,47 @@
     return section;
   }
 
+  // Avatar del perfil público: <img> guardado (src vía setAttribute solo tras
+  // casar la allow-list de Storage) cuando hay avatar_url válido; si no, un
+  // avatar generado (iniciales + gradiente CSSOM, sin inline style=). Lleva un
+  // nombre accesible (alt) — parte de la identidad de cabecera.
+  function avatarNode(profile) {
+    const username = profile.username || "";
+    const url = profile.avatar_url;
+    const wrap = elem("div", { className: "pub-profile-avatar" });
+    if (url && AVATAR_URL_RE.test(url)) {
+      const img = elem("img", {
+        className: "pub-profile-avatar-img",
+        attrs: { alt: "Avatar de @" + username, loading: "lazy" },
+      });
+      img.setAttribute("src", url); // src tras casar la allow-list
+      wrap.appendChild(img);
+    } else {
+      wrap.classList.add("pub-profile-avatar-generated");
+      wrap.setAttribute("aria-label", "Avatar de @" + username);
+      wrap.setAttribute("role", "img");
+      const initials = username ? username.slice(0, 2).toUpperCase() : "?";
+      wrap.appendChild(elem("span", { className: "pub-profile-avatar-initials", text: initials, attrs: { "aria-hidden": "true" } }));
+      wrap.style.backgroundImage = _publicAvatarGradient(username);
+    }
+    return wrap;
+  }
+
+  // Gradiente determinista (mismo algoritmo FNV-1a que app.js _avatarGradient):
+  // mismo username → mismo gradiente. Se fija vía CSSOM (la CSP prohíbe style=).
+  function _publicAvatarGradient(username) {
+    const u = username || "";
+    let hash = 2166136261;
+    for (let i = 0; i < u.length; i++) {
+      hash ^= u.charCodeAt(i);
+      hash = (hash * 16777619) >>> 0;
+    }
+    if (!u) return "linear-gradient(135deg, #3a3f4b, #21242c)";
+    const h1 = hash % 360;
+    const h2 = (h1 + 40) % 360;
+    return "linear-gradient(135deg, hsl(" + h1 + " 55% 42%), hsl(" + h2 + " 55% 28%))";
+  }
+
   // ── Render perfil completo ────────────────────────────────────────────────
   function renderProfile(profile) {
     clearRoot();
@@ -202,6 +249,7 @@
 
     const headerSec = elem("section", { className: "pub-profile-head" });
     headerSec.appendChild(elem("p", { className: "pub-eyebrow", text: "Perfil público" }));
+    headerSec.appendChild(avatarNode(profile));
     const h1 = elem("h1", { className: "pub-profile-name" });
     h1.appendChild(elem("span", { className: "pub-at", text: "@", attrs: { "aria-hidden": "true" } }));
     h1.appendChild(document.createTextNode(profile.username || ""));
