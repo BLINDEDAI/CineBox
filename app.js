@@ -305,6 +305,7 @@ function showView(viewId) {
   if (viewId === "stats-view") renderStatsView();
   if (viewId === "lists-view") showListsView();
   if (viewId === "settings-view") showSettingsView();
+  if (viewId === "activity-view") showActivityView();
 }
 
 // ---- Eventos ----

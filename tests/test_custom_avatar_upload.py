@@ -303,7 +303,12 @@ class PublicProfileAvatarUrlIntegrationUnit(unittest.TestCase):
     def _run_public_profile(self, username, *, row):
         h, responses = make_handler(user_id=None)
         h._public_rate_limited = lambda: False
-        cur = FakeCursor(fetch_results=[row])
+        # For a public profile (200 path) with show_collection/show_stats False,
+        # _public_profile then queries: lists, followers_count, following_count,
+        # followers[], following[]. Supply those so the FIFO stub does not run dry.
+        # (A private/nonexistent row 404s before any of them are consumed.)
+        trailing = [[], {"c": 0}, {"c": 0}, [], []] if (row and row.get("is_public")) else []
+        cur = FakeCursor(fetch_results=[row, *trailing])
         with patch_db(cur):
             h._public_profile(username)
         return responses, cur
