@@ -102,6 +102,11 @@ function renderCollection() {
         ${editingNoteId === m.id
           ? `<div class="note-form">
                <textarea class="note-textarea" maxlength="500" placeholder="Tu nota personal…" aria-label="Nota personal">${esc(m.note || "")}</textarea>
+               <label class="note-public-toggle">
+                 <input type="checkbox" data-note-public${m.note_public ? " checked" : ""}${(m.note || "").trim() ? "" : " disabled"}>
+                 <span class="note-public-label">Reseña pública</span>
+                 <span class="note-public-hint" data-note-public-hint${(m.note || "").trim() ? " hidden" : ""}>Escribe una nota antes de publicarla.</span>
+               </label>
                <div class="note-form-actions">
                  <span class="note-chars" data-note-chars></span>
                  <button class="progress-save" data-action="note-save" type="button">✓ Guardar</button>
@@ -110,6 +115,7 @@ function renderCollection() {
              </div>`
           : `<button class="note-btn ${m.note ? "has-note" : ""}" data-action="note" type="button" title="Editar nota personal">
                ${m.note ? `<span>${esc(notePreview(m.note))}</span>` : "+ Nota"}
+               ${m.note && m.note_public ? `<span class="note-public-badge">Reseña pública</span>` : ""}
              </button>`
         }
         <div class="stars">${starsHtml(m.rating || 0)}</div>
@@ -143,9 +149,23 @@ function renderCollection() {
     if (ta) {
       ta.focus();
       ta.setSelectionRange(ta.value.length, ta.value.length);
-      const counter = ta.closest(".note-form").querySelector("[data-note-chars]");
+      const form = ta.closest(".note-form");
+      const counter = form.querySelector("[data-note-chars]");
+      const publicCheckbox = form.querySelector("[data-note-public]");
+      const publicHint = form.querySelector("[data-note-public-hint]");
       if (counter) counter.textContent = `${ta.value.length}/500`;
-      ta.addEventListener("input", () => { if (counter) counter.textContent = `${ta.value.length}/500`; });
+      // AC-3 (client mirror of the authoritative backend 400): la casilla
+      // "Reseña pública" solo puede activarse con una nota no vacía. Al vaciar el
+      // textarea se desmarca + deshabilita y se muestra la pista.
+      ta.addEventListener("input", () => {
+        if (counter) counter.textContent = `${ta.value.length}/500`;
+        if (publicCheckbox) {
+          const hasText = ta.value.trim().length > 0;
+          publicCheckbox.disabled = !hasText;
+          if (!hasText) publicCheckbox.checked = false;
+          if (publicHint) publicHint.hidden = hasText;
+        }
+      });
     }
   }
 }
@@ -289,8 +309,12 @@ collectionEl.addEventListener("click", (e) => {
     const ta = card.querySelector(".note-textarea");
     const note = ta ? ta.value.trim() : "";
     if (note.length > 500) { showMessage("La nota no puede superar 500 caracteres.", "error"); return; }
+    // "Reseña pública": una nota vacía nunca puede quedar publicada (AC-3). El
+    // backend es la autoridad (400), esto es solo el reflejo cliente.
+    const publicCheckbox = card.querySelector("[data-note-public]");
+    const notePublic = !!(publicCheckbox && publicCheckbox.checked) && note.length > 0;
     editingNoteId = null;
-    patchMovie(movie.id, { note });
+    patchMovie(movie.id, { note, note_public: notePublic });
   }
   else if (action === "date") { editingDateId = id; renderCollection(); }
   else if (action === "date-cancel") { editingDateId = null; renderCollection(); }

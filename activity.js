@@ -60,7 +60,43 @@ function _activityVerbHtml(entry) {
   if (entry.action === "list_add") {
     return `añadió ${title} a la lista «${esc(entry.list_name || "")}»`;
   }
+  if (entry.action === "reviewed") {
+    // El texto de la reseña es UGC → esc() (misma regla que title/list_name).
+    // El bloque .activity-review es aparte del verbo (se añade en _activityEntryHtml).
+    return `escribió una reseña de ${title}`;
+  }
   return "";
+}
+
+// Bloque de texto de la reseña (UGC) — SIEMPRE vía esc(), nunca innerHTML de la
+// nota (AC-9, directiva de verificación #2: escapar en TODOS los sitios de
+// render). Devuelve "" si no hay texto.
+function _activityReviewHtml(entry) {
+  const note = entry.note || "";
+  if (!note) return "";
+  return `<blockquote class="activity-review">${esc(note)}</blockquote>`;
+}
+
+// Control de "me gusta" para una entrada `reviewed`. Botón corazón real
+// (<button aria-pressed>) + contador. Estado inicial de entry.liked_by_me /
+// entry.like_count. data-movie-id lleva el id del título reseñado; el delegador
+// en #activity-view hace el POST/DELETE. Incluye el disclosure "quién dio like".
+function _activityLikeControlHtml(entry) {
+  const movieId = Number(entry.movie_id) || 0;
+  if (!movieId) return "";
+  const liked = !!entry.liked_by_me;
+  const count = Math.max(0, Number(entry.like_count) || 0);
+  return `<div class="activity-like" data-like-block data-movie-id="${esc(movieId)}">` +
+    `<button class="activity-like-btn${liked ? " is-liked" : ""}" type="button" ` +
+      `data-like-toggle data-movie-id="${esc(movieId)}" aria-pressed="${liked ? "true" : "false"}" ` +
+      `aria-label="Me gusta">` +
+      `<span class="activity-like-heart" aria-hidden="true">${liked ? "♥" : "♡"}</span>` +
+      `<span class="activity-like-count" data-like-count>${esc(count)}</span>` +
+    `</button>` +
+    `<button class="activity-likers-toggle" type="button" data-likers-expand data-movie-id="${esc(movieId)}" ` +
+      `aria-expanded="false">quién dio like</button>` +
+    `<div class="activity-likers" data-likers-list hidden></div>` +
+    `</div>`;
 }
 
 // Renderiza una entrada del feed como <li>. El poster reutiliza posterHtml
@@ -85,6 +121,15 @@ function _activityEntryHtml(entry) {
   if (entry.action === "list_add" && entry.list_share_token) {
     return `<li class="activity-item">` +
       `<a class="activity-link" href="/l/${esc(entry.list_share_token)}">${body}</a>` +
+      `</li>`;
+  }
+  // reviewed → añade el texto de la reseña (esc) + el control de like debajo de
+  // la línea principal. Nunca es un enlace envolvente (lleva controles propios).
+  if (entry.action === "reviewed") {
+    return `<li class="activity-item activity-item-reviewed">` +
+      body +
+      _activityReviewHtml(entry) +
+      _activityLikeControlHtml(entry) +
       `</li>`;
   }
   return `<li class="activity-item">${body}</li>`;
@@ -128,13 +173,75 @@ async function showActivityView() {
   view.innerHTML = head + `<ul class="activity-list">${items}</ul>`;
 }
 
+// Like/unlike de una reseña (cuerpo de handler → tiempo de llamada, PS-003).
+// POST cuando no estaba likeada, DELETE cuando sí. api() devuelve {ok,status,data}
+// → se ramifica por res.ok/res.data, nunca por strings del body. Al éxito voltea
+// el estado del botón (aria-pressed + corazón) y actualiza el contador con el
+// count autoritativo del servidor.
+async function _toggleLike(btn) {
+  if (btn.disabled) return;
+  const movieId = Number(btn.dataset.movieId) || 0;
+  if (!movieId) return;
+  const wasLiked = btn.getAttribute("aria-pressed") === "true";
+  btn.disabled = true;
+  const res = await api(`/api/reviews/${movieId}/likes`, { method: wasLiked ? "DELETE" : "POST" });
+  btn.disabled = false;
+  if (!res.ok || !res.data || !res.data.ok) return; // no-op tolerante (404/429/red)
+  const liked = typeof res.data.liked === "boolean" ? res.data.liked : !wasLiked;
+  btn.setAttribute("aria-pressed", liked ? "true" : "false");
+  btn.classList.toggle("is-liked", liked);
+  const heart = btn.querySelector(".activity-like-heart");
+  if (heart) heart.textContent = liked ? "♥" : "♡";
+  const countEl = btn.querySelector("[data-like-count]");
+  if (countEl && typeof res.data.count === "number") countEl.textContent = String(Math.max(0, res.data.count));
+}
+
+// Disclosure "quién dio like": al expandir, GET perezoso de los likers (solo
+// perfiles públicos, cada uno enlazado a /u/{username}). Cada handle es texto
+// escapado con esc(). Colapsar oculta sin re-fetch.
+async function _toggleLikers(toggleBtn) {
+  const block = toggleBtn.closest("[data-like-block]");
+  if (!block) return;
+  const listEl = block.querySelector("[data-likers-list]");
+  if (!listEl) return;
+  const expanded = toggleBtn.getAttribute("aria-expanded") === "true";
+  if (expanded) {
+    toggleBtn.setAttribute("aria-expanded", "false");
+    listEl.hidden = true;
+    return;
+  }
+  toggleBtn.setAttribute("aria-expanded", "true");
+  listEl.hidden = false;
+  if (listEl.dataset.loaded === "1") return; // ya cargado, no re-fetch
+  const movieId = Number(toggleBtn.dataset.movieId) || 0;
+  listEl.innerHTML = `<span class="activity-likers-loading" role="status">Cargando…</span>`;
+  const res = await api(`/api/reviews/${movieId}/likes`);
+  if (!res.ok || !res.data || !res.data.ok) {
+    listEl.innerHTML = `<span class="activity-likers-empty">No se pudo cargar.</span>`;
+    return;
+  }
+  listEl.dataset.loaded = "1";
+  const likers = Array.isArray(res.data.likers) ? res.data.likers : [];
+  if (!likers.length) {
+    listEl.innerHTML = `<span class="activity-likers-empty">Sin perfiles públicos que mostrar.</span>`;
+    return;
+  }
+  // Cada username es UGC → esc(); el href se codifica con encodeURIComponent.
+  listEl.innerHTML = likers.map((h) => {
+    const uname = h && h.username ? String(h.username) : "";
+    if (!uname) return "";
+    return `<a class="activity-liker" href="/u/${encodeURIComponent(uname)}">@${esc(uname)}</a>`;
+  }).join("");
+}
+
 // ── Referencia DOM de carga + listener delegado (PS-003) ─────────────────────
 // Únicas sentencias de nivel superior. `#activity-view` existe en el DOM inicial
 // (index.html). El listener delegado se engancha al contenedor estable y solo
 // referencia globals cargados antes (`showActivityView` es de este archivo).
 // Un `data-activity-refresh` en el estado de error/vacío permite re-cargar el
-// feed sin recargar la página. `showActivityView()` la invoca app.js (tiempo de
-// llamada) → PS-003-safe.
+// feed sin recargar la página. Las ramas `data-like-toggle` / `data-likers-expand`
+// llaman a helpers de este archivo (cuerpo de handler → tiempo de llamada,
+// PS-003-safe). `showActivityView()` la invoca app.js (tiempo de llamada).
 const activityViewEl = el("activity-view");
 if (activityViewEl) {
   activityViewEl.addEventListener("click", (ev) => {
@@ -142,7 +249,21 @@ if (activityViewEl) {
     if (refresh) {
       ev.preventDefault();
       showActivityView();
+      return;
     }
-    // Los enlaces list_add (<a href="/l/{token}">) navegan de forma nativa.
+    const likeBtn = ev.target.closest("[data-like-toggle]");
+    if (likeBtn) {
+      ev.preventDefault();
+      _toggleLike(likeBtn);
+      return;
+    }
+    const likersBtn = ev.target.closest("[data-likers-expand]");
+    if (likersBtn) {
+      ev.preventDefault();
+      _toggleLikers(likersBtn);
+      return;
+    }
+    // Los enlaces list_add (<a href="/l/{token}">) y de likers (/u/{username})
+    // navegan de forma nativa.
   });
 }
