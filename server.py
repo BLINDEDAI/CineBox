@@ -217,6 +217,15 @@ ACCOUNT_IMPORT_GLOBAL = 30    # tope agregado
 MAX_IMPORT_BODY = 1 * 1024 * 1024   # 1 MB — tope propio del import (NO el MAX_BODY de 64 KB)
 MAX_IMPORT_ITEMS = 5000      # tope de elementos (títulos + items de listas)
 MAX_IMPORT_LISTS = 500       # tope de listas
+# Capa social (follows + feed): acciones por usuario tras un JWT válido. Límite
+# por usuario + global (misma ventana deslizante), aplicado justo tras la auth,
+# como guarda anti-abuso/enumeración — reflejando ACCOUNT_EXPORT_*.
+FOLLOW_RATE_MAX = 60          # tope por usuario en la ventana (POST /api/follows)
+FOLLOW_RATE_GLOBAL = 600      # tope agregado
+FEED_RATE_MAX = 60            # tope por usuario en la ventana (GET /api/feed)
+FEED_RATE_GLOBAL = 600        # tope agregado
+FEED_LIMIT = 50               # nº máximo de eventos devueltos por el feed (sin paginación en v1)
+PUBLIC_FOLLOW_LIST_MAX = 50   # tope de handles públicos listados en un perfil
 
 
 def rate_check(buckets):
@@ -466,6 +475,25 @@ def _public_collection_projection(rows):
     } for r in rows]
 
 
+def _record_activity(cur, user_id, action, snapshot, rating=None, list_id=None):
+    """Escribe UN evento social en `activity` (append-only, ADR-014) usando el
+    cursor de la MISMA transacción de la mutación disparadora — atómico con la
+    acción, sin segundo round-trip. `snapshot` es un dict con la fila-caché del
+    título ({title, year, poster_url, tmdb_id, media_type}); `rating` solo para
+    'rated', `list_id` solo para 'list_add'. `poster_url` ya viene saneado a la
+    allow-list de TMDB por el sitio de llamada (nunca src arbitrario). SQL
+    parametrizado (PS-002); identificadores/valores en inglés (US-001)."""
+    poster = snapshot.get("poster_url") or None
+    if poster and not poster.startswith("https://image.tmdb.org/"):
+        poster = None   # defensa en profundidad: nunca cachear un poster no-TMDB
+    cur.execute(
+        "INSERT INTO activity "
+        "(user_id, action, tmdb_id, media_type, title, year, poster_url, rating, list_id) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        (user_id, action, snapshot.get("tmdb_id"), snapshot.get("media_type"),
+         snapshot.get("title"), snapshot.get("year"), poster, rating, list_id))
+
+
 def webhook_for(status):
     key = "DISCORD_WEBHOOK_VISTA" if status == "vista" else "DISCORD_WEBHOOK_PENDIENTE"
     return os.environ.get(key, "").strip() or os.environ.get("DISCORD_WEBHOOK_URL", "").strip()
@@ -656,7 +684,10 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/similar":  return self._similar()
         if path == "/api/profile":  return self._get_profile()
         if path == "/api/lists":    return self._list_lists()
+        if path == "/api/feed":     return self._feed()
         if path == "/api/account/export": return self._export_account()
+        m = re.match(r"^/api/follows/([a-z0-9_-]{3,30})$", path)
+        if m:                       return self._follow_status(m.group(1))
         if path == "/api/public/username-available": return self._username_available()
         m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})$", path)
         if m:                       return self._get_list(m.group(1))
@@ -948,6 +979,8 @@ class Handler(SimpleHTTPRequestHandler):
             return self._import_account()
         if self.path == "/api/lists":
             return self._create_list()
+        if self.path == "/api/follows":
+            return self._follow()
         m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})/items$", self.path)
         if m:
             return self._add_list_item(m.group(1))
@@ -1025,6 +1058,14 @@ class Handler(SimpleHTTPRequestHandler):
                  status, None, datetime.now(timezone.utc).isoformat(), watched_at, genres,
                  total_seasons))
             new_id = cur.fetchone()["id"]
+            # Evento social (ADR-014): un alta directa como 'vista' es actividad
+            # 'watched'. Append en la MISMA transacción, ÚLTIMO en el bloque, sin
+            # pre-check que pueda 500 — el contrato de éxito/fallo del alta (201/
+            # 409/400) queda intacto. 'pendiente'/'viendo'/'abandonada' → sin evento.
+            if status == "vista":
+                _record_activity(cur, user_id, "watched", {
+                    "tmdb_id": tmdb_id, "media_type": media_type, "title": title,
+                    "year": year, "poster_url": poster})
 
         notify_discord(title, year, status, media_type, poster, user_id)
         self._json(201, {"ok": True, "id": new_id})
@@ -1051,6 +1092,7 @@ class Handler(SimpleHTTPRequestHandler):
         movie_id   = int(m.group(1))
         fields, values = [], []
         new_status = None
+        new_rating = None   # rating no-nulo (1-5) puesto por ESTE PATCH → evento 'rated'
 
         if data.get("status") in ("pendiente", "viendo", "vista", "abandonada"):
             new_status = data["status"]
@@ -1060,6 +1102,7 @@ class Handler(SimpleHTTPRequestHandler):
             if r is not None and (not isinstance(r, int) or not 1 <= r <= 5):
                 return self._json(400, {"ok": False, "error": "rating debe ser 1-5 o null"})
             fields.append("rating = %s"); values.append(r)
+            new_rating = r
         if "note" in data:
             if data["note"] is not None and not isinstance(data["note"], str):
                 return self._json(400, {"ok": False, "error": "note debe ser texto o null"})
@@ -1103,12 +1146,30 @@ class Handler(SimpleHTTPRequestHandler):
                 values)
             if cur.rowcount == 0:
                 return self._json(404, {"ok": False, "error": "No encontrada"})
-            if new_status:
+            # Snapshot re-seleccionado si hace falta para Discord (new_status) O
+            # para un evento social ('vista' → watched, rating no-nulo → rated).
+            # Añade tmdb_id al SELECT existente para la caché del feed; una sola
+            # query (sin round-trip extra).
+            need_watched = new_status == "vista"
+            need_rated   = new_rating is not None
+            if new_status or need_rated:
                 cur.execute(
-                    "SELECT title, year, poster_url, media_type FROM movies "
+                    "SELECT title, year, poster_url, media_type, tmdb_id FROM movies "
                     "WHERE id = %s AND user_id = %s",
                     (movie_id, user_id))
                 row = cur.fetchone()
+            # Evento(s) social(es) (ADR-014): append en la MISMA transacción,
+            # ÚLTIMO en el bloque, sin pre-check que pueda 500 — el contrato de la
+            # mutación (200/404/400, Discord, dedup) queda intacto. Un PATCH puede
+            # disparar los DOS (watched + rated) → dos eventos (sin coalescing, v1).
+            if row:
+                snap = {"tmdb_id": row["tmdb_id"], "media_type": row["media_type"],
+                        "title": row["title"], "year": row["year"],
+                        "poster_url": row["poster_url"]}
+                if need_watched:
+                    _record_activity(cur, user_id, "watched", snap)
+                if need_rated:
+                    _record_activity(cur, user_id, "rated", snap, rating=new_rating)
 
         if new_status and row:
             notify_discord(row["title"], row["year"], new_status, row["media_type"], row["poster_url"], user_id)
@@ -1124,6 +1185,9 @@ class Handler(SimpleHTTPRequestHandler):
         ml = re.match(r"^/api/lists/([0-9a-fA-F-]{36})$", self.path)
         if ml:
             return self._delete_list(ml.group(1))
+        mf = re.match(r"^/api/follows/([a-z0-9_-]{3,30})$", self.path)
+        if mf:
+            return self._unfollow(mf.group(1))
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -1321,6 +1385,14 @@ class Handler(SimpleHTTPRequestHandler):
         #    Idempotente: en un reintento los borrados afectan a cero filas.
         with get_db() as cur:
             cur.execute("DELETE FROM movies WHERE user_id = %s", (user_id,))
+            # RTBF de la capa social (ADR-014/GD-*): borrar activity + follows
+            # ANTES de lists, para que el cascade de activity.list_id (ON DELETE
+            # CASCADE al borrar lists) no compita con este borrado explícito.
+            # follows en AMBAS direcciones: el usuario desaparece también de las
+            # listas de seguidores/seguidos de terceros (AC-16).
+            cur.execute("DELETE FROM activity WHERE user_id = %s", (user_id,))
+            cur.execute("DELETE FROM follows WHERE follower_id = %s OR followed_id = %s",
+                        (user_id, user_id))
             cur.execute("DELETE FROM lists WHERE user_id = %s", (user_id,))
             cur.execute("DELETE FROM profiles WHERE user_id = %s", (user_id,))
 
@@ -2024,12 +2096,16 @@ class Handler(SimpleHTTPRequestHandler):
         poster = poster[:500]
 
         with get_db() as cur:
-            # Propiedad de la lista (AC-13 → 404 si es de otro usuario).
+            # Propiedad de la lista (AC-13 → 404 si es de otro usuario). El SELECT
+            # se ensancha a `visibility` (misma query, sin round-trip extra) para
+            # decidir el evento social 'list_add' tras un alta exitosa (ADR-014).
             cur.execute(
-                "SELECT 1 FROM lists WHERE id = %s AND user_id = %s",
+                "SELECT visibility FROM lists WHERE id = %s AND user_id = %s",
                 (list_id, user_id))
-            if not cur.fetchone():
+            lrow = cur.fetchone()
+            if not lrow:
                 return self._json(404, {"ok": False, "error": "No encontrada"})
+            list_visibility = lrow["visibility"]
             cur.execute(
                 "SELECT COALESCE(MAX(position) + 1, 0) AS next_pos "
                 "FROM list_items WHERE list_id = %s",
@@ -2045,6 +2121,15 @@ class Handler(SimpleHTTPRequestHandler):
             except psycopg2.errors.UniqueViolation:
                 # Dedup (list_id, tmdb_id, media_type) → 409.
                 return self._json(409, {"ok": False, "error": "Ese título ya está en la lista"})
+            # Evento social (ADR-014): SOLO si la lista es actualmente pública y
+            # tras un alta exitosa (201, no el 409 de duplicado — está en el except).
+            # Append en la MISMA transacción, ÚLTIMO en el bloque, sin pre-check que
+            # pueda 500 — el contrato 201/409/404/400 queda intacto. Lista no
+            # pública → sin evento (AC-11).
+            if list_visibility == "public":
+                _record_activity(cur, user_id, "list_add", {
+                    "tmdb_id": tmdb_id, "media_type": media_type, "title": title,
+                    "year": year, "poster_url": poster}, list_id=list_id)
         self._json(201, {"ok": True, "id": new_id})
 
     def _delete_list_item(self, list_id, item_id):
@@ -2136,6 +2221,29 @@ class Handler(SimpleHTTPRequestHandler):
                 "GROUP BY l.id ORDER BY l.updated_at DESC",
                 (owner_id,))
             body["lists"] = [dict(r) for r in cur.fetchall()]
+            # Seguidores / seguidos (ADR-014). Conteos = totales REALES (incluyen
+            # participantes con perfil privado, AC-7). Las listas nombran SOLO
+            # perfiles públicos (JOIN profiles … is_public, AC-8): un participante
+            # privado cuenta pero nunca aparece ni se enlaza (GD-001, minimización).
+            # Nunca se serializa email ni user_id.
+            cur.execute("SELECT COUNT(*) AS c FROM follows WHERE followed_id = %s", (owner_id,))
+            body["followers_count"] = cur.fetchone()["c"]
+            cur.execute("SELECT COUNT(*) AS c FROM follows WHERE follower_id = %s", (owner_id,))
+            body["following_count"] = cur.fetchone()["c"]
+            cur.execute(
+                "SELECT p.username, p.avatar_url "
+                "FROM follows f JOIN profiles p ON p.user_id = f.follower_id "
+                "WHERE f.followed_id = %s AND p.is_public = TRUE "
+                "ORDER BY f.created_at DESC LIMIT %s",
+                (owner_id, PUBLIC_FOLLOW_LIST_MAX))
+            body["followers"] = [dict(r) for r in cur.fetchall()]
+            cur.execute(
+                "SELECT p.username, p.avatar_url "
+                "FROM follows f JOIN profiles p ON p.user_id = f.followed_id "
+                "WHERE f.follower_id = %s AND p.is_public = TRUE "
+                "ORDER BY f.created_at DESC LIMIT %s",
+                (owner_id, PUBLIC_FOLLOW_LIST_MAX))
+            body["following"] = [dict(r) for r in cur.fetchall()]
         self._json(200, {"ok": True, "profile": body})
 
     def _public_list(self, share_token):
@@ -2162,6 +2270,155 @@ class Handler(SimpleHTTPRequestHandler):
             "owner_username": lst["owner_username"],
             "items":          [dict(i) for i in items],
         }})
+
+    # ── Capa social: follows + feed (autenticado) ────────────────────────────────
+
+    def _follow(self):
+        """POST /api/follows {username} — seguir al usuario del cuerpo. Auth
+        (PS-001) + rate limit por usuario+global. Resuelve username→(user_id,
+        is_public): 404 'No disponible' si no resuelve O no es público (no
+        enumera: privado y inexistente lucen idénticos, AC-3); 400 si es uno
+        mismo (AC-4); si no INSERT … ON CONFLICT DO NOTHING (idempotente, AC-5)
+        → 200 {following:true}. _audit redactado (LO-*)."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        allowed, retry = rate_check([(f"follow:{user_id}", FOLLOW_RATE_MAX),
+                                     ("follow:_global", FOLLOW_RATE_GLOBAL)])
+        if not allowed:
+            return self._json(429, {"ok": False, "error": "Demasiadas peticiones, espera un momento."},
+                              extra_headers={"Retry-After": retry})
+        try:
+            data = self._read_json()
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"ok": False, "error": "JSON inválido"})
+        username = _normalize_username(data.get("username"))
+        if username is None:
+            # Username malformado/reservado → no enumera (mismo 404 que inexistente).
+            return self._json(404, {"ok": False, "error": "No disponible"})
+        with get_db() as cur:
+            cur.execute(
+                "SELECT user_id, is_public FROM profiles WHERE username = %s",
+                (username,))
+            target = cur.fetchone()
+            # AC-3: inexistente O no público → 404 idéntico (no enumera).
+            if not target or not target["is_public"]:
+                return self._json(404, {"ok": False, "error": "No disponible"})
+            target_id = target["user_id"]
+            if target_id == user_id:   # AC-4: no puedes seguirte a ti mismo.
+                return self._json(400, {"ok": False, "error": "No puedes seguirte a ti mismo."})
+            # AC-1/AC-5: idempotente. follower_id = SIEMPRE el caller (PS-001/AC-17);
+            # el cliente nunca suministra el follower id.
+            cur.execute(
+                "INSERT INTO follows (follower_id, followed_id) VALUES (%s, %s) "
+                "ON CONFLICT DO NOTHING",
+                (user_id, target_id))
+        _audit("follow.created", user_id, "follow")
+        self._json(200, {"ok": True, "following": True})
+
+    def _unfollow(self, username):
+        """DELETE /api/follows/{username} — dejar de seguir. Auth (PS-001).
+        Idempotente y no-enumerante: 200 {following:false} incluso si no había
+        arista o el username no existe (AC-2). _audit redactado."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        norm = _normalize_username(username)
+        with get_db() as cur:
+            if norm is not None:
+                cur.execute(
+                    "DELETE FROM follows WHERE follower_id = %s "
+                    "AND followed_id = (SELECT user_id FROM profiles WHERE username = %s)",
+                    (user_id, norm))
+        _audit("follow.deleted", user_id, "follow")
+        self._json(200, {"ok": True, "following": False})
+
+    def _follow_status(self, username):
+        """GET /api/follows/{username} — estado de seguimiento del caller hacia el
+        usuario nombrado; alimenta el botón de la página pública. Auth (PS-001).
+        Devuelve {following, is_self, followable=(is_public and not is_self)}. Un
+        username inexistente → following:false, is_self:false, followable:false."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        norm = _normalize_username(username)
+        following = is_self = followable = False
+        if norm is not None:
+            with get_db() as cur:
+                cur.execute(
+                    "SELECT user_id, is_public FROM profiles WHERE username = %s",
+                    (norm,))
+                target = cur.fetchone()
+                if target:
+                    is_self = target["user_id"] == user_id
+                    followable = bool(target["is_public"]) and not is_self
+                    if not is_self:
+                        cur.execute(
+                            "SELECT 1 FROM follows WHERE follower_id = %s AND followed_id = %s",
+                            (user_id, target["user_id"]))
+                        following = cur.fetchone() is not None
+        self._json(200, {"ok": True, "following": following,
+                         "is_self": is_self, "followable": followable})
+
+    def _feed(self):
+        """GET /api/feed — el feed del caller: actividad reciente de quienes sigue,
+        reverse-chronological, LIMIT FEED_LIMIT. Auth (PS-001) + rate limit. UNA
+        query gateada (el nuevo modelo de autorización): el caller sigue al actor
+        (follows.follower_id = caller, AC-17) AND el actor es actualmente público
+        (AC-12) AND la sección relevante está expuesta (show_collection para
+        watched/rated AC-13; list visibility='public' para list_add AC-14). Gate a
+        estado ACTUAL, nunca snapshot → re-privatizar quita eventos al instante.
+        Proyección allow-list: NUNCA email, user_id ni note (GD-001). Feed vacío →
+        {activity: []} (AC-15)."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        allowed, retry = rate_check([(f"feed:{user_id}", FEED_RATE_MAX),
+                                     ("feed:_global", FEED_RATE_GLOBAL)])
+        if not allowed:
+            return self._json(429, {"ok": False, "error": "Demasiadas peticiones, espera un momento."},
+                              extra_headers={"Retry-After": retry})
+        with get_db() as cur:
+            cur.execute(
+                "SELECT a.action, a.tmdb_id, a.media_type, a.title, a.year, a.poster_url, "
+                "       a.rating, a.created_at, p.username, p.avatar_url, "
+                "       l.name AS list_name, l.share_token AS list_share_token "
+                "FROM activity a "
+                "JOIN follows  f ON f.followed_id = a.user_id AND f.follower_id = %s "
+                "JOIN profiles p ON p.user_id = a.user_id AND p.is_public = TRUE "
+                "LEFT JOIN lists l ON l.id = a.list_id "
+                "WHERE ( a.action IN ('watched', 'rated') AND p.show_collection = TRUE ) "
+                "   OR ( a.action = 'list_add' AND l.visibility = 'public' ) "
+                "ORDER BY a.created_at DESC "
+                "LIMIT %s",
+                (user_id, FEED_LIMIT))
+            rows = cur.fetchall()
+        # Proyección allow-list (GD-001): solo campos consentidos; rating solo en
+        # 'rated', list_name/list_share_token solo en 'list_add'. Nunca email/
+        # user_id/note. Un poster no-TMDB (defensa) se degrada a None.
+        activity = []
+        for r in rows:
+            poster = r["poster_url"]
+            if poster and not str(poster).startswith("https://image.tmdb.org/"):
+                poster = None
+            entry = {
+                "action":     r["action"],
+                "username":   r["username"],
+                "avatar_url": r["avatar_url"],
+                "title":      r["title"],
+                "poster_url": poster,
+                "media_type": r["media_type"],
+                "tmdb_id":    r["tmdb_id"],
+                "year":       r["year"],
+                "created_at": r["created_at"],
+            }
+            if r["action"] == "rated":
+                entry["rating"] = r["rating"]
+            if r["action"] == "list_add":
+                entry["list_name"]        = r["list_name"]
+                entry["list_share_token"] = r["list_share_token"]
+            activity.append(entry)
+        self._json(200, {"ok": True, "activity": activity})
 
     def log_message(self, *args):
         pass

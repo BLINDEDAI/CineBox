@@ -3320,3 +3320,196 @@ html.cinebox-visited #welcome-screen { display: none; }
   letter-spacing: 0.05em;
   background: linear-gradient(135deg, #ff443d 0%, #c2393a 100%);
 }
+
+
+/* ═══ Feed "Actividad" (SPA autenticado) — activity.js ═══ */
+.activity-head {
+  margin: 8px 0 24px;
+}
+.activity-head h1 {
+  margin: 0;
+  font-size: clamp(1.6rem, 4vw, 2.2rem);
+  letter-spacing: -0.01em;
+}
+.activity-sub {
+  margin: 6px 0 0;
+  color: var(--text-muted);
+  font-size: 0.95rem;
+}
+.activity-loading,
+.activity-error {
+  color: var(--text-muted);
+  padding: 24px 0;
+}
+.activity-retry {
+  min-height: 44px;
+  padding: 10px 18px;
+}
+.activity-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+.activity-item {
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+  overflow: hidden;
+}
+.activity-link {
+  display: block;
+  color: inherit;
+  text-decoration: none;
+}
+.activity-link:hover .activity-user {
+  text-decoration: underline;
+}
+.activity-line {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  min-height: 48px;
+}
+.activity-avatar {
+  flex: 0 0 auto;
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  overflow: hidden;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+.activity-avatar img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+}
+.activity-avatar-generated {
+  color: #fff;
+  font-weight: 800;
+  font-size: 1rem;
+  background-image: linear-gradient(135deg, #3a3f4b, #21242c);
+}
+.activity-text {
+  flex: 1 1 auto;
+  min-width: 0;
+  font-size: 0.98rem;
+  line-height: 1.4;
+  color: var(--text-soft);
+}
+.activity-user {
+  font-weight: 700;
+  color: var(--text);
+}
+.activity-stars {
+  color: var(--red);
+  letter-spacing: 0.04em;
+}
+.activity-poster {
+  flex: 0 0 auto;
+  width: 46px;
+}
+.activity-poster img,
+.activity-poster .poster-fallback {
+  width: 46px;
+  height: 69px;
+  border-radius: 8px;
+  object-fit: cover;
+  display: block;
+}
+.activity-empty {
+  border: 1px dashed var(--border-strong);
+  border-radius: 16px;
+  padding: 40px 24px;
+  text-align: center;
+}
+.activity-empty-title {
+  margin: 0 0 8px;
+  font-size: 1.15rem;
+  font-weight: 700;
+}
+.activity-empty-sub {
+  margin: 0;
+  color: var(--text-muted);
+  max-width: 40ch;
+  margin-inline: auto;
+}
+
+/* ═══ Follow control + social counts/lists (página pública) — public.js ═══ */
+.pub-follow-slot {
+  margin: 16px 0 8px;
+  min-height: 44px;
+}
+.pub-follow {
+  display: flex;
+}
+.pub-follow-btn {
+  min-height: 44px;
+  padding: 10px 26px;
+  font-weight: 700;
+}
+.pub-follow-btn.is-following {
+  background: transparent;
+  border: 1px solid var(--border-strong);
+  color: var(--text-soft);
+}
+.pub-follow-login {
+  min-height: 44px;
+  display: inline-flex;
+  align-items: center;
+  padding: 10px 20px;
+}
+.pub-social {
+  margin: 8px 0 20px;
+}
+.pub-social-counts {
+  display: flex;
+  gap: 28px;
+  margin-bottom: 14px;
+}
+.pub-social-count {
+  display: flex;
+  align-items: baseline;
+  gap: 6px;
+}
+.pub-social-count-num {
+  font-size: 1.25rem;
+  font-weight: 800;
+  color: var(--text);
+}
+.pub-social-count-label {
+  color: var(--text-muted);
+  font-size: 0.9rem;
+}
+.pub-social-heading {
+  margin: 12px 0 6px;
+  color: var(--text-muted);
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+}
+.pub-follow-handles {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pub-follow-handle {
+  display: inline-flex;
+  align-items: center;
+  min-height: 32px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 0.9rem;
+}
+.pub-follow-handle:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}

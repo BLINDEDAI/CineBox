@@ -184,7 +184,7 @@ class DuplicateListItemIntegration(unittest.TestCase):
 
         cur = UniqueViolationCursor(
             fetch_results=[
-                {"exists": 1},       # ownership SELECT
+                {"exists": 1, "visibility": "private"},   # ownership SELECT (now carries visibility)
                 {"next_pos": 1},     # next_pos SELECT
             ]
         )
@@ -227,7 +227,7 @@ class DuplicateListItemIntegration(unittest.TestCase):
 
     def test_successful_add_returns_201(self):
         """Sanity: first add (no duplicate) → 201 with an item id."""
-        ownership_row = {"exists": 1}
+        ownership_row = {"exists": 1, "visibility": "private"}
         next_pos_row = {"next_pos": 0}
         new_id_row = {"id": "new-item-uuid"}
         cur = FakeCursor(

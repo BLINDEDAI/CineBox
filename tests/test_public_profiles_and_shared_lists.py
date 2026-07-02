@@ -458,7 +458,8 @@ class PublicProfileIntegration(unittest.TestCase):
         lists_rows = []
         _, responses = self._run_public_profile(
             "alice",
-            fetch_results=[prof_row, collection_rows, lists_rows],
+            # follows: followers_count, following_count, followers[], following[]
+            fetch_results=[prof_row, collection_rows, lists_rows, {"c": 0}, {"c": 0}, [], []],
         )
         self.assertEqual(responses[-1][0], 200)
         payload = responses[-1][1]["profile"]
@@ -475,7 +476,7 @@ class PublicProfileIntegration(unittest.TestCase):
         lists_rows = []
         _, responses = self._run_public_profile(
             "alice",
-            fetch_results=[prof_row, stats_row, lists_rows],
+            fetch_results=[prof_row, stats_row, lists_rows, {"c": 0}, {"c": 0}, [], []],
         )
         self.assertEqual(responses[-1][0], 200)
         payload = responses[-1][1]["profile"]
@@ -501,7 +502,7 @@ class PublicProfileIntegration(unittest.TestCase):
         lists_rows = []
         _, responses = self._run_public_profile(
             "alice",
-            fetch_results=[prof_row, collection_rows, lists_rows],
+            fetch_results=[prof_row, collection_rows, lists_rows, {"c": 0}, {"c": 0}, [], []],
         )
         self.assertEqual(responses[-1][0], 200)
         col = responses[-1][1]["profile"]["collection"]
@@ -518,7 +519,7 @@ class PublicProfileIntegration(unittest.TestCase):
         }
         # The query uses WHERE visibility='public', so unlisted lists are excluded.
         # We assert: only lists with visibility='public' in the DB query.
-        cur = FakeCursor(fetch_results=[prof_row, []])
+        cur = FakeCursor(fetch_results=[prof_row, [], {"c": 0}, {"c": 0}, [], []])
         h, responses = make_handler(user_id=None)
         h._public_rate_limited = lambda: False
         with patch_db(cur):
@@ -544,7 +545,7 @@ class PublicProfileIntegration(unittest.TestCase):
         }
         _, responses = self._run_public_profile(
             "alice",
-            fetch_results=[prof_row, [public_list_row]],
+            fetch_results=[prof_row, [public_list_row], {"c": 0}, {"c": 0}, [], []],
         )
         self.assertEqual(responses[-1][0], 200)
         lists = responses[-1][1]["profile"]["lists"]
@@ -889,7 +890,7 @@ class ThreatModelIntegration(unittest.TestCase):
         """AC - poster_url not from TMDB is silently stored empty (SSRF mitigation)."""
         # Simulate _add_list_item with a non-TMDB poster_url
         # Ownership check row: returns list owned by user
-        ownership_row = {"exists": 1}
+        ownership_row = {"exists": 1, "visibility": "private"}
         next_pos_row = {"next_pos": 0}
         new_id_row = {"id": "item-uuid-1"}
 
