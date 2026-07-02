@@ -2592,6 +2592,14 @@ html.cinebox-visited #welcome-screen { display: none; }
   font-weight: 700;
   font-size: 0.85rem;
 }
+/* Uploaded avatar image inside the sidebar chip (custom-avatar-upload). */
+.profile-chip-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
 
 @media (max-width: 600px) {
   .login-card { padding: 32px 20px 24px; }
@@ -2653,6 +2661,30 @@ html.cinebox-visited #welcome-screen { display: none; }
   margin: 0 0 6px;
 }
 .pub-profile-head { margin: 16px 0 28px; }
+/* ── Avatar del perfil público (custom-avatar-upload) ── */
+.pub-profile-avatar {
+  width: 88px;
+  height: 88px;
+  border-radius: 50%;
+  overflow: hidden;
+  margin: 4px 0 14px;
+  background-color: #31141c;
+  background-size: cover;
+  display: inline-grid;
+  place-items: center;
+}
+.pub-profile-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.pub-profile-avatar-initials {
+  font-size: 1.9rem;
+  font-weight: 800;
+  color: #fff;
+  line-height: 1;
+}
 .pub-profile-name {
   margin: 0;
   font-size: clamp(1.7rem, 5vw, 2.6rem);
@@ -2926,6 +2958,50 @@ html.cinebox-visited #welcome-screen { display: none; }
 }
 .settings-profile-id { flex: 1 1 auto; min-width: 0; }
 .settings-profile-id p { margin: 0; }
+
+/* ── Ajustes → Perfil: subida/quitar de avatar (custom-avatar-upload) ── */
+/* Imagen subida dentro del avatar de Ajustes. */
+.settings-avatar-img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+  display: block;
+}
+.settings-avatar-controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-top: 10px;
+}
+/* El <input type=file> se oculta a la vista pero su <label> es el disparador
+   accionable por teclado (Enter/Espacio) y visible; el input mantiene foco
+   real por lo que el indicador de foco recae en la etiqueta asociada. */
+.settings-avatar-input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+.settings-avatar-upload-label {
+  cursor: pointer;
+  display: inline-flex;
+  align-items: center;
+}
+/* Indicador de foco visible cuando el input recibe el foco por teclado
+   (AC-11) — el foco del input se refleja en su etiqueta asociada. */
+.settings-avatar-input:focus-visible + .settings-avatar-upload-label,
+.settings-avatar-upload-label:focus-visible,
+.settings-avatar-remove:focus-visible {
+  outline: 2px solid var(--red-2, #ff6b6b);
+  outline-offset: 2px;
+}
+.settings-avatar-help { margin-top: 6px; }
 
 /* ── Ajustes → Cuenta: email (text-only) + cerrar sesión ── */
 .settings-account-row {

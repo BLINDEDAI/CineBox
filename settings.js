@@ -102,9 +102,17 @@ function renderSettingsView() {
       <section class="spanel sharing-card" aria-labelledby="settings-profile-title">
         <h2 class="spanel-title" id="settings-profile-title">Perfil</h2>
         <div class="settings-profile-head">
-          <span class="settings-avatar" data-settings-avatar aria-hidden="true">${esc(initials)}</span>
+          <span class="settings-avatar" data-settings-avatar role="img" aria-label="Tu avatar">${esc(initials)}</span>
           <div class="settings-profile-id">
             <p class="muted smuted-sm">Tu URL pública será <code>/u/tu-nombre</code>. Solo minúsculas, números, guion y guion bajo (3–30).</p>
+            <div class="settings-avatar-controls">
+              <input id="settings-avatar-input" class="settings-avatar-input" type="file"
+                     accept="image/png,image/jpeg,image/webp" aria-label="Subir imagen de avatar">
+              <label class="btn-secondary btn-sm settings-avatar-upload-label" for="settings-avatar-input">Subir imagen</label>
+              <button id="settings-avatar-remove-btn" class="btn-secondary btn-sm settings-avatar-remove" type="button"
+                      data-settings-action="avatar-remove">Quitar</button>
+            </div>
+            <p class="muted smuted-sm settings-avatar-help">PNG, JPEG o WebP, máximo 5 MB. Se recorta a un cuadrado.</p>
           </div>
         </div>
         <form id="settings-username-form" class="sharing-form" novalidate>
@@ -250,14 +258,197 @@ function renderSettingsView() {
   const emailEl = settingsViewEl.querySelector("#settings-account-email");
   if (emailEl) emailEl.textContent = email || "—";
 
-  // Gradiente del avatar vía CSSOM — la CSP estricta prohíbe inline style= (PS-006).
+  // Avatar del perfil: imagen subida (guarded <img>, src vía setAttribute solo
+  // tras casar la allow-list de Storage — _AVATAR_URL_RE vive en app.js, 8º
+  // módulo; cuerpo de función → tiempo de llamada, PS-003-safe) o, si no hay
+  // avatar_url válido, iniciales + gradiente vía CSSOM (la CSP prohíbe inline
+  // style=, PS-006).
   const avatarEl = settingsViewEl.querySelector("[data-settings-avatar]");
-  if (avatarEl) avatarEl.style.backgroundImage = _avatarGradient(p.username);
+  if (avatarEl) _renderSettingsAvatar(avatarEl, p);
+
+  // Sin nombre de usuario todavía → no se puede subir avatar aún: deshabilita el
+  // control de subida y el botón "Quitar" carece de sentido sin avatar cargado.
+  const removeBtn = settingsViewEl.querySelector("#settings-avatar-remove-btn");
+  if (removeBtn) removeBtn.disabled = !p.avatar_url;
 
   // Inicializa los tres selects de Preferencias desde el valor guardado
   // (validado por allow-list). Un valor ausente/inválido → cadena vacía = la
   // opción «Por defecto (sin preferencia)». getPref vive en ui.js (2º módulo).
   _syncPrefsControls();
+}
+
+// ── Avatar (Ajustes → Perfil): render + subida + quitar ─────────────────────
+// Máximo de subida (pre-resize) y tipos aceptados: espejo de las reglas de negocio
+// (5 MB, PNG/JPEG/WebP). Literales — sin referencias a globals, seguros al cargar.
+const AVATAR_MAX_BYTES = 5 * 1024 * 1024;
+const AVATAR_ACCEPTED_TYPES = new Set(["image/png", "image/jpeg", "image/webp"]);
+const AVATAR_CANVAS_SIZE = 256;
+
+// Pinta el avatar en el elemento dado: <img> guardado (src vía setAttribute solo
+// tras casar _AVATAR_URL_RE, app.js) cuando hay avatar_url válido; si no,
+// iniciales + gradiente CSSOM (fallback generado). Nunca innerHTML de la URL.
+function _renderSettingsAvatar(el, p) {
+  const avatarUrl = p && p.avatar_url;
+  el.textContent = "";
+  el.style.backgroundImage = "";
+  if (avatarUrl && _AVATAR_URL_RE.test(avatarUrl)) {
+    // Con imagen: el <img> hijo aporta la semántica y el nombre accesible. El
+    // <span> contenedor NO debe ser role="img" con un <img> dentro (estructura
+    // redundante/conflictiva — aria-prohibited-attr / img-anidada). Se limpian
+    // role/aria-label del wrapper y el nombre lo lleva el alt del <img>.
+    el.removeAttribute("role");
+    el.removeAttribute("aria-label");
+    const img = document.createElement("img");
+    img.className = "settings-avatar-img";
+    img.setAttribute("alt", "Tu avatar");
+    img.setAttribute("loading", "lazy");
+    img.setAttribute("src", avatarUrl); // src tras casar la allow-list
+    el.appendChild(img);
+  } else {
+    // Fallback generado (iniciales sobre gradiente): el <span> ES el elemento
+    // gráfico con alternativa textual → role="img" + aria-label (válido sobre un
+    // leaf con solo texto; el role generic implícito del <span> prohíbe aria-label).
+    el.setAttribute("role", "img");
+    el.setAttribute("aria-label", "Tu avatar");
+    el.textContent = _avatarInitials(p && p.username);
+    el.style.backgroundImage = _avatarGradient(p && p.username);
+  }
+}
+
+// Sube el archivo elegido: valida tipo + tamaño → recorta a un cuadrado 256×256
+// en canvas → WebP 0.85 → sube client-direct al bucket "avatars" con clave fija
+// {uid}/avatar.webp (upsert) → señala al servidor con PATCH {avatar:"set"} →
+// actualiza _profileState desde la respuesta → re-pinta chip + preview. Cuerpo de
+// manejador → tiempo de llamada: `_supabase`, `_currentUser`, `_profileState`,
+// `_renderProfileChip` (app.js) son PS-003-safe. El archivo nunca pasa por el
+// servidor de CineBox (client-direct), así que no hay directiva CSP nueva aquí.
+async function _uploadAvatar(input) {
+  const file = input.files && input.files[0];
+  if (!file) return;
+  const finish = () => { input.value = ""; };
+
+  // (1) Validación cliente ANTES de tocar la red (AC-3/AC-4): tipo y tamaño.
+  if (!AVATAR_ACCEPTED_TYPES.has(file.type)) {
+    showMessage("Formato no admitido. Usa PNG, JPEG o WebP.", "error");
+    finish();
+    return;
+  }
+  if (file.size > AVATAR_MAX_BYTES) {
+    showMessage("La imagen supera el máximo de 5 MB.", "error");
+    finish();
+    return;
+  }
+  if (!_supabase || !_currentUser || !_currentUser.id) {
+    showMessage("No se pudo subir el avatar. Inténtalo de nuevo.", "error");
+    finish();
+    return;
+  }
+
+  try {
+    // (2) Decodificar y recortar a un cuadrado centrado, escalar a 256×256, y
+    // re-codificar como WebP (descarta los bytes originales — control compensatorio).
+    const blob = await _avatarToWebpBlob(file);
+    if (!blob) {
+      showMessage("No se pudo procesar la imagen. Inténtalo de nuevo.", "error");
+      finish();
+      return;
+    }
+
+    // (3) Subida client-direct al bucket "avatars", clave fija por usuario
+    // (upsert overwrites in place → sin huérfanos). La RLS de Storage exige que
+    // la carpeta sea la del usuario autenticado (per-user isolation).
+    const uid = _currentUser.id;
+    const { error: upErr } = await _supabase.storage
+      .from("avatars")
+      .upload(`${uid}/avatar.webp`, blob, {
+        upsert: true,
+        contentType: "image/webp",
+        cacheControl: "3600",
+      });
+    if (upErr) {
+      showMessage("No se pudo subir el avatar. Inténtalo de nuevo.", "error");
+      finish();
+      return;
+    }
+
+    // (4) Señalar al servidor: deriva y guarda avatar_url (el cliente nunca
+    // envía la URL). La respuesta trae el perfil actualizado con avatar_url.
+    const { ok, data } = await api("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avatar: "set" }),
+    });
+    if (ok && data && data.ok && data.profile) {
+      settingsProfile = data.profile;
+      _profileState = data.profile;
+      showMessage("Avatar actualizado.");
+      renderSettingsView();
+      _renderProfileChip();
+    } else {
+      showMessage((data && data.error) || "No se pudo actualizar el avatar.", "error");
+    }
+  } catch (e) {
+    showMessage("No se pudo subir el avatar. Inténtalo de nuevo.", "error");
+  } finally {
+    finish();
+  }
+}
+
+// Quita el avatar: PATCH {avatar:"remove"} → el servidor borra el objeto y pone
+// avatar_url a NULL → re-pinta el fallback generado en chip + preview. Cuerpo de
+// manejador → tiempo de llamada, PS-003-safe.
+async function _removeAvatar() {
+  try {
+    const { ok, data } = await api("/api/profile", {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ avatar: "remove" }),
+    });
+    if (ok && data && data.ok && data.profile) {
+      settingsProfile = data.profile;
+      _profileState = data.profile;
+      showMessage("Avatar eliminado.");
+      renderSettingsView();
+      _renderProfileChip();
+    } else {
+      showMessage((data && data.error) || "No se pudo quitar el avatar.", "error");
+    }
+  } catch (e) {
+    showMessage("No se pudo quitar el avatar. Inténtalo de nuevo.", "error");
+  }
+}
+
+// Decodifica el archivo, recorta el cuadrado central, escala a 256×256 y
+// re-codifica como WebP (calidad 0.85). Devuelve un Blob o null si el navegador
+// no puede decodificar/re-codificar. Usa un object URL transitorio para cargar la
+// imagen (sin origen externo → sin cambio de CSP, PS-006).
+function _avatarToWebpBlob(file) {
+  return new Promise((resolve) => {
+    const url = URL.createObjectURL(file);
+    const img = new Image();
+    img.onload = () => {
+      URL.revokeObjectURL(url);
+      try {
+        const side = Math.min(img.naturalWidth, img.naturalHeight);
+        const sx = (img.naturalWidth - side) / 2;
+        const sy = (img.naturalHeight - side) / 2;
+        const canvas = document.createElement("canvas");
+        canvas.width = AVATAR_CANVAS_SIZE;
+        canvas.height = AVATAR_CANVAS_SIZE;
+        const ctx = canvas.getContext("2d");
+        if (!ctx) { resolve(null); return; }
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, AVATAR_CANVAS_SIZE, AVATAR_CANVAS_SIZE);
+        canvas.toBlob((blob) => resolve(blob), "image/webp", 0.85);
+      } catch (e) {
+        resolve(null);
+      }
+    };
+    img.onerror = () => {
+      URL.revokeObjectURL(url);
+      resolve(null);
+    };
+    img.src = url;
+  });
 }
 
 // Refleja el estado persistido en los tres selects de Preferencias. Se llama
@@ -962,6 +1153,7 @@ if (settingsViewEl) {
     const toggle = e.target.closest("[data-settings-toggle]");
     if (toggle) { _setProfileFlag(toggle.dataset.settingsToggle, toggle.checked); return; }
     if (e.target.id === "settings-import-file") { _importData(e.target); return; }
+    if (e.target.id === "settings-avatar-input") { _uploadAvatar(e.target); return; }
     // Preferencias: escritura EXPLÍCITA-ONLY. Solo estos selects persisten una
     // preferencia; ningún otro control (el sort en vivo, el cambio de pestaña)
     // escribe. Cadena vacía = «Por defecto (sin preferencia)» → borra el campo.
@@ -974,6 +1166,7 @@ if (settingsViewEl) {
     if (!btn) return;
     const action = btn.dataset.settingsAction;
     if (action === "logout") { signOut(); }
+    else if (action === "avatar-remove") { _removeAvatar(); }
     else if (action === "export-data") { _exportData(btn).catch(() => { if (btn) btn.disabled = false; }); }
     else if (action === "import-data") { document.getElementById("settings-import-file")?.click(); }
     else if (action === "reveal-delete") {
