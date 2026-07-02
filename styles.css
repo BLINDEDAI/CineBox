@@ -345,6 +345,13 @@ button {
   white-space: nowrap;
 }
 
+.control-btn-icon {
+  width: 18px;
+  height: 18px;
+  vertical-align: -3px;
+  margin-right: 6px;
+}
+
 /* Búsqueda más corta: ancho fijo, no se estira */
 .control-search {
   width: 340px;
@@ -381,24 +388,18 @@ button {
 
 .collection-hero {
   position: relative;
-  min-height: 330px;
   display: flex;
-  align-items: flex-end;
-  padding: 0 36px 32px;
+  align-items: flex-start;
+  padding: 20px 28px 18px;
   overflow: hidden;
-  border: 1px solid rgba(255, 68, 61, 0.35);
+  border: 1px solid rgba(255, 68, 61, 0.22);
   border-radius: 18px;
-  background:
-    linear-gradient(90deg, rgba(4, 7, 17, 0.82) 0%, rgba(4, 7, 17, 0.10) 40%, transparent 65%),
-    url("assets/banner-sincity.png") center / cover no-repeat;
-  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.18), 0 28px 64px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.05);
+  background: linear-gradient(180deg, rgba(20, 27, 43, 0.6), rgba(7, 11, 21, 0.5));
+  box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.04);
 }
 
 .discover-hero {
-  min-height: 330px;
-  background:
-    linear-gradient(90deg, rgba(4, 7, 17, 0.82) 0%, rgba(4, 7, 17, 0.10) 40%, transparent 65%),
-    url("assets/banner-sincity.png") center / cover no-repeat;
+  background: linear-gradient(180deg, rgba(20, 27, 43, 0.6), rgba(7, 11, 21, 0.5));
 }
 
 #stats-view .collection-hero {
@@ -408,11 +409,7 @@ button {
 }
 
 .collection-hero::after {
-  content: "";
-  position: absolute;
-  inset: auto 0 0;
-  height: 120px;
-  background: linear-gradient(180deg, transparent, rgba(5, 9, 20, 0.94));
+  content: none;
 }
 
 .hero-copy {
@@ -423,22 +420,22 @@ button {
 
 .hero-title-row {
   display: flex;
-  align-items: flex-start;
-  gap: 22px;
+  align-items: center;
+  gap: 14px;
 }
 
 .hero-icon {
   color: var(--red);
-  width: 64px;
-  height: 64px;
+  width: 38px;
+  height: 38px;
   display: grid;
   place-items: center;
-  filter: drop-shadow(0 0 24px rgba(255, 68, 61, 0.5));
+  filter: drop-shadow(0 0 14px rgba(255, 68, 61, 0.4));
 }
 
 .hero-icon svg {
-  width: 64px;
-  height: 64px;
+  width: 38px;
+  height: 38px;
   fill: none;
   stroke: currentColor;
   stroke-width: 3;
@@ -454,10 +451,15 @@ h1 {
   text-shadow: 0 8px 26px rgba(0, 0, 0, 0.6);
 }
 
+.collection-hero h1 {
+  font-size: clamp(1.5rem, 2.4vw, 2rem);
+  text-shadow: none;
+}
+
 .hero-copy p {
-  margin: 14px 0 0;
-  color: var(--text-soft);
-  font-size: 1.12rem;
+  margin: 4px 0 0;
+  color: var(--text-muted);
+  font-size: 0.9rem;
 }
 
 .hero-controls {
@@ -465,7 +467,7 @@ h1 {
   grid-template-columns: 1fr auto;
   align-items: center;
   gap: 14px;
-  margin-top: 34px;
+  margin-top: 18px;
 }
 
 .discover-toolbar {
@@ -2030,8 +2032,7 @@ h2 {
   }
 
   .collection-hero {
-    min-height: 280px;
-    padding: 0 18px 22px;
+    padding: 18px 18px 16px;
     border-radius: 0 0 18px 18px;
   }
 
@@ -2045,10 +2046,6 @@ h2 {
 
   .hero-title-row {
     gap: 12px;
-  }
-
-  .hero-icon {
-    font-size: 2.5rem;
   }
 
   .top-tab,
