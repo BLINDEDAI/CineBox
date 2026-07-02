@@ -922,7 +922,10 @@ class Handler(SimpleHTTPRequestHandler):
             dir_label = "Dirección"
             directors = [c.get("name") for c in (d.get("credits", {}) or {}).get("crew", [])
                          if c.get("job") == "Director"]
-        cast      = [c.get("name") for c in (d.get("credits", {}) or {}).get("cast", [])[:6] if c.get("name")]
+        cast      = [
+            {"name": c.get("name"), "profile_path": c.get("profile_path") or ""}
+            for c in (d.get("credits", {}) or {}).get("cast", [])[:8] if c.get("name")
+        ]
         wp_es     = (d.get("watch/providers") or {}).get("results", {}).get("ES", {})
         providers = [
             {"name": p["provider_name"], "logo": TMDB_LOGO + p["logo_path"]}
@@ -940,6 +943,7 @@ class Handler(SimpleHTTPRequestHandler):
             "runtime":        runtime,
             "title":          d.get("title") or d.get("name") or "",
             "poster_path":    d.get("poster_path") or "",
+            "backdrop_path":  d.get("backdrop_path") or "",
             "vote_average":   round(d.get("vote_average") or 0, 1),
             "trailer":        trailer,
             "dir_label":      dir_label,

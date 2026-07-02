@@ -45,10 +45,9 @@ async function openDetail(tmdbId, type, hint = {}) {
       body: JSON.stringify({ total_seasons: d.total_seasons }),
     }).catch(() => {});
   }
-  const creditsHtml = [
-    d.directors.length ? `<p><strong>${esc(d.dir_label)}:</strong> ${d.directors.map(esc).join(", ")}</p>` : "",
-    d.cast.length ? `<p><strong>Reparto:</strong> ${d.cast.map(esc).join(", ")}</p>` : "",
-  ].filter(Boolean).join("");
+  const directorHtml = d.directors.length
+    ? `<p><strong>${esc(d.dir_label)}:</strong> ${d.directors.map(esc).join(", ")}</p>`
+    : "";
   const overviewHtml = d.overview ? esc(d.overview) : '<span class="muted">Sin sinopsis disponible.</span>';
   const providers = d.providers || [];
   const providersHtml = `
@@ -60,33 +59,54 @@ async function openDetail(tmdbId, type, hint = {}) {
           </div>`
         : `<span class="providers-empty">No disponible en streaming</span>`}
     </div>`;
+  const cast = d.cast || [];
+  const castHtml = cast.length ? `
+    <div class="modal-cast">
+      <h4 class="modal-cast-title">Reparto</h4>
+      <div class="modal-cast-row">
+        ${cast.map((c) => `
+          <div class="cast-member">
+            ${c.profile_path
+              ? `<img class="cast-photo" src="https://image.tmdb.org/t/p/w185${esc(c.profile_path)}" alt="" loading="lazy">`
+              : `<div class="cast-photo cast-photo-fallback" aria-hidden="true">${esc((c.name || "?").slice(0, 1))}</div>`}
+            <span class="cast-name">${esc(c.name || "")}</span>
+          </div>`).join("")}
+      </div>
+    </div>` : "";
+  const backdropUrl = d.backdrop_path ? `https://image.tmdb.org/t/p/w1280${esc(d.backdrop_path)}` : "";
   modalContent.innerHTML = `
-    <div class="modal-head">
-      ${modalContext.poster_url ? `<img src="${esc(modalContext.poster_url)}" alt="">` : ""}
-      <div>
-        <h3 class="modal-title">${esc(m.title || "")}</h3>
-        <div class="modal-meta">
-          <span class="chip">${mediaIcon(type)} ${type === "tv" ? "Serie" : "Película"}</span>
-          ${m.year ? `<span class="chip">${esc(m.year)}</span>` : ""}
-          ${d.runtime ? `<span class="chip">${d.runtime} min</span>` : ""}
-          ${d.vote_average ? `<span class="chip">★ ${d.vote_average}</span>` : ""}
-          ${d.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join("")}
+    <div class="modal-hero${backdropUrl ? "" : " modal-hero-noimg"}">
+      ${backdropUrl ? `<img class="modal-hero-img" src="${backdropUrl}" alt="" loading="lazy">` : ""}
+      <div class="modal-hero-shade"></div>
+      <div class="modal-hero-content">
+        ${modalContext.poster_url ? `<img class="modal-hero-poster" src="${esc(modalContext.poster_url)}" alt="">` : ""}
+        <div class="modal-hero-text">
+          <h3 class="modal-title">${esc(m.title || "")}${m.year ? ` <span class="modal-title-year">(${esc(m.year)})</span>` : ""}</h3>
+          <div class="modal-meta">
+            <span class="chip">${mediaIcon(type)} ${type === "tv" ? "Serie" : "Película"}</span>
+            ${d.runtime ? `<span class="chip">${d.runtime} min</span>` : ""}
+            ${d.vote_average ? `<span class="chip">★ ${d.vote_average}</span>` : ""}
+            ${d.genres.map((g) => `<span class="chip">${esc(g)}</span>`).join("")}
+          </div>
         </div>
       </div>
     </div>
-    ${!existing ? `
-    <div class="modal-add-btns" id="modal-add-btns">
-      <button class="btn btn-sm" data-add-status="pendiente">+ Por ver</button>
-      <button class="btn btn-sm btn-success" data-add-status="vista">✓ Vista</button>
-    </div>` : `<div class="modal-status-chip"><span class="chip chip-status">${esc(existing.status)}</span></div>`}
-    <div class="modal-list-action">
-      <button class="btn-secondary btn-sm" type="button" id="modal-add-to-list">+ Añadir a lista</button>
-    </div>
-    ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
-    ${providersHtml}
-    ${creditsHtml ? `<div class="modal-credits">${creditsHtml}</div>` : ""}
-    <div class="modal-overview"><p>${overviewHtml}</p></div>
-    <div class="modal-similar" id="modal-similar-section"></div>`;
+    <div class="modal-body">
+      ${!existing ? `
+      <div class="modal-add-btns" id="modal-add-btns">
+        <button class="btn btn-sm" data-add-status="pendiente">+ Por ver</button>
+        <button class="btn btn-sm btn-success" data-add-status="vista">✓ Vista</button>
+      </div>` : `<div class="modal-status-chip"><span class="chip chip-status">${esc(existing.status)}</span></div>`}
+      <div class="modal-list-action">
+        <button class="btn-secondary btn-sm" type="button" id="modal-add-to-list">+ Añadir a lista</button>
+      </div>
+      ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
+      ${providersHtml}
+      ${directorHtml ? `<div class="modal-credits">${directorHtml}</div>` : ""}
+      <div class="modal-overview"><p>${overviewHtml}</p></div>
+      ${castHtml}
+      <div class="modal-similar" id="modal-similar-section"></div>
+    </div>`;
   const addBtns = document.getElementById("modal-add-btns");
   if (addBtns) {
     addBtns.addEventListener("click", (e) => {

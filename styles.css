@@ -1717,10 +1717,10 @@ h2 {
 
 .modal-card {
   position: relative;
-  width: min(720px, 100%);
-  max-height: 88vh;
+  width: min(880px, 100%);
+  max-height: 90vh;
   overflow: auto;
-  padding: 28px;
+  padding: 0;
   border: 1px solid var(--border-strong);
   border-radius: 18px;
   background: linear-gradient(180deg, rgba(17, 23, 38, 0.98), rgba(8, 11, 20, 0.98));
@@ -1735,40 +1735,93 @@ h2 {
 
 .modal-close {
   position: absolute;
-  top: 12px;
-  right: 12px;
-  width: 36px;
-  height: 36px;
-  border: 1px solid var(--border-strong);
-  border-radius: var(--radius);
-  background: rgba(255, 255, 255, 0.06);
-  color: var(--text);
+  top: 14px;
+  right: 14px;
+  z-index: 3;
+  width: 38px;
+  height: 38px;
+  border: 1px solid rgba(255, 255, 255, 0.18);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
   cursor: pointer;
+  backdrop-filter: blur(4px);
 }
 
-.modal-head {
+/* Hero del modal: backdrop TMDB a lo ancho + póster solapando + título encima */
+.modal-hero {
+  position: relative;
+  min-height: 260px;
   display: flex;
-  gap: 20px;
 }
 
-.modal-head img {
-  width: 128px;
+.modal-hero-noimg {
+  background: linear-gradient(135deg, rgba(255, 68, 61, 0.18), rgba(8, 11, 20, 0.9));
+}
+
+.modal-hero-img {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  object-position: center 20%;
+}
+
+.modal-hero-shade {
+  position: absolute;
+  inset: 0;
+  background:
+    linear-gradient(180deg, rgba(8, 11, 20, 0) 30%, rgba(8, 11, 20, 0.55) 65%, rgba(8, 11, 20, 0.98) 100%),
+    linear-gradient(90deg, rgba(8, 11, 20, 0.7) 0%, rgba(8, 11, 20, 0.1) 55%, transparent 100%);
+}
+
+.modal-hero-content {
+  position: relative;
+  z-index: 1;
+  align-self: flex-end;
+  display: flex;
+  align-items: flex-end;
+  gap: 20px;
+  width: 100%;
+  padding: 22px 26px;
+}
+
+.modal-hero-poster {
+  flex: 0 0 auto;
+  width: 116px;
   aspect-ratio: 2 / 3;
   object-fit: cover;
   border-radius: var(--radius);
-  border: 1px solid var(--border);
+  border: 1px solid rgba(255, 255, 255, 0.16);
+  box-shadow: 0 12px 30px rgba(0, 0, 0, 0.6);
+}
+
+.modal-hero-text {
+  min-width: 0;
+  padding-bottom: 4px;
+}
+
+.modal-title-year {
+  color: var(--text-muted);
+  font-weight: 600;
 }
 
 .modal-title {
-  margin: 0 42px 10px 0;
-  font-size: 1.55rem;
+  margin: 0 0 10px;
+  font-size: 1.8rem;
+  text-shadow: 0 2px 12px rgba(0, 0, 0, 0.7);
 }
 
 .modal-meta {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
-  margin-bottom: 14px;
+  margin-bottom: 0;
+}
+
+.modal-body {
+  padding: 20px 26px 26px;
 }
 
 .chip {
@@ -1840,6 +1893,56 @@ h2 {
 .modal-overview {
   margin-top: 18px;
   line-height: 1.65;
+}
+
+.modal-cast {
+  margin-top: 22px;
+}
+
+.modal-cast-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 12px;
+}
+
+.modal-cast-row {
+  display: grid;
+  grid-template-columns: repeat(8, 1fr);
+  gap: 10px;
+}
+
+.cast-member {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  text-align: center;
+}
+
+.cast-photo {
+  width: 100%;
+  aspect-ratio: 1 / 1;
+  object-fit: cover;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  background: linear-gradient(135deg, #1c2335, #10141f);
+}
+
+.cast-photo-fallback {
+  display: grid;
+  place-items: center;
+  font-size: 1.4rem;
+  font-weight: 800;
+  color: var(--text-muted);
+}
+
+.cast-name {
+  font-size: 0.72rem;
+  line-height: 1.25;
+  color: var(--text-soft);
 }
 
 .modal-providers {
@@ -2110,22 +2213,21 @@ h2 {
     gap: 14px;
   }
 
-  .modal-head {
-    flex-direction: column;
-    align-items: center;
-    text-align: center;
+  .modal-hero {
+    min-height: 200px;
   }
 
-  .modal-head img {
-    width: 110px;
+  .modal-hero-content {
+    padding: 16px 18px;
+    gap: 14px;
   }
 
-  .modal-meta {
-    justify-content: center;
+  .modal-hero-poster {
+    width: 84px;
   }
 
-  .modal-trailer {
-    text-align: center;
+  .modal-cast-row {
+    grid-template-columns: repeat(4, 1fr);
   }
 
   /* Filas de pestañas: en lugar de desbordar la página, se deslizan de lado. */
@@ -2194,13 +2296,16 @@ h2 {
   }
 
   .modal-card {
-    padding: 20px 18px;
     max-height: 92vh;
     border-radius: 16px;
   }
 
+  .modal-body {
+    padding: 16px 18px 20px;
+  }
+
   .modal-title {
-    font-size: 1.3rem;
+    font-size: 1.4rem;
   }
 
   .provider-logo {
