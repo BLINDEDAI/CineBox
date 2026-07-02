@@ -650,7 +650,10 @@ class CrossUserScopingIntegration(unittest.TestCase):
         with _allow_rate(), patch_db(cur):
             h._feed()
         select_call = cur.calls[0]
-        self.assertEqual(select_call[1], (_UID_A, server.FEED_LIMIT))
+        # Phase 2 (ADR-015): the caller id is now bound twice -- once for the
+        # JOIN follows (follower_id = caller) and once for the `reviewed` branch's
+        # liked_by_me EXISTS sub-select -- plus FEED_LIMIT. Still never _UID_B.
+        self.assertEqual(select_call[1], (_UID_A, _UID_A, server.FEED_LIMIT))
         self.assertNotIn(_UID_B, select_call[1])
 
     def test_delete_account_purge_scoped_to_deleting_user_only(self):

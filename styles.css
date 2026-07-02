@@ -1058,6 +1058,49 @@ h2 {
   color: var(--text-muted);
 }
 
+/* Toggle "Reseña pública" en el editor de nota (collection.js) */
+.note-public-toggle {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+  min-height: 32px;
+  padding: 4px 2px;
+  cursor: pointer;
+  font-size: 0.8rem;
+  color: var(--text-soft);
+}
+.note-public-toggle input[type="checkbox"] {
+  width: 18px;
+  height: 18px;
+  flex: 0 0 auto;
+  accent-color: var(--red);
+  cursor: pointer;
+}
+.note-public-toggle input[type="checkbox"]:disabled {
+  cursor: not-allowed;
+}
+.note-public-toggle input[type="checkbox"]:disabled ~ .note-public-label {
+  color: var(--text-muted);
+}
+.note-public-hint {
+  flex: 1 1 100%;
+  font-size: 0.72rem;
+  color: var(--text-muted);
+}
+/* Badge "Reseña pública" en el botón de nota colapsado */
+.note-public-badge {
+  display: inline-block;
+  margin-top: 4px;
+  padding: 1px 8px;
+  border-radius: 999px;
+  background: rgba(255, 68, 61, 0.16);
+  color: var(--red);
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+}
+
 .date-btn {
   width: 100%;
   min-height: 28px;
@@ -3512,4 +3555,244 @@ html.cinebox-visited #welcome-screen { display: none; }
 .pub-follow-handle:hover {
   border-color: var(--border-strong);
   color: var(--text);
+}
+
+/* ═══ Reseñas + likes en el feed (activity.js) ═══ */
+.activity-item-reviewed {
+  display: flex;
+  flex-direction: column;
+}
+.activity-review {
+  margin: 0 16px 10px 74px;
+  padding: 10px 14px;
+  border-left: 3px solid var(--red);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-soft);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.activity-like {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 12px;
+  margin: 0 16px 12px 74px;
+}
+.activity-like-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 44px;
+  padding: 4px 12px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.activity-like-btn:hover {
+  border-color: var(--red);
+  color: var(--text);
+}
+.activity-like-btn.is-liked {
+  border-color: var(--red);
+  color: var(--red);
+}
+.activity-like-heart {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+.activity-likers-toggle {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.activity-likers-toggle:hover {
+  color: var(--text-soft);
+}
+.activity-likers {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.activity-liker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.activity-liker:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.activity-likers-loading,
+.activity-likers-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+
+/* ═══ Reseñas públicas + like control session-aware (public.js) ═══ */
+.pub-reviews {
+  margin: 8px 0 24px;
+}
+.pub-review-cards {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.pub-review-card {
+  display: flex;
+  gap: 14px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.02);
+}
+.pub-review-card .pub-poster {
+  flex: 0 0 auto;
+  width: 60px;
+}
+.pub-review-card .pub-poster img,
+.pub-review-card .pub-poster-fallback {
+  width: 60px;
+  height: 90px;
+  border-radius: 8px;
+  object-fit: cover;
+}
+.pub-review-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.pub-review-title {
+  font-weight: 700;
+  color: var(--text);
+  font-size: 1.02rem;
+}
+.pub-review-meta {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  color: var(--text-muted);
+  font-size: 0.85rem;
+}
+.pub-review-text {
+  margin: 0;
+  padding: 8px 12px;
+  border-left: 3px solid var(--red);
+  border-radius: 6px;
+  background: rgba(255, 255, 255, 0.035);
+  color: var(--text-soft);
+  font-size: 0.95rem;
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.pub-review-like-slot {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 12px;
+}
+.pub-review-like {
+  display: inline-flex;
+}
+.pub-review-like-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 32px;
+  min-width: 44px;
+  padding: 4px 14px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+.pub-review-like-btn:hover {
+  border-color: var(--red);
+  color: var(--text);
+}
+.pub-review-like-btn.is-liked {
+  border-color: var(--red);
+  color: var(--red);
+}
+.pub-review-like-heart {
+  font-size: 1.05rem;
+  line-height: 1;
+}
+.pub-review-login {
+  min-height: 32px;
+  display: inline-flex;
+  align-items: center;
+  padding: 6px 14px;
+}
+.pub-review-likers-wrap {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.pub-review-likers-toggle {
+  min-height: 32px;
+  padding: 4px 10px;
+  border: none;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+.pub-review-likers-toggle:hover {
+  color: var(--text-soft);
+}
+.pub-review-likers {
+  flex: 1 1 100%;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pub-review-liker {
+  display: inline-flex;
+  align-items: center;
+  min-height: 28px;
+  padding: 2px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-soft);
+  text-decoration: none;
+  font-size: 0.85rem;
+}
+.pub-review-liker:hover {
+  border-color: var(--border-strong);
+  color: var(--text);
+}
+.pub-review-likers-loading,
+.pub-review-likers-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
 }

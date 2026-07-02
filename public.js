@@ -434,6 +434,175 @@
     return section;
   }
 
+  // ── Reseñas públicas (session-aware like control) ─────────────────────────
+  // Todo el DOM se construye con createElement + textContent (regla XSS de la
+  // página pública): el texto de la reseña y cada handle son nodos de texto,
+  // NUNCA innerHTML de datos de usuario (AC-9, directiva de verificación #2).
+  // El control de like es session-aware (espeja el follow control):
+  //   - sin token / 401 / expirado → enlace "Inicia sesión para reaccionar"
+  //   - logged-in → corazón que hace POST/DELETE con Bearer y voltea.
+  // El count mostrado en la proyección es el total real (incluidos privados).
+  function _loginToReactLink() {
+    const wrap = elem("div", { className: "pub-review-like" });
+    wrap.appendChild(elem("a", {
+      className: "btn-secondary pub-review-login",
+      text: "Inicia sesión para reaccionar",
+      attrs: { href: "/" },
+    }));
+    return wrap;
+  }
+
+  // Construye el disclosure "quién dio like" para una reseña. GET perezoso de los
+  // likers (solo perfiles públicos) al expandir; cada handle → enlace a
+  // /u/{username} como nodo de texto.
+  function _reviewLikersDisclosure(movieId, token) {
+    const wrap = elem("div", { className: "pub-review-likers-wrap" });
+    const toggle = elem("button", {
+      className: "pub-review-likers-toggle",
+      text: "quién dio like",
+      attrs: { type: "button", "aria-expanded": "false" },
+    });
+    const list = elem("div", { className: "pub-review-likers", attrs: { hidden: "hidden" } });
+    let loaded = false;
+    toggle.addEventListener("click", async () => {
+      const expanded = toggle.getAttribute("aria-expanded") === "true";
+      if (expanded) {
+        toggle.setAttribute("aria-expanded", "false");
+        list.hidden = true;
+        return;
+      }
+      toggle.setAttribute("aria-expanded", "true");
+      list.hidden = false;
+      if (loaded) return;
+      while (list.firstChild) list.removeChild(list.firstChild);
+      list.appendChild(elem("span", { className: "pub-review-likers-loading", text: "Cargando…", attrs: { role: "status" } }));
+      const result = token
+        ? await fetchAuthed("/api/reviews/" + movieId + "/likes", "GET", token)
+        : { status: 401 };
+      while (list.firstChild) list.removeChild(list.firstChild);
+      if (!result || result.status !== 200 || !result.data || !result.data.ok) {
+        list.appendChild(elem("span", { className: "pub-review-likers-empty", text: "No se pudo cargar." }));
+        return;
+      }
+      loaded = true;
+      const likers = Array.isArray(result.data.likers) ? result.data.likers : [];
+      if (!likers.length) {
+        list.appendChild(elem("span", { className: "pub-review-likers-empty", text: "Sin perfiles públicos que mostrar." }));
+        return;
+      }
+      for (const h of likers) {
+        const uname = h && h.username ? h.username : "";
+        if (!uname) continue;
+        const link = elem("a", {
+          className: "pub-review-liker",
+          attrs: { href: "/u/" + encodeURIComponent(uname) },
+        });
+        link.appendChild(elem("span", { className: "pub-at", text: "@", attrs: { "aria-hidden": "true" } }));
+        link.appendChild(document.createTextNode(uname));
+        list.appendChild(link);
+      }
+    });
+    wrap.appendChild(toggle);
+    wrap.appendChild(list);
+    return wrap;
+  }
+
+  // Botón corazón session-aware. `liked` es el estado inicial (de liked_by_me);
+  // el botón lo voltea al éxito. Se ramifica por STATUS HTTP, nunca por strings.
+  function _reviewLikeButton(movieId, token, liked, count) {
+    const wrap = elem("div", { className: "pub-review-like" });
+    const btn = elem("button", { className: "pub-review-like-btn", attrs: { type: "button", "aria-label": "Me gusta" } });
+    const heart = elem("span", { className: "pub-review-like-heart", attrs: { "aria-hidden": "true" } });
+    const countNode = elem("span", { className: "pub-review-like-count", text: String(Math.max(0, Number(count) || 0)) });
+
+    function paint() {
+      heart.textContent = liked ? "♥" : "♡";
+      btn.classList.toggle("is-liked", liked);
+      btn.setAttribute("aria-pressed", liked ? "true" : "false");
+    }
+    btn.appendChild(heart);
+    btn.appendChild(countNode);
+    paint();
+
+    btn.addEventListener("click", async () => {
+      if (btn.disabled) return;
+      btn.disabled = true;
+      const result = await fetchAuthed("/api/reviews/" + movieId + "/likes", liked ? "DELETE" : "POST", token);
+      btn.disabled = false;
+      if (result.networkError) return;
+      if (result.status === 401) { wrap.replaceWith(_loginToReactLink()); return; }
+      if (result.status === 200 && result.data && result.data.ok) {
+        liked = typeof result.data.liked === "boolean" ? result.data.liked : !liked;
+        if (typeof result.data.count === "number") countNode.textContent = String(Math.max(0, result.data.count));
+        paint();
+      }
+      // 404/otros: no-op tolerante (la reseña dejó de estar disponible).
+    });
+    wrap.appendChild(btn);
+    return wrap;
+  }
+
+  // Construye el bloque de like de una reseña de forma asíncrona: sin token →
+  // login-link; con token → GET liked_by_me → corazón toggle. El count del GET
+  // es el total real. Se llena en un slot para no bloquear el render.
+  async function buildReviewLikeControl(slot, movieId, fallbackCount) {
+    const token = await readViewerToken();
+    if (!token) { slot.appendChild(_loginToReactLink()); slot.appendChild(_reviewLikersDisclosure(movieId, null)); return; }
+    const result = await fetchAuthed("/api/reviews/" + movieId + "/likes", "GET", token);
+    if (result.networkError || result.status === 401 ||
+        result.status !== 200 || !result.data || !result.data.ok) {
+      slot.appendChild(_loginToReactLink());
+      slot.appendChild(_reviewLikersDisclosure(movieId, token));
+      return;
+    }
+    const liked = !!result.data.liked_by_me;
+    const count = typeof result.data.count === "number" ? result.data.count : fallbackCount;
+    slot.appendChild(_reviewLikeButton(movieId, token, liked, count));
+    slot.appendChild(_reviewLikersDisclosure(movieId, token));
+  }
+
+  // Sección de reseñas públicas del perfil. Cada reseña: título + poster + texto
+  // (textContent) + like_count + control session-aware. El texto de la reseña es
+  // UGC → SIEMPRE textContent, nunca innerHTML (directiva de verificación #2).
+  function reviewsSection(reviews) {
+    const section = elem("section", { className: "pub-reviews", attrs: { "aria-label": "Reseñas" } });
+    section.appendChild(elem("h2", { className: "pub-section-title", text: "Reseñas" }));
+    const wrap = elem("div", { className: "pub-review-cards", attrs: { role: "list" } });
+    for (const rv of reviews) {
+      const movieId = Number(rv.movie_id) || 0;
+      if (!movieId) continue;
+      const card = elem("article", { className: "pub-review-card", attrs: { role: "listitem" } });
+      card.appendChild(posterNode(rv));
+
+      const bodyCol = elem("div", { className: "pub-review-body" });
+      bodyCol.appendChild(elem("div", { className: "pub-review-title", text: rv.title || "" }));
+
+      const meta = elem("div", { className: "pub-review-meta" });
+      if (rv.year) meta.appendChild(elem("span", { className: "pub-review-year", text: String(rv.year) }));
+      meta.appendChild(elem("span", {
+        className: "pub-media-badge",
+        text: mediaIcon(rv.media_type),
+        attrs: { "aria-hidden": "true" },
+      }));
+      bodyCol.appendChild(meta);
+
+      // Texto de la reseña — nodo de texto (textContent), nunca innerHTML (AC-9).
+      bodyCol.appendChild(elem("blockquote", { className: "pub-review-text", text: rv.note || "" }));
+
+      const likeSlot = elem("div", { className: "pub-review-like-slot" });
+      bodyCol.appendChild(likeSlot);
+      card.appendChild(bodyCol);
+      wrap.appendChild(card);
+
+      // Relleno asíncrono del control de like (lee /api/config + token). El count
+      // de la proyección (like_count) es el fallback hasta que el GET confirme.
+      buildReviewLikeControl(likeSlot, movieId, Number(rv.like_count) || 0)
+        .catch(() => { /* degrada: sin control de like */ });
+    }
+    section.appendChild(wrap);
+    return section;
+  }
+
   // ── Render perfil completo ────────────────────────────────────────────────
   function renderProfile(profile) {
     clearRoot();
@@ -466,8 +635,13 @@
     const hasCollection = Array.isArray(profile.collection) && profile.collection.length > 0;
     const hasStats = profile.stats && typeof profile.stats === "object";
     const hasLists = Array.isArray(profile.lists) && profile.lists.length > 0;
+    const hasReviews = Array.isArray(profile.reviews) && profile.reviews.length > 0;
 
     if (hasStats) root.appendChild(statsPanel(profile.stats));
+
+    // Reseñas publicadas del perfil (independiente de show_collection, AC-6);
+    // el backend solo las emite para un perfil público con notas publicadas.
+    if (hasReviews) root.appendChild(reviewsSection(profile.reviews));
 
     if (Array.isArray(profile.collection)) {
       const colSec = elem("section", { className: "pub-collection", attrs: { "aria-label": "Colección" } });
@@ -482,7 +656,7 @@
 
     if (hasLists) root.appendChild(publicListsSection(profile.lists));
 
-    if (!hasCollection && !hasStats && !hasLists) {
+    if (!hasCollection && !hasStats && !hasLists && !hasReviews) {
       root.appendChild(elem("p", { className: "pub-empty", text: "Este perfil aún no muestra contenido público." }));
     }
   }

@@ -226,6 +226,14 @@ FEED_RATE_MAX = 60            # tope por usuario en la ventana (GET /api/feed)
 FEED_RATE_GLOBAL = 600        # tope agregado
 FEED_LIMIT = 50               # nº máximo de eventos devueltos por el feed (sin paginación en v1)
 PUBLIC_FOLLOW_LIST_MAX = 50   # tope de handles públicos listados en un perfil
+# Capa social Fase 2 (reviews + likes, ADR-015): acciones de like por usuario tras
+# un JWT válido. Límite por usuario + global (misma ventana deslizante), aplicado
+# justo tras la auth en los tres verbos /api/reviews/{movie_id}/likes — reflejando
+# FOLLOW_RATE_*. Los dos topes de display acotan las proyecciones públicas.
+LIKE_RATE_MAX = 60            # tope por usuario en la ventana (POST/DELETE/GET likes)
+LIKE_RATE_GLOBAL = 600        # tope agregado
+PUBLIC_LIKE_LIST_MAX = 50     # tope de likers públicos nombrados en la lista "quién dio like"
+PUBLIC_REVIEW_LIST_MAX = 100  # tope de reseñas listadas en el área de reseñas del perfil público
 
 
 def rate_check(buckets):
@@ -475,23 +483,25 @@ def _public_collection_projection(rows):
     } for r in rows]
 
 
-def _record_activity(cur, user_id, action, snapshot, rating=None, list_id=None):
+def _record_activity(cur, user_id, action, snapshot, rating=None, list_id=None, movie_id=None):
     """Escribe UN evento social en `activity` (append-only, ADR-014) usando el
     cursor de la MISMA transacción de la mutación disparadora — atómico con la
     acción, sin segundo round-trip. `snapshot` es un dict con la fila-caché del
     título ({title, year, poster_url, tmdb_id, media_type}); `rating` solo para
-    'rated', `list_id` solo para 'list_add'. `poster_url` ya viene saneado a la
-    allow-list de TMDB por el sitio de llamada (nunca src arbitrario). SQL
-    parametrizado (PS-002); identificadores/valores en inglés (US-001)."""
+    'rated', `list_id` solo para 'list_add', `movie_id` solo para 'reviewed'
+    (ADR-015: enlaza al título reseñado para leer la nota/gate ACTUALES en el
+    feed — read-time visibility). `poster_url` ya viene saneado a la allow-list de
+    TMDB por el sitio de llamada (nunca src arbitrario). SQL parametrizado
+    (PS-002); identificadores/valores en inglés (US-001)."""
     poster = snapshot.get("poster_url") or None
     if poster and not poster.startswith("https://image.tmdb.org/"):
         poster = None   # defensa en profundidad: nunca cachear un poster no-TMDB
     cur.execute(
         "INSERT INTO activity "
-        "(user_id, action, tmdb_id, media_type, title, year, poster_url, rating, list_id) "
-        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)",
+        "(user_id, action, tmdb_id, media_type, title, year, poster_url, rating, list_id, movie_id) "
+        "VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s)",
         (user_id, action, snapshot.get("tmdb_id"), snapshot.get("media_type"),
-         snapshot.get("title"), snapshot.get("year"), poster, rating, list_id))
+         snapshot.get("title"), snapshot.get("year"), poster, rating, list_id, movie_id))
 
 
 def webhook_for(status):
@@ -685,6 +695,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/profile":  return self._get_profile()
         if path == "/api/lists":    return self._list_lists()
         if path == "/api/feed":     return self._feed()
+        m = re.match(r"^/api/reviews/(\d+)/likes$", path)
+        if m:                       return self._review_likes(int(m.group(1)))
         if path == "/api/account/export": return self._export_account()
         m = re.match(r"^/api/follows/([a-z0-9_-]{3,30})$", path)
         if m:                       return self._follow_status(m.group(1))
@@ -984,6 +996,9 @@ class Handler(SimpleHTTPRequestHandler):
         m = re.match(r"^/api/lists/([0-9a-fA-F-]{36})/items$", self.path)
         if m:
             return self._add_list_item(m.group(1))
+        m = re.match(r"^/api/reviews/(\d+)/likes$", self.path)
+        if m:
+            return self._like_review(int(m.group(1)))
         if self.path != "/api/movies":
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
         user_id = self._get_user_id()
@@ -1093,6 +1108,8 @@ class Handler(SimpleHTTPRequestHandler):
         fields, values = [], []
         new_status = None
         new_rating = None   # rating no-nulo (1-5) puesto por ESTE PATCH → evento 'rated'
+        note_in_patch = None   # texto de la nota si ESTE PATCH la trae (para el gate de publicación)
+        want_public = None     # note_public solicitado por ESTE PATCH (bool) o None si no viene
 
         if data.get("status") in ("pendiente", "viendo", "vista", "abandonada"):
             new_status = data["status"]
@@ -1110,6 +1127,14 @@ class Handler(SimpleHTTPRequestHandler):
             if len(note) > 500:
                 return self._json(400, {"ok": False, "error": "La nota no puede superar 500 caracteres"})
             fields.append("note = %s"); values.append(note)
+            note_in_patch = note
+        if "note_public" in data:
+            # ADR-015: opt-in per-título de publicación de la nota como reseña.
+            # Validación booleana estricta (US-040); scoped WHERE id=%s AND user_id=%s (AC-16).
+            if not isinstance(data["note_public"], bool):
+                return self._json(400, {"ok": False, "error": "note_public debe ser booleano"})
+            want_public = data["note_public"]
+            fields.append("note_public = %s"); values.append(want_public)
         if "watched_at" in data:
             try:
                 watched_at = parse_watched_at(data.get("watched_at"))
@@ -1131,6 +1156,7 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(400, {"ok": False, "error": "Nada que actualizar"})
 
         row = None
+        publish_transition = False   # false→true de note_public en ESTE PATCH (→ evento 'reviewed')
         with get_db() as cur:
             if new_status == "vista" and "watched_at" not in data:
                 cur.execute(
@@ -1140,6 +1166,22 @@ class Handler(SimpleHTTPRequestHandler):
                 if current and not current["watched_at"]:
                     fields.append("watched_at = %s")
                     values.append(date.today().isoformat())
+            # ADR-015: al PUBLICAR (want_public=True) se exige una nota resultante no
+            # vacía (AC-3), y se detecta la transición false→true para escribir UN
+            # evento 'reviewed' fresco. Lee el estado ACTUAL (note_public + note) en
+            # la misma transacción, antes del UPDATE. Scoped por user_id (AC-16).
+            if want_public is True:
+                cur.execute(
+                    "SELECT note_public, note FROM movies WHERE id = %s AND user_id = %s",
+                    (movie_id, user_id))
+                prev = cur.fetchone()
+                if prev is None:
+                    return self._json(404, {"ok": False, "error": "No encontrada"})
+                # Nota resultante = la del PATCH si viene, si no la almacenada.
+                resulting_note = note_in_patch if note_in_patch is not None else (prev["note"] or "")
+                if not resulting_note.strip():
+                    return self._json(400, {"ok": False, "error": "Escribe una nota antes de publicarla."})
+                publish_transition = not prev["note_public"]
             values.extend([movie_id, user_id])
             cur.execute(
                 f"UPDATE movies SET {', '.join(fields)} WHERE id = %s AND user_id = %s",
@@ -1152,16 +1194,16 @@ class Handler(SimpleHTTPRequestHandler):
             # query (sin round-trip extra).
             need_watched = new_status == "vista"
             need_rated   = new_rating is not None
-            if new_status or need_rated:
+            if new_status or need_rated or publish_transition:
                 cur.execute(
                     "SELECT title, year, poster_url, media_type, tmdb_id FROM movies "
                     "WHERE id = %s AND user_id = %s",
                     (movie_id, user_id))
                 row = cur.fetchone()
-            # Evento(s) social(es) (ADR-014): append en la MISMA transacción,
+            # Evento(s) social(es) (ADR-014/ADR-015): append en la MISMA transacción,
             # ÚLTIMO en el bloque, sin pre-check que pueda 500 — el contrato de la
             # mutación (200/404/400, Discord, dedup) queda intacto. Un PATCH puede
-            # disparar los DOS (watched + rated) → dos eventos (sin coalescing, v1).
+            # disparar varios (watched + rated + reviewed) → varios eventos.
             if row:
                 snap = {"tmdb_id": row["tmdb_id"], "media_type": row["media_type"],
                         "title": row["title"], "year": row["year"],
@@ -1170,6 +1212,16 @@ class Handler(SimpleHTTPRequestHandler):
                     _record_activity(cur, user_id, "watched", snap)
                 if need_rated:
                     _record_activity(cur, user_id, "rated", snap, rating=new_rating)
+                # ADR-015: en la transición false→true escribe UN evento 'reviewed'
+                # FRESCO. Borra los 'reviewed' previos de ese título (única excepción
+                # deliberada al append-only de activity: la reseña es estado-actual)
+                # e inserta uno → republicar resurge la reseña arriba en los feeds sin
+                # duplicados. La visibilidad la decide el gate en tiempo de lectura.
+                if publish_transition:
+                    cur.execute(
+                        "DELETE FROM activity WHERE user_id = %s AND action = 'reviewed' AND movie_id = %s",
+                        (user_id, movie_id))
+                    _record_activity(cur, user_id, "reviewed", snap, movie_id=movie_id)
 
         if new_status and row:
             notify_discord(row["title"], row["year"], new_status, row["media_type"], row["poster_url"], user_id)
@@ -1188,6 +1240,9 @@ class Handler(SimpleHTTPRequestHandler):
         mf = re.match(r"^/api/follows/([a-z0-9_-]{3,30})$", self.path)
         if mf:
             return self._unfollow(mf.group(1))
+        mr = re.match(r"^/api/reviews/(\d+)/likes$", self.path)
+        if mr:
+            return self._unlike_review(int(mr.group(1)))
         m = re.match(r"^/api/movies/(\d+)$", self.path)
         if not m:
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
@@ -1393,6 +1448,12 @@ class Handler(SimpleHTTPRequestHandler):
             cur.execute("DELETE FROM activity WHERE user_id = %s", (user_id,))
             cur.execute("DELETE FROM follows WHERE follower_id = %s OR followed_id = %s",
                         (user_id, user_id))
+            # RTBF Fase 2 (ADR-015/GD-*): borra los likes que el usuario DIO sobre
+            # reseñas de terceros (scoped liker_id, AC-17). Los likes RECIBIDOS y sus
+            # eventos 'reviewed' caen por el cascade de movies (sus reseñas son sus
+            # movies). Va antes del borrado de movies; el orden es indiferente
+            # (liker_id vs el cascade por movie_id son conjuntos disjuntos aquí).
+            cur.execute("DELETE FROM likes WHERE liker_id = %s", (user_id,))
             cur.execute("DELETE FROM lists WHERE user_id = %s", (user_id,))
             cur.execute("DELETE FROM profiles WHERE user_id = %s", (user_id,))
 
@@ -2244,6 +2305,20 @@ class Handler(SimpleHTTPRequestHandler):
                 "ORDER BY f.created_at DESC LIMIT %s",
                 (owner_id, PUBLIC_FOLLOW_LIST_MAX))
             body["following"] = [dict(r) for r in cur.fetchall()]
+            # Reseñas publicadas (ADR-015). Independiente de show_collection (AC-6):
+            # el perfil ya es público (404 arriba si no), y publicar la nota es su
+            # propio consentimiento per-título. Gate note_public=TRUE AND note<>''
+            # (AC-3/AC-5). like_count = total REAL por reseña. Proyección allow-list:
+            # NUNCA email ni raw user_id; `note` es el texto de la reseña
+            # (render textContent en public.js, jamás innerHTML).
+            cur.execute(
+                "SELECT id AS movie_id, tmdb_id, media_type, title, year, poster_url, "
+                "       note, created_at, "
+                "       (SELECT COUNT(*) FROM likes lk WHERE lk.movie_id = movies.id) AS like_count "
+                "FROM movies WHERE user_id = %s AND note_public = TRUE AND note <> '' "
+                "ORDER BY created_at DESC LIMIT %s",
+                (owner_id, PUBLIC_REVIEW_LIST_MAX))
+            body["reviews"] = [dict(r) for r in cur.fetchall()]
         self._json(200, {"ok": True, "profile": body})
 
     def _public_list(self, share_token):
@@ -2360,6 +2435,95 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "following": following,
                          "is_self": is_self, "followable": followable})
 
+    # ── Likes sobre reseñas (ADR-015) ──────────────────────────────────────────
+
+    def _review_visible(self, cur, movie_id):
+        """True si el título `movie_id` es actualmente una reseña VISIBLE: existe,
+        su perfil es público, note_public=TRUE y note<>''. Gate a estado ACTUAL
+        (nunca snapshot). No enumera: el caller mapea None→404 idéntico tanto para
+        no-visible como para inexistente."""
+        cur.execute(
+            "SELECT 1 FROM movies m JOIN profiles p ON p.user_id = m.user_id "
+            "WHERE m.id = %s AND p.is_public = TRUE AND m.note_public = TRUE AND m.note <> ''",
+            (movie_id,))
+        return cur.fetchone() is not None
+
+    def _like_count(self, cur, movie_id):
+        cur.execute("SELECT COUNT(*) AS c FROM likes WHERE movie_id = %s", (movie_id,))
+        return cur.fetchone()["c"]
+
+    def _like_review(self, movie_id):
+        """POST /api/reviews/{movie_id}/likes — dar me gusta a una reseña. Auth
+        (PS-001, 401) + rate limit por usuario+global (429). Resuelve el objetivo
+        como reseña VISIBLE (perfil público + publicada + nota no vacía): no
+        visible / inexistente → 404 'No disponible' idéntico (no enumera). Si visible:
+        INSERT … ON CONFLICT DO NOTHING (idempotente, AC-11; self-like permitido).
+        liker_id = SIEMPRE el JWT sub (AC-16); el cliente nunca lo suministra."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        allowed, retry = rate_check([(f"like:{user_id}", LIKE_RATE_MAX),
+                                     ("like:_global", LIKE_RATE_GLOBAL)])
+        if not allowed:
+            return self._json(429, {"ok": False, "error": "Demasiadas peticiones, espera un momento."},
+                              extra_headers={"Retry-After": retry})
+        with get_db() as cur:
+            if not self._review_visible(cur, movie_id):
+                return self._json(404, {"ok": False, "error": "No disponible"})
+            cur.execute(
+                "INSERT INTO likes (liker_id, movie_id) VALUES (%s, %s) ON CONFLICT DO NOTHING",
+                (user_id, movie_id))
+            count = self._like_count(cur, movie_id)
+        _audit("like.created", user_id, "like")
+        self._json(200, {"ok": True, "liked": True, "count": count})
+
+    def _unlike_review(self, movie_id):
+        """DELETE /api/reviews/{movie_id}/likes — quitar me gusta. Auth (PS-001,
+        401). DELETE scoped por liker_id=caller (AC-16). Idempotente y no-enumerante:
+        200 {liked:false, count} aun sin fila previa (AC-12). _audit redactado."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        with get_db() as cur:
+            cur.execute(
+                "DELETE FROM likes WHERE liker_id = %s AND movie_id = %s",
+                (user_id, movie_id))
+            count = self._like_count(cur, movie_id)
+        _audit("like.deleted", user_id, "like")
+        self._json(200, {"ok": True, "liked": False, "count": count})
+
+    def _review_likes(self, movie_id):
+        """GET /api/reviews/{movie_id}/likes — estado de like del caller + lista de
+        likers públicos. Auth (PS-001, 401) + rate limit por usuario. La reseña debe
+        ser VISIBLE (no visible / inexistente → 404 idéntico). `count` es el total
+        REAL (todos los likers, incl. privados, AC-14); `liked_by_me` es EXISTS para
+        el caller; `likers` nombra SOLO perfiles públicos (JOIN profiles is_public),
+        acotado a PUBLIC_LIKE_LIST_MAX. NUNCA serializa email ni raw user_id (GD-001)."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        allowed, retry = rate_check([(f"like:{user_id}", LIKE_RATE_MAX),
+                                     ("like:_global", LIKE_RATE_GLOBAL)])
+        if not allowed:
+            return self._json(429, {"ok": False, "error": "Demasiadas peticiones, espera un momento."},
+                              extra_headers={"Retry-After": retry})
+        with get_db() as cur:
+            if not self._review_visible(cur, movie_id):
+                return self._json(404, {"ok": False, "error": "No disponible"})
+            count = self._like_count(cur, movie_id)
+            cur.execute(
+                "SELECT EXISTS(SELECT 1 FROM likes WHERE movie_id = %s AND liker_id = %s) AS liked",
+                (movie_id, user_id))
+            liked_by_me = cur.fetchone()["liked"]
+            cur.execute(
+                "SELECT p.username, p.avatar_url "
+                "FROM likes lk JOIN profiles p ON p.user_id = lk.liker_id "
+                "WHERE lk.movie_id = %s AND p.is_public = TRUE "
+                "ORDER BY lk.created_at DESC LIMIT %s",
+                (movie_id, PUBLIC_LIKE_LIST_MAX))
+            likers = [dict(r) for r in cur.fetchall()]
+        self._json(200, {"ok": True, "count": count, "liked_by_me": liked_by_me, "likers": likers})
+
     def _feed(self):
         """GET /api/feed — el feed del caller: actividad reciente de quienes sigue,
         reverse-chronological, LIMIT FEED_LIMIT. Auth (PS-001) + rate limit. UNA
@@ -2382,16 +2546,25 @@ class Handler(SimpleHTTPRequestHandler):
             cur.execute(
                 "SELECT a.action, a.tmdb_id, a.media_type, a.title, a.year, a.poster_url, "
                 "       a.rating, a.created_at, p.username, p.avatar_url, "
-                "       l.name AS list_name, l.share_token AS list_share_token "
+                "       l.name AS list_name, l.share_token AS list_share_token, "
+                "       a.movie_id, m.note AS review_note, "
+                "       (SELECT COUNT(*) FROM likes lk WHERE lk.movie_id = a.movie_id) AS like_count, "
+                "       EXISTS(SELECT 1 FROM likes lk2 WHERE lk2.movie_id = a.movie_id "
+                "              AND lk2.liker_id = %s) AS liked_by_me "
                 "FROM activity a "
                 "JOIN follows  f ON f.followed_id = a.user_id AND f.follower_id = %s "
                 "JOIN profiles p ON p.user_id = a.user_id AND p.is_public = TRUE "
-                "LEFT JOIN lists l ON l.id = a.list_id "
+                "LEFT JOIN lists  l ON l.id = a.list_id "
+                "LEFT JOIN movies m ON m.id = a.movie_id "
                 "WHERE ( a.action IN ('watched', 'rated') AND p.show_collection = TRUE ) "
                 "   OR ( a.action = 'list_add' AND l.visibility = 'public' ) "
+                # AC-6/AC-8: 'reviewed' gateado a estado ACTUAL (nota publicada + no
+                # vacía); perfil público ya impuesto por el JOIN profiles. NO gateado
+                # por show_collection (opt-in independiente por título).
+                "   OR ( a.action = 'reviewed' AND m.note_public = TRUE AND m.note <> '' ) "
                 "ORDER BY a.created_at DESC "
                 "LIMIT %s",
-                (user_id, FEED_LIMIT))
+                (user_id, user_id, FEED_LIMIT))
             rows = cur.fetchall()
         # Proyección allow-list (GD-001): solo campos consentidos; rating solo en
         # 'rated', list_name/list_share_token solo en 'list_add'. Nunca email/
@@ -2417,6 +2590,14 @@ class Handler(SimpleHTTPRequestHandler):
             if r["action"] == "list_add":
                 entry["list_name"]        = r["list_name"]
                 entry["list_share_token"] = r["list_share_token"]
+            if r["action"] == "reviewed":
+                # Proyección de reseña (ADR-015): la nota ACTUAL (review_note) + el id
+                # del título para el control de like + conteo/estado. Nunca email/
+                # user_id. El texto se escapa en el render (esc() en activity.js).
+                entry["note"]        = r["review_note"]
+                entry["movie_id"]    = r["movie_id"]
+                entry["like_count"]  = r["like_count"]
+                entry["liked_by_me"] = r["liked_by_me"]
             activity.append(entry)
         self._json(200, {"ok": True, "activity": activity})
 
