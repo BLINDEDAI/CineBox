@@ -22,7 +22,7 @@ Covers:
          invite name), avatar aria-hidden, no container ARIA role.
 
 Strategy:
-  - The real CineBox server is booted (conftest.py base_url fixture), no DB/auth.
+  - The real Cinephora server is booted (conftest.py base_url fixture), no DB/auth.
   - The authenticated chip states cannot be reached by a real login, so we stub
     GET /api/profile via page.route to return each profile state, and mount the
     chip by driving the app.js seam (_updateSidebarUser + _loadProfileChip)

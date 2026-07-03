@@ -1,4 +1,4 @@
-# Gitleaks allowlist for CineBox — consumed by the workspace pre-push secrets gate
+# Gitleaks allowlist for Cinephora — consumed by the workspace pre-push secrets gate
 # (ALEXANDRIA/scripts/project-checks/check-secrets-leaked.sh, run via the pre-push hook).
 #
 # The gate scans the WORKING TREE in --no-git mode, which does NOT honour .gitignore.

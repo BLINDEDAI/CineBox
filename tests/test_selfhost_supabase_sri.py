@@ -23,7 +23,7 @@ import server
 
 # ── Paths ─────────────────────────────────────────────────────────────────────
 
-BASE_DIR = Path(__file__).resolve().parent.parent  # CineBox/
+BASE_DIR = Path(__file__).resolve().parent.parent  # Cinephora/
 INDEX_HTML = BASE_DIR / "index.html"
 VENDOR_BUNDLE = BASE_DIR / "vendor" / "supabase-js" / "2.108.1" / "supabase.min.js"
 
@@ -188,7 +188,7 @@ class VendorPathServedTests(unittest.TestCase):
     VENDOR_PATH = "vendor/supabase-js/2.108.1/supabase.min.js"
 
     def test_vendor_bundle_exists_on_disk(self) -> None:
-        """The vendored bundle must exist at the expected path under CineBox/."""
+        """The vendored bundle must exist at the expected path under Cinephora/."""
         self.assertTrue(
             VENDOR_BUNDLE.exists(),
             f"Vendored bundle not found at {VENDOR_BUNDLE}",

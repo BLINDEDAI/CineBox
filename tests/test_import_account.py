@@ -58,7 +58,7 @@ from tests._harness import FakeCursor, patch_db
 _UID_A = "aaaa-1111-aaaa-1111"
 _UID_B = "bbbb-2222-bbbb-2222"
 
-# A minimal valid CineBox export body (schema_version == 1, collection/lists arrays).
+# A minimal valid Cinephora export body (schema_version == 1, collection/lists arrays).
 _VALID_MOVIE = {
     "tmdb_id": 101,
     "media_type": "movie",

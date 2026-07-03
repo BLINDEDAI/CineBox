@@ -1,4 +1,4 @@
-# CineBox
+# Cinephora
 
 > A personal movie and TV tracker with a dark noir aesthetic. Search any title, add it to your collection, rate it, track where you watched it, and get Discord notifications when you move something to your watchlist or mark it as seen.
 
@@ -8,7 +8,7 @@ Built with vanilla HTML/CSS/JS on the frontend and a pure Python stdlib HTTP ser
 
 ## Visual Design
 
-CineBox uses a dark noir theme: near-black background (`#050915`), a deep red accent for interactive elements, gold stars for ratings, and a subtle radial gradient that gives the interface a cinematic feel. The layout features a fixed sidebar for navigation and a responsive card grid that adapts from desktop down to mobile.
+Cinephora uses a dark noir theme: near-black background (`#050915`), a deep red accent for interactive elements, gold stars for ratings, and a subtle radial gradient that gives the interface a cinematic feel. The layout features a fixed sidebar for navigation and a responsive card grid that adapts from desktop down to mobile.
 
 ---
 
@@ -71,8 +71,8 @@ The backend is small but hardened for real traffic on a free tier:
 ### 1. Clone the repository
 
 ```bash
-git clone https://github.com/your-username/cinebox.git
-cd cinebox
+git clone https://github.com/your-username/cinephora.git
+cd cinephora
 ```
 
 ### 2. Install dependencies

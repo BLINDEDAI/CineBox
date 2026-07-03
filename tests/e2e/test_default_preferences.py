@@ -22,7 +22,7 @@ Covers every ### Tester scope row:
   AC-12 — axe WCAG 2.2 A/AA + keyboard + labels + focus + >=24px, es-ES.
   AC-13 — renders at desktop + mobile breakpoints.
 
-CineBox harness invariants (tester-bundle.md § 7):
+Cinephora harness invariants (tester-bundle.md § 7):
   - Stub window.supabase BEFORE modules boot (add_init_script).
   - Route the vendor supabase-js bundle to noop (SRI mismatch → stub survives).
   - Set _currentUser directly (incl. .email + user_metadata.desired_username).
@@ -155,9 +155,9 @@ def _inject_supabase_stub(page: Page):
 
 
 def _clear_prefs_init(page: Page):
-    """Clear cinebox_prefs before every load so tests start from a clean slate."""
+    """Clear cinephora_prefs before every load so tests start from a clean slate."""
     page.add_init_script(
-        "try { localStorage.removeItem('cinebox_prefs'); } catch (e) {}"
+        "try { localStorage.removeItem('cinephora_prefs'); } catch (e) {}"
     )
 
 
@@ -295,7 +295,7 @@ def test_helper_readprefs_malformed_and_throwing(page: Page, base_url: str):
 
     malformed = page.evaluate(
         """() => {
-            localStorage.setItem('cinebox_prefs', '{not valid json');
+            localStorage.setItem('cinephora_prefs', '{not valid json');
             const r = readPrefs();
             return { isObject: r && typeof r === 'object', keys: Object.keys(r).length };
         }"""
@@ -497,7 +497,7 @@ def test_ac8_saved_preference_survives_reload(page: Page, base_url: str):
 
     _goto_spa(page, base_url)
     page.evaluate(
-        "() => { localStorage.removeItem('cinebox_prefs'); setPref('collection_sort', 'pending-first'); }"
+        "() => { localStorage.removeItem('cinephora_prefs'); setPref('collection_sort', 'pending-first'); }"
     )
 
     # Reload — prefs live in localStorage so they survive.
@@ -538,7 +538,7 @@ def test_ac3_no_home_view_routes_to_collection(page: Page, base_url: str):
     # None saved.
     none_active = page.evaluate(
         """() => {
-            localStorage.removeItem('cinebox_prefs');
+            localStorage.removeItem('cinephora_prefs');
             showView(getPref('home_view', HOME_VIEWS, 'collection-view'));
             return document.body.dataset.activeView;
         }"""
@@ -568,7 +568,7 @@ def test_ac4_default_sort_applied_on_startup(page: Page, base_url: str):
     # collectionSort is initialised at load-time from getPref.
     _inject_supabase_stub(page)
     page.add_init_script(
-        "try { localStorage.setItem('cinebox_prefs', JSON.stringify({collection_sort: 'pending-first'})); } catch (e) {}"
+        "try { localStorage.setItem('cinephora_prefs', JSON.stringify({collection_sort: 'pending-first'})); } catch (e) {}"
     )
     _route_config(page, base_url)
     _route_json(page, f"{base_url}/api/profile", _PROFILE_WITH_USERNAME)
@@ -658,7 +658,7 @@ def test_ac7_no_platform_pref_no_prefill(page: Page, base_url: str):
     _goto_spa(page, base_url)
     _mount_authenticated(page)
 
-    page.evaluate("() => { localStorage.removeItem('cinebox_prefs'); }")
+    page.evaluate("() => { localStorage.removeItem('cinephora_prefs'); }")
     page.evaluate("() => loadMovies()")
     page.wait_for_selector(".card[data-id='1']", timeout=5000)
     page.evaluate("() => openEditOnly(1)")
@@ -740,7 +740,7 @@ def test_ac11_invalid_value_no_crash(page: Page, base_url: str):
 
     _inject_supabase_stub(page)
     page.add_init_script(
-        "try { localStorage.setItem('cinebox_prefs', JSON.stringify({"
+        "try { localStorage.setItem('cinephora_prefs', JSON.stringify({"
         "home_view: 'nope-view', collection_sort: 'bogus', default_platform: 'Betamax'"
         "})); } catch (e) {}"
     )

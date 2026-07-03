@@ -20,7 +20,7 @@ Covers the ### Tester scope live-browser rows of the task DoD:
           es-ES.
 
 Strategy mirrors tests/e2e/test_social_reviews.py exactly:
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth).
   - The authenticated SPA is driven via the production seam: mount
     `_currentUser`, stub `/api/config` + `/api/movies` + `/api/level`, call
     `loadMovies()`. The modal is opened by clicking the collection card poster
@@ -471,7 +471,7 @@ def test_ac6_manual_progress_editor_superseded_by_episode_tracker(page: Page, ba
     to reject an over-total value against. This test was updated (not
     deleted) by the series-episode-progress Tester so the suite does not
     carry a permanently-red assertion for behaviour the spec intentionally
-    removed — see `CineBox-docs/specs/Collection/series-episode-progress-specs.md`
+    removed — see `Cinephora-docs/specs/Collection/series-episode-progress-specs.md`
     BR-13 / AC-14."""
     page.set_viewport_size({"width": 1280, "height": 800})
     hits = {}

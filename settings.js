@@ -1,4 +1,4 @@
-// CineBox — módulo "Ajustes + Mis listas" del SPA autenticado (antes sharing.js).
+// Cinephora — módulo "Ajustes + Mis listas" del SPA autenticado (antes sharing.js).
 // Scope global clásico (sin import/export). Cargado ANTES de app.js (PS-003):
 // api → ui → collection → modal → discover → stats → settings → app.
 //
@@ -137,7 +137,7 @@ function renderSettingsView() {
 
       <section class="spanel sharing-card settings-prefs" aria-labelledby="settings-prefs-title">
         <h2 class="spanel-title" id="settings-prefs-title">Preferencias</h2>
-        <p class="muted smuted-sm">Configura cómo se comporta CineBox por defecto. Cada preferencia es opcional; «Por defecto (sin preferencia)» usa el comportamiento actual de la app.</p>
+        <p class="muted smuted-sm">Configura cómo se comporta Cinephora por defecto. Cada preferencia es opcional; «Por defecto (sin preferencia)» usa el comportamiento actual de la app.</p>
 
         <div class="settings-prefs-field">
           <label class="control-label" for="settings-pref-home-view">Vista de inicio</label>
@@ -205,7 +205,7 @@ function renderSettingsView() {
         <div class="settings-export">
           <h3 class="settings-export-title">Exportar mis datos</h3>
           <p class="settings-export-copy muted smuted-sm">
-            Descarga un archivo con una copia de todos tus datos de CineBox: tu colección,
+            Descarga un archivo con una copia de todos tus datos de Cinephora: tu colección,
             tus listas y tu perfil. El archivo es un JSON que puedes guardar para ti.
           </p>
           <button id="settings-export-btn" class="btn-secondary settings-export-btn" type="button"
@@ -216,10 +216,10 @@ function renderSettingsView() {
         <div class="settings-import">
           <h3 class="settings-import-title">Importar mis datos</h3>
           <p class="settings-import-copy muted smuted-sm">
-            Sube un archivo de exportación de CineBox (colección y listas) para añadirlo a tu cuenta.
+            Sube un archivo de exportación de Cinephora (colección y listas) para añadirlo a tu cuenta.
             La importación es aditiva: no borra ni sobrescribe nada de lo que ya tienes.
           </p>
-          <label class="settings-import-file-label" for="settings-import-file">Archivo de exportación de CineBox (JSON)</label>
+          <label class="settings-import-file-label" for="settings-import-file">Archivo de exportación de Cinephora (JSON)</label>
           <input id="settings-import-file" class="settings-import-file" type="file"
                  accept="application/json,.json">
           <button id="settings-import-btn" class="btn-secondary settings-import-btn" type="button"
@@ -321,7 +321,7 @@ function _renderSettingsAvatar(el, p) {
 // actualiza _profileState desde la respuesta → re-pinta chip + preview. Cuerpo de
 // manejador → tiempo de llamada: `_supabase`, `_currentUser`, `_profileState`,
 // `_renderProfileChip` (app.js) son PS-003-safe. El archivo nunca pasa por el
-// servidor de CineBox (client-direct), así que no hay directiva CSP nueva aquí.
+// servidor de Cinephora (client-direct), así que no hay directiva CSP nueva aquí.
 async function _uploadAvatar(input) {
   const file = input.files && input.files[0];
   if (!file) return;
@@ -908,7 +908,7 @@ async function _exportData(btn) {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `cinebox-export-${todayIsoDate()}.json`;
+      a.download = `cinephora-export-${todayIsoDate()}.json`;
       document.body.appendChild(a);
       a.click();
       a.remove();
@@ -935,7 +935,7 @@ async function _exportData(btn) {
 
 // ── Importar mis datos (Ajustes → Cuenta, acción no destructiva) ────────────
 // Inverso round-trip de "Exportar mis datos": sube un archivo de exportación de
-// CineBox y añade su colección + listas a la cuenta (aditivo, no destructivo —
+// Cinephora y añade su colección + listas a la cuenta (aditivo, no destructivo —
 // no borra ni sobrescribe nada). El disparador visible (#settings-import-btn)
 // abre el <input type="file"> oculto; su `change` invoca esta función. El cuerpo
 // lee el archivo con File.text() (sin red, sin directiva CSP) y hace POST del
@@ -993,7 +993,7 @@ async function _importData(input) {
     // Nunca se pinta el error crudo del servidor (AC-15).
     if (status === 401) { fail("Tu sesión ha caducado. Vuelve a iniciar sesión."); finish(); return; }
     if (status === 413) { fail("El archivo es demasiado grande."); finish(); return; }
-    if (status === 422) { fail("El archivo no es un export válido de CineBox."); finish(); return; }
+    if (status === 422) { fail("El archivo no es un export válido de Cinephora."); finish(); return; }
     if (status === 400) { fail("El archivo no es un JSON válido."); finish(); return; }
     if (status === 429) { fail("Demasiadas solicitudes, espera un momento."); finish(); return; }
     // 500 / cualquier otro status → genérico (AC-15).

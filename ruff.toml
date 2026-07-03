@@ -1,10 +1,10 @@
-# Ruff configuration for CineBox.
+# Ruff configuration for Cinephora.
 #
-# CineBox's backend (server.py) is hand-formatted with intentional column alignment
+# Cinephora's backend (server.py) is hand-formatted with intentional column alignment
 # (aligned constant assignments, a compact TMDB_GENRES map) and uses deliberate
 # one-liner compound statements (`if path == "...": return ...` dispatch in do_GET;
 # `fields.append(...); values.append(v)` pairs in the PATCH builder). These are the
-# project's chosen style, not defects. See CineBox-docs/project-standards.md
+# project's chosen style, not defects. See Cinephora-docs/project-standards.md
 # § Quality gates and ADR/PS notes.
 
 [lint]

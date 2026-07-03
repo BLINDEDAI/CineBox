@@ -1,4 +1,4 @@
-# CineBox — CLAUDE.md
+# Cinephora — CLAUDE.md
 
 Rastreador personal de películas y series. Backend Python puro (sin framework), frontend vanilla JS, PostgreSQL en Supabase.
 
@@ -41,7 +41,7 @@ At the start of each session, read CONTEXT.md if it exists. At the end, update i
 ```
 server.py   — todo el backend (~660 líneas)
 index.html  — SPA de una sola página; carga boot.js (síncrono) + los 7 módulos JS (<script defer>)
-boot.js     — script síncrono en <head>: marca <html> con la clase cinebox-visited
+boot.js     — script síncrono en <head>: marca <html> con la clase cinephora-visited
               (de localStorage) ANTES de pintar, para evitar el flash de bienvenida
 styles.css  — estilos
 .env        — secretos (no commitear)

@@ -12,7 +12,7 @@ Covers:
            (2026-06-30). The old #sharing-view / sharing.js are gone.
 
 Strategy:
-  - The real CineBox server is booted (via conftest.py base_url fixture).
+  - The real Cinephora server is booted (via conftest.py base_url fixture).
   - The public endpoints have no DB, so we intercept API calls with page.route()
     and return mock JSON matching the documented response shapes.
   - axe-core (4.9.0) is injected via page.add_script_tag(path=...) which bypasses
@@ -211,7 +211,7 @@ def _route_broken_relative_assets(page: Page, base_url: str, prefix: str):
     This workaround serves these files directly from disk so the tests can verify
     a11y on a functional page. The bug must still be fixed by the Frontend Developer.
     """
-    _BASE = Path(__file__).resolve().parent.parent.parent  # CineBox/
+    _BASE = Path(__file__).resolve().parent.parent.parent  # Cinephora/
 
     def _serve_from_disk(filename):
         file_path = _BASE / filename

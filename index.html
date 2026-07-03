@@ -3,7 +3,7 @@
   <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>CINEBOX · Mi colección</title>
+    <title>CINEPHORA · Mi colección</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23ff443d'/%3E%3Cpath d='M13 10.5 22 16l-9 5.5z' fill='%23fff'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="styles.css">
     <link rel="stylesheet" href="landing.css">
@@ -12,14 +12,14 @@
   </head>
   <body>
 
-    <div id="welcome-screen" class="welcome-screen landing" role="region" aria-label="CineBox — presentación">
+    <div id="welcome-screen" class="welcome-screen landing" role="region" aria-label="Cinephora — presentación">
       <div class="landing-inner">
 
         <!-- 1. Topbar fija -->
         <header class="landing-topbar">
           <span class="landing-logo">
             <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
-            CINE<strong>BOX</strong>
+            CINE<strong>PHORA</strong>
           </span>
           <button type="button" class="landing-topbar-login" data-landing-auth="login">Iniciar sesión</button>
         </header>
@@ -27,7 +27,7 @@
         <!-- 2. Hero a dos columnas -->
         <section class="landing-hero">
           <div class="landing-hero-copy">
-            <h1 class="landing-wordmark">CINE<strong>BOX</strong></h1>
+            <h1 class="landing-wordmark">CINE<strong>PHORA</strong></h1>
             <p class="landing-tagline">Tu colección de películas y series, el seguimiento de cada episodio y la decisión de qué ver hoy — en español, en un solo sitio.</p>
             <div class="landing-cta-row">
               <button id="welcome-register" class="landing-btn-primary" type="button">Crear mi cuenta</button>
@@ -52,14 +52,14 @@
         <!-- 3. Míralo por dentro: filas alternas con ventanas de app -->
         <section class="landing-section landing-features">
           <p class="landing-eyebrow">Míralo por dentro</p>
-          <h2 class="landing-h2">Así se ve CineBox</h2>
+          <h2 class="landing-h2">Así se ve Cinephora</h2>
 
           <!-- Fila 1 · Seguimiento por temporada -->
           <div class="landing-feature">
             <div class="landing-feature-copy">
               <p class="landing-feature-eyebrow">Seguimiento por temporada</p>
               <h3 class="landing-feature-h">No vuelvas a perder el hilo</h3>
-              <p class="landing-feature-p">Marca episodios según los ves y CineBox recuerda exactamente por dónde vas en cada serie — hasta en las que dejaste hace meses.</p>
+              <p class="landing-feature-p">Marca episodios según los ves y Cinephora recuerda exactamente por dónde vas en cada serie — hasta en las que dejaste hace meses.</p>
               <ul class="landing-feature-list">
                 <li>Progreso por episodio y por temporada</li>
                 <li>Retoma justo donde lo dejaste</li>
@@ -152,6 +152,42 @@
               </div>
             </div>
           </div>
+
+          <!-- Fila 4 · Social (invertida) -->
+          <div class="landing-feature landing-feature--reverse">
+            <div class="landing-feature-copy">
+              <p class="landing-feature-eyebrow">Social</p>
+              <h3 class="landing-feature-h">No lo veas en soledad</h3>
+              <p class="landing-feature-p">Perfil público, reseñas y un feed con lo que ven y valoran las personas a las que sigues. Todo privado por defecto — tú decides qué enseñar.</p>
+              <ul class="landing-feature-list">
+                <li>Perfil público con tu cineteca</li>
+                <li>Reseñas y «me gusta»</li>
+                <li>Sigue a otros y ve su actividad</li>
+              </ul>
+            </div>
+            <div class="landing-feature-media" aria-hidden="true">
+              <div class="landing-window">
+                <div class="landing-window-bar"><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-window-title">Actividad</span></div>
+                <div class="landing-window-feed">
+                  <div class="lw-feed-item">
+                    <span class="lw-avatar">A</span>
+                    <p class="lw-feed-body"><span class="lw-feed-user">@alex</span> valoró <strong>Dune</strong> <span class="lw-stars">★★★★★</span></p>
+                    <span class="lw-feed-thumb"><img src="https://image.tmdb.org/t/p/w342/d5NXSklXo0qyIYkgV94XAgMIckC.jpg" alt="" loading="lazy"></span>
+                  </div>
+                  <div class="lw-feed-item">
+                    <span class="lw-avatar">S</span>
+                    <p class="lw-feed-body"><span class="lw-feed-user">@sara</span> reseñó <strong>Parasite</strong> <span class="lw-like">♥ 12</span></p>
+                    <span class="lw-feed-thumb"><img src="https://image.tmdb.org/t/p/w342/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg" alt="" loading="lazy"></span>
+                  </div>
+                  <div class="lw-feed-item">
+                    <span class="lw-avatar">N</span>
+                    <p class="lw-feed-body"><span class="lw-feed-user">@nil</span> añadió <strong>Interstellar</strong> a una lista</p>
+                    <span class="lw-feed-thumb"><img src="https://image.tmdb.org/t/p/w342/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg" alt="" loading="lazy"></span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
         </section>
 
         <!-- 4. Banda CTA -->
@@ -167,7 +203,7 @@
           <h2 class="landing-h2">Dudas rápidas</h2>
           <details>
             <summary>¿Es gratis?</summary>
-            <p>Sí. CineBox es gratuito: creas tu cuenta y usas todo sin coste.</p>
+            <p>Sí. Cinephora es gratuito: creas tu cuenta y usas todo sin coste.</p>
           </details>
           <details>
             <summary>¿Hace falta confirmar el email?</summary>
@@ -175,7 +211,7 @@
           </details>
           <details>
             <summary>¿De dónde salen los datos de las películas y series?</summary>
-            <p>De TMDB (The Movie Database). CineBox usa su API para búsquedas, fichas y carátulas, pero no está avalado ni certificado por TMDB.</p>
+            <p>De TMDB (The Movie Database). Cinephora usa su API para búsquedas, fichas y carátulas, pero no está avalado ni certificado por TMDB.</p>
           </details>
           <details>
             <summary>¿Puedo exportar o borrar mis datos?</summary>
@@ -183,7 +219,7 @@
           </details>
           <details>
             <summary>¿Hay app móvil?</summary>
-            <p>Todavía no hay app nativa, pero CineBox funciona en el navegador del móvil y se adapta a la pantalla.</p>
+            <p>Todavía no hay app nativa, pero Cinephora funciona en el navegador del móvil y se adapta a la pantalla.</p>
           </details>
           <details>
             <summary>¿Es privado por defecto?</summary>
@@ -197,7 +233,7 @@
             <div class="landing-footer-brand">
               <span class="landing-logo">
                 <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
-                CINE<strong>BOX</strong>
+                CINE<strong>PHORA</strong>
               </span>
               <p>Tu colección de cine y series, en español.</p>
             </div>
@@ -213,7 +249,7 @@
             </div>
             <div class="landing-footer-col">
               <h4>Sobre</h4>
-              <a href="/about">Sobre CineBox</a>
+              <a href="/about">Sobre Cinephora</a>
             </div>
             <div class="landing-footer-col">
               <h4>Contacto</h4>
@@ -221,7 +257,7 @@
             </div>
           </div>
           <div class="landing-footer-bottom">
-            <span>© CineBox</span>
+            <span>© Cinephora</span>
             <span>Datos por <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>. Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</span>
           </div>
         </footer>
@@ -235,7 +271,7 @@
           <span class="login-brand-mark" aria-hidden="true">
             <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
           </span>
-          <span class="login-brand-name">CINE<strong>BOX</strong></span>
+          <span class="login-brand-name">CINE<strong>PHORA</strong></span>
         </div>
         <h2 id="login-heading" class="login-heading">Iniciar sesión</h2>
         <form id="login-form" class="login-form" novalidate>
@@ -286,7 +322,7 @@
             <path d="M13 10.5 22 16l-9 5.5z"></path>
           </svg>
         </span>
-        <span>CINE<strong>BOX</strong></span>
+        <span>CINE<strong>PHORA</strong></span>
       </div>
 
       <nav class="side-nav" aria-label="Secciones visuales">

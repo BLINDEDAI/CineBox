@@ -1,6 +1,6 @@
 -- Migration 001 — public-profiles-and-shared-lists (ADR-005)
 -- Additive: CREATE TABLE only. Does not alter `movies`. Reversible with the DOWN block below.
--- Apply in the Supabase SQL editor (project: CineBox). pgcrypto's gen_random_uuid() is available on Supabase.
+-- Apply in the Supabase SQL editor (project: Cinephora). pgcrypto's gen_random_uuid() is available on Supabase.
 
 -- ===== UP =====
 CREATE TABLE IF NOT EXISTS profiles (

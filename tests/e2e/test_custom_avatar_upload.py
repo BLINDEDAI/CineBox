@@ -25,7 +25,7 @@ app-layer control to exercise; a live grant/deny RLS probe needs a live Supabase
 project + two real auth sessions, out of reach for this offline harness).
 
 Strategy (mirrors tests/e2e/test_settings_and_lists.py):
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth required).
   - /api/profile and /api/config stubbed via page.route(), narrow route
     registered AFTER the broad one (page.route is LIFO).
   - Views are mounted by driving the production seam (_updateSidebarUser /

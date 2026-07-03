@@ -1639,7 +1639,7 @@ class Handler(SimpleHTTPRequestHandler):
             _audit("account.delete_denied", user_id, "bad_password")
             return self._json(401, {"ok": False, "error": "Contraseña incorrecta."})
 
-        # 7) Borrado de datos CineBox: UNA transacción atómica, todo por user_id
+        # 7) Borrado de datos Cinephora: UNA transacción atómica, todo por user_id
         #    (PS-002). list_items cae por FK ON DELETE CASCADE al borrar lists.
         #    Idempotente: en un reintento los borrados afectan a cero filas.
         with get_db() as cur:
@@ -1839,7 +1839,7 @@ class Handler(SimpleHTTPRequestHandler):
                 or not isinstance(body.get("collection"), list) \
                 or not isinstance(body.get("lists"), list):
             _audit("account.import_denied", user_id, "invalid_format")
-            return self._json(422, {"ok": False, "error": "El archivo no es un export válido de CineBox."})
+            return self._json(422, {"ok": False, "error": "El archivo no es un export válido de Cinephora."})
         collection = body["collection"]
         lists      = body["lists"]
 

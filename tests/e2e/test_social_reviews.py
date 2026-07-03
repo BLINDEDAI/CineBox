@@ -20,7 +20,7 @@ Covers every ### Tester scope Playwright row:
   lesson.
 
 Strategy (mirrors tests/e2e/test_social.py, Phase 1):
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth required).
   - The activity feed view + the collection view are driven directly via the
     production seam (mount `_currentUser`, call `showActivityView()` /
     `loadMovies()`+`renderCollection()` against stubbed `/api/feed` /

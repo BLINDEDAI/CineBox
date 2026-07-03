@@ -1,11 +1,11 @@
 /* ── Landing de marketing (#welcome-screen) ──────────────────────────────────
    Sustituye la antigua pantalla de bienvenida centrada por una landing scrollable.
    Enlazado tras styles.css (CSP estricta: nada de <style>/style= inline). Namespace
-   .landing-* para no colisionar con estilos existentes. Identidad CineBox: oscuro +
+   .landing-* para no colisionar con estilos existentes. Identidad Cinephora: oscuro +
    acento rojo (--red, definido en styles.css:root). */
 
-/* Gating pre-paint anti-flash: boot.js añade cinebox-authed si hay sesión. */
-html.cinebox-authed #welcome-screen { display: none; }
+/* Gating pre-paint anti-flash: boot.js añade cinephora-authed si hay sesión. */
+html.cinephora-authed #welcome-screen { display: none; }
 
 /* La landing es un overlay a pantalla completa, scrollable, que cubre la app. */
 .welcome-screen.landing {
@@ -275,6 +275,31 @@ html.cinebox-authed #welcome-screen { display: none; }
   color: #ff8c84;
 }
 .lw-add-watched { border-color: rgba(43, 171, 74, 0.5); color: #86e09b; }
+
+/* Ventana de feed social (Actividad) */
+.landing-window-feed { display: flex; flex-direction: column; padding: 8px; }
+.lw-feed-item { display: flex; align-items: center; gap: 12px; padding: 12px 10px; }
+.lw-feed-item + .lw-feed-item { border-top: 1px solid rgba(255, 255, 255, 0.06); }
+.lw-avatar {
+  flex: 0 0 auto;
+  width: 38px;
+  height: 38px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.9rem;
+  color: #fff;
+}
+.lw-feed-item:nth-child(1) .lw-avatar { background: linear-gradient(135deg, hsl(210 55% 44%), hsl(250 55% 30%)); }
+.lw-feed-item:nth-child(2) .lw-avatar { background: linear-gradient(135deg, hsl(340 60% 46%), hsl(10 60% 32%)); }
+.lw-feed-item:nth-child(3) .lw-avatar { background: linear-gradient(135deg, hsl(150 45% 40%), hsl(180 45% 26%)); }
+.lw-feed-body { flex: 1 1 auto; min-width: 0; margin: 0; font-size: 0.9rem; line-height: 1.4; color: rgba(255, 255, 255, 0.78); }
+.lw-feed-user { color: #fff; font-weight: 700; }
+.lw-feed-body strong { color: #fff; font-weight: 700; }
+.lw-like { color: var(--red); font-size: 0.82rem; white-space: nowrap; }
+.lw-feed-thumb { flex: 0 0 auto; width: 42px; aspect-ratio: 2 / 3; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); }
+.lw-feed-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
 /* ── Banda CTA ───────────────────────────────────────────────── */
 .landing-cta-band {

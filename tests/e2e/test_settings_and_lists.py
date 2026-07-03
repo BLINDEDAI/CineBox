@@ -21,7 +21,7 @@ Covers every ### Tester scope row from the task DoD:
   Regression — existing server-side + e2e suites remain green (run separately)
 
 Strategy:
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth required).
   - API calls stubbed via page.route() mirroring test_sidebar_profile_chip.py.
   - Views are mounted by driving the production seam (_updateSidebarUser /
     showSettingsView / showListsView) via page.evaluate — no real Supabase session.

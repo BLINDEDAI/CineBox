@@ -1,4 +1,4 @@
-// CineBox — página pública anónima (perfiles y listas compartidas).
+// Cinephora — página pública anónima (perfiles y listas compartidas).
 // Autocontenida: NO carga supabase-js ni los 7 módulos del SPA autenticado.
 // Read-only. Todo el contenido del usuario se renderiza como TEXTO (textContent),
 // nunca con innerHTML de datos de usuario (prevención de XSS — invariants § Security).
@@ -76,7 +76,7 @@
     const box = elem("div", { className: "pub-state" });
     box.appendChild(elem("h1", { className: "pub-state-title", text: title }));
     if (detail) box.appendChild(elem("p", { className: "pub-state-detail", text: detail }));
-    const home = elem("a", { className: "btn pub-state-home", text: "Ir a CineBox", attrs: { href: "/" } });
+    const home = elem("a", { className: "btn pub-state-home", text: "Ir a Cinephora", attrs: { href: "/" } });
     box.appendChild(home);
     root.appendChild(box);
   }
@@ -606,7 +606,7 @@
   // ── Render perfil completo ────────────────────────────────────────────────
   function renderProfile(profile) {
     clearRoot();
-    document.title = "@" + (profile.username || "") + " · CINEBOX";
+    document.title = "@" + (profile.username || "") + " · CINEPHORA";
 
     const headerSec = elem("section", { className: "pub-profile-head" });
     headerSec.appendChild(elem("p", { className: "pub-eyebrow", text: "Perfil público" }));
@@ -664,7 +664,7 @@
   // ── Render lista compartida ───────────────────────────────────────────────
   function renderList(list) {
     clearRoot();
-    document.title = (list.name || "Lista") + " · CINEBOX";
+    document.title = (list.name || "Lista") + " · CINEPHORA";
 
     const headSec = elem("section", { className: "pub-list-head" });
     headSec.appendChild(elem("p", { className: "pub-eyebrow", text: "Lista compartida" }));

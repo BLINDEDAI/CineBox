@@ -1,7 +1,7 @@
 -- Migration 002 — social-follows-and-activity-feed (ADR-014)
 -- Additive: CREATE TABLE only. Does NOT alter movies / profiles / lists / list_items.
 -- Expand-only (DM-* / US-083); no backfill. Reversible with the DOWN block below.
--- Apply in the Supabase SQL editor (project: CineBox). pgcrypto's gen_random_uuid() is available on Supabase.
+-- Apply in the Supabase SQL editor (project: Cinephora). pgcrypto's gen_random_uuid() is available on Supabase.
 
 -- ===== UP =====
 

@@ -17,7 +17,7 @@ Covers every E2E row in the task's ### Tester scope:
           gate role/aria/focus-trap verified
 
 Strategy:
-  - The real CineBox server is booted via conftest.py base_url fixture; no DB/auth.
+  - The real Cinephora server is booted via conftest.py base_url fixture; no DB/auth.
   - Supabase-dependent states (authenticated, profile null/set) are reached via
     page.route stubs — mirroring the sidebar-profile-chip pattern.
   - axe-core (vendored tests/e2e/axe.min.js) is injected via a same-origin routed

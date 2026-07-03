@@ -1,14 +1,14 @@
-CineBox browser E2E suite
+Cinephora browser E2E suite
 =========================
 
 What this is
 ------------
 A Playwright-for-Python (headless Chromium) browser test harness that boots the
-real CineBox server and verifies the `selfhost-supabase-sri` supply-chain
+real Cinephora server and verifies the `selfhost-supabase-sri` supply-chain
 guarantees that the stdlib `unittest` suite cannot observe (browser-runtime
 behaviour): supabase-js is fetched same-origin with no `cdn.jsdelivr.net`
 request, and a tampered vendored bundle is SRI-blocked with no CDN fallback.
-Adopted in ADR-003 (CineBox-docs/decisions.md).
+Adopted in ADR-003 (Cinephora-docs/decisions.md).
 
 This suite is SEPARATE from the unit gate. The unit gate
 (`python -m unittest discover -s tests`) does NOT discover or import anything
@@ -21,7 +21,7 @@ and NO Postgres are required.
 
 Install (one-time)
 ------------------
-From the CineBox repo root:
+From the Cinephora repo root:
 
     pip install -r requirements.txt -r requirements-dev.txt
     playwright install chromium
@@ -32,7 +32,7 @@ dev/test-only and are never imported by `server.py`.
 
 Run
 ---
-From the CineBox repo root:
+From the Cinephora repo root:
 
     pytest tests/e2e/
 

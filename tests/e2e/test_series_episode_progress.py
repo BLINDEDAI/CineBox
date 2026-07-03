@@ -22,7 +22,7 @@ Covers the browser-driven ### Tester scope rows of the task DoD:
                toggles + selector keyboard-operable, >= 24px, es-ES.
 
 Strategy mirrors tests/e2e/test_modal_edit_section.py exactly:
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth).
   - The authenticated SPA is driven via the production seam: mount
     `_currentUser`, stub `/api/config` + `/api/movies` + `/api/level`, call
     `loadMovies()`. The modal is opened by clicking the collection card poster.

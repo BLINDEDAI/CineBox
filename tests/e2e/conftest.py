@@ -1,4 +1,4 @@
-"""Pytest fixtures for the CineBox browser E2E harness (ADR-003).
+"""Pytest fixtures for the Cinephora browser E2E harness (ADR-003).
 
 Boots the *real* ``server.Handler`` over an ephemeral-port
 ``ThreadingHTTPServer`` in a daemon thread — mirroring the construction in
@@ -44,14 +44,14 @@ def _wait_until_accepting(host, port, timeout):
         except OSError:
             time.sleep(_POLL_INTERVAL_SECONDS)
     raise RuntimeError(
-        f"CineBox test server did not accept a connection on {host}:{port} "
+        f"Cinephora test server did not accept a connection on {host}:{port} "
         f"within {timeout}s"
     )
 
 
 @pytest.fixture(scope="session")
 def base_url():
-    """Yield the base URL of a running CineBox server backed by the real Handler.
+    """Yield the base URL of a running Cinephora server backed by the real Handler.
 
     Serves the repository root (``server.BASE_DIR``) — the same directory
     ``server.main()`` passes — so ``index.html``, the seven JS modules, and the

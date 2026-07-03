@@ -10,7 +10,7 @@ try {
   for (let i = 0; i < localStorage.length; i++) {
     const k = localStorage.key(i);
     if (k && k.startsWith("sb-") && k.endsWith("-auth-token")) {
-      document.documentElement.classList.add("cinebox-authed");
+      document.documentElement.classList.add("cinephora-authed");
       break;
     }
   }

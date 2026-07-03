@@ -15,7 +15,7 @@ Covers every ### Tester scope E2E row in the task DoD:
                in any client payload or /api/config response
 
 Strategy (follows test_change_password.py harness patterns exactly):
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth required).
   - page.route('/vendor/supabase-js/**', noop bytes) so SRI mismatch blocks the real
     vendor bundle, leaving window.supabase as our add_init_script stub (lessons-learned:
     general.md — 'Stubbing window.supabase in e2e: the SRI-pinned vendor bundle').
@@ -105,7 +105,7 @@ def _route_lists(page: Page, base_url: str):
 def _route_vendor_supabase(page: Page, base_url: str):
     """Route vendor supabase-js to noop bytes → SRI mismatch → browser blocks real bundle.
 
-    This is the CineBox test-harness invariant from lessons-learned/general.md
+    This is the Cinephora test-harness invariant from lessons-learned/general.md
     (change-password 2026-07-01): serves different bytes so the browser's own SRI
     check fails and blocks the vendor script, leaving our add_init_script stub intact.
     """

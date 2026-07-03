@@ -1,4 +1,4 @@
-// CineBox — módulo "Actividad" (feed social) del SPA autenticado.
+// Cinephora — módulo "Actividad" (feed social) del SPA autenticado.
 // Scope global clásico (sin import/export). Cargado ANTES de app.js (PS-003):
 // api → ui → collection → modal → discover → stats → settings → activity → app.
 //

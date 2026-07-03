@@ -36,7 +36,7 @@ VENDOR_BUNDLE_URL_PATH = "/vendor/supabase-js/2.108.1/supabase.min.js"
 
 # Filesystem path to the committed vendored bundle (used by AC-4 to assert
 # no on-disk mutation occurred).
-_REPO_ROOT = Path(__file__).resolve().parent.parent.parent  # CineBox/
+_REPO_ROOT = Path(__file__).resolve().parent.parent.parent  # Cinephora/
 VENDOR_BUNDLE_PATH = (
     _REPO_ROOT / "vendor" / "supabase-js" / "2.108.1" / "supabase.min.js"
 )

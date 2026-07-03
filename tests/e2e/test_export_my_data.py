@@ -13,7 +13,7 @@ Covers every ### Tester scope row with an E2E surface:
            accessible name on the button, target >= 24 px.
 
 Strategy:
-  - Real CineBox server via conftest.py base_url fixture (no DB / auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB / auth required).
   - window.supabase is stubbed BEFORE modules boot via page.add_init_script().
   - _route_vendor_supabase blocks the real SRI-pinned bundle so the stub survives.
   - _currentUser is set directly via page.evaluate() (including .email and
@@ -25,7 +25,7 @@ Strategy:
     <script> (CSP: script-src 'self').
   - Screenshots saved to handoffs/export-my-data/screenshots/.
 
-CineBox harness invariants applied (tester-bundle.md § 7):
+Cinephora harness invariants applied (tester-bundle.md § 7):
   - Stub window.supabase AND route vendor bundle to noop (SRI mismatch blocks real
     bundle → stub survives).
   - Set _currentUser directly via page.evaluate (including .email).
@@ -442,10 +442,10 @@ def test_ac2_export_triggers_download(page: Page, base_url: str):
     download = download_info.value
     _screenshot(page, "ac2-after-download")
 
-    # Filename must match the cinebox-export-<date>.json pattern
+    # Filename must match the cinephora-export-<date>.json pattern
     filename = download.suggested_filename
-    assert filename.startswith("cinebox-export-"), (
-        f"AC-2: downloaded filename must start with 'cinebox-export-'; got {filename!r}"
+    assert filename.startswith("cinephora-export-"), (
+        f"AC-2: downloaded filename must start with 'cinephora-export-'; got {filename!r}"
     )
     assert filename.endswith(".json"), (
         f"AC-2: downloaded file must have .json extension; got {filename!r}"

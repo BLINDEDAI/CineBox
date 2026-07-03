@@ -56,12 +56,12 @@ function _hideLoginScreen() {
 
 // La landing (#welcome-screen) es ahora una landing de marketing que se muestra
 // SIEMPRE que no hay sesión (no solo la primera visita). No se elimina del DOM: se
-// oculta/muestra para que reaparezca tras un logout. `cinebox-authed` (clase en
+// oculta/muestra para que reaparezca tras un logout. `cinephora-authed` (clase en
 // <html>) es el gate pre-paint que pone boot.js; al mostrar la landing hay que
 // quitarlo para cubrir el caso borde de token caducado.
 function _showLanding() {
   const w = document.getElementById("welcome-screen");
-  document.documentElement.classList.remove("cinebox-authed");
+  document.documentElement.classList.remove("cinephora-authed");
   if (w) w.hidden = false;
 }
 
@@ -629,7 +629,7 @@ async function initApp() {
   } else {
     // Sin sesión → landing de marketing. Caso borde: si boot.js ocultó la landing
     // pre-paint por un token CADUCADO (heurística por-presencia-de-clave, no por
-    // validez), _showLanding reconcilia el estado quitando cinebox-authed y mostrando
+    // validez), _showLanding reconcilia el estado quitando cinephora-authed y mostrando
     // la landing. Queda un breve destello del app-shell (que no se oculta) entre el
     // paint y la resolución de getSession(); es una limitación preexistente y solo
     // afecta al raro caso de sesión caducada, no al login/logout normal.

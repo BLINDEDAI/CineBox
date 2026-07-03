@@ -1,7 +1,7 @@
 -- Migration 004 — series-episode-progress (ADR-017)
 -- Additive / expand-only (DM-* / US-083): CREATE TABLE + index only. Does NOT alter movies.
 -- Expand phase of the derive-and-sync lifecycle; no backfill (BR-9 — lazy adoption).
--- Apply in the Supabase SQL editor (project: CineBox) BEFORE the readers deploy. Reversible with the DOWN block.
+-- Apply in the Supabase SQL editor (project: Cinephora) BEFORE the readers deploy. Reversible with the DOWN block.
 -- Rollback: DROP TABLE episode_progress; movies untouched.
 
 -- ===== UP =====

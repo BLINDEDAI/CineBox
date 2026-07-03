@@ -47,8 +47,8 @@ function starsHtml(rating) {
 // Helper para las tres preferencias por defecto (vista de inicio, orden de la
 // colección, plataforma). Vive en ui.js (2º módulo) para que app.js (último)
 // pueda llamar a getPref en tiempo de carga al inicializar `collectionSort`
-// (PS-003). Se guardan bajo una única clave `cinebox_prefs` (convención
-// `cinebox_`). Cada valor almacenado es UNTRUSTED (el usuario puede editar
+// (PS-003). Se guardan bajo una única clave `cinephora_prefs` (convención
+// `cinephora_`). Cada valor almacenado es UNTRUSTED (el usuario puede editar
 // localStorage a mano en devtools) → se valida contra un allow-list fijo en la
 // lectura antes de aplicarse (SE-*). Todo acceso a localStorage va en try/catch
 // (el modo privado puede lanzar) → degrada a los valores por defecto, sin crash.
@@ -59,7 +59,7 @@ function starsHtml(rating) {
 const HOME_VIEWS = ["collection-view", "discover-view", "stats-view", "lists-view"];
 const COLLECTION_SORTS = ["recent", "title-asc", "year-desc", "rating-desc", "pending-first", "watched-first"];
 
-const PREFS_STORAGE_KEY = "cinebox_prefs";
+const PREFS_STORAGE_KEY = "cinephora_prefs";
 
 // Devuelve el objeto de preferencias parseado, o {} ante cualquier fallo
 // (localStorage inaccesible, JSON malformado, valor no-objeto).

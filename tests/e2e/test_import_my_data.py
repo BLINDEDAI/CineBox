@@ -18,7 +18,7 @@ Covers every ### Tester scope row with an E2E surface:
            + visible focus indicator + accessible name + target ≥ 24 px.
 
 Strategy (mirrors tests/e2e/test_export_my_data.py):
-  - Real CineBox server via conftest.py base_url fixture (no DB / auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB / auth required).
   - window.supabase stubbed BEFORE modules boot via page.add_init_script().
   - _route_vendor_supabase routes the SRI-pinned bundle to a noop script so the
     stub survives (SRI mismatch → browser blocks real bundle).
@@ -79,7 +79,7 @@ _IMPORT_SUMMARY_RESPONSE = {
     },
 }
 
-# A minimal valid CineBox export file to upload via set_input_files.
+# A minimal valid Cinephora export file to upload via set_input_files.
 _STUB_EXPORT_FILE_CONTENT = {
     "schema_version": 1,
     "exported_at": "2026-07-01T12:00:00+00:00",
@@ -612,7 +612,7 @@ def test_ac2_error_status_shows_generic_message(page: Page, base_url: str):
     page.set_viewport_size({"width": 1280, "height": 800})
     _setup_page(
         page, base_url,
-        import_payload={"ok": False, "error": "El archivo no es un export válido de CineBox."},
+        import_payload={"ok": False, "error": "El archivo no es un export válido de Cinephora."},
         import_status=422,
     )
 

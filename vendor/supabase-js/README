@@ -10,7 +10,7 @@ security-critical script: the browser would execute whatever bytes the CDN
 returned, and a CDN outage broke login entirely.
 
 This directory holds the bundle vendored at an exact pinned version, served from
-CineBox's own origin and loaded with an SRI integrity hash (fail-closed). The CSP
+Cinephora's own origin and loaded with an SRI integrity hash (fail-closed). The CSP
 `script-src` in server.py is correspondingly tightened to `'self'` (no jsDelivr).
 
 Pinned version
@@ -77,7 +77,7 @@ the hash in the same commit, or the browser will block the new bundle.
    integrity="sha384-..." attribute together.
 
 4. Update the pinned version + hash recorded in this README and in
-   CineBox/CLAUDE.md.
+   Cinephora/CLAUDE.md.
 
 5. Remove the old version directory once the new one is verified loading.
 

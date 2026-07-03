@@ -1,7 +1,7 @@
 -- Migration 003 — social-reviews-and-likes (ADR-015)
 -- Additive/expand-only (DM-* / US-083): ADD COLUMN, widen a CHECK, CREATE TABLE.
 -- No destructive change; no backfill (note_public defaults false → every existing note stays private).
--- Apply in the Supabase SQL editor (project: CineBox) BEFORE the readers deploy. Reversible with the DOWN block.
+-- Apply in the Supabase SQL editor (project: Cinephora) BEFORE the readers deploy. Reversible with the DOWN block.
 
 -- ===== UP =====
 

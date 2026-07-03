@@ -14,7 +14,7 @@ Covers every ### Tester scope row in the task DoD:
            keyboard-operable + visible focus + targets >= 24 px
 
 Strategy:
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth required).
   - window.supabase is stubbed BEFORE modules boot via page.add_init_script().
     The stub exposes a controllable createClient() that yields the probe object;
     _supabase (main client) is wired via a separate page.evaluate() so tests can

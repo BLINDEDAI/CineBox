@@ -1,4 +1,4 @@
-# CONTEXT.md — CineBox
+# CONTEXT.md — Cinephora
 
 Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiza al final.
 
@@ -9,7 +9,7 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 Resumen consolidado del proyecto. El **registro por sesiones** está más abajo.
 
 ### Qué es
-CineBox: rastreador personal de películas y series. Backend Python puro (stdlib, sin framework),
+Cinephora: rastreador personal de películas y series. Backend Python puro (stdlib, sin framework),
 frontend vanilla JS sin bundler, PostgreSQL en Supabase, deploy en Render. Auth Supabase
 (email/password) con JWT asimétrico (ES256/RS256 vía JWKS).
 
@@ -110,7 +110,7 @@ primer `execute` reventaba el handler → Render devolvía 502.
 
 ## Sesión — 2026-06-15 (cap duro de caché + gitleaks + incidente de secreto + verif. prod)
 
-Quick-fix + cierre de pendientes. Disparada por "analiza CineBox y qué recomiendas" → del diagnóstico
+Quick-fix + cierre de pendientes. Disparada por "analiza Cinephora y qué recomiendas" → del diagnóstico
 se eligió el follow-up #3 (cap blando de `_tmdb_cache`), y luego se cerraron pendientes de proceso.
 
 ### Hecho hoy
@@ -297,8 +297,8 @@ todos los hallazgos. **9 commits, pusheados a `origin/main`** (`716fa60..5795885
   - `CLAUDE.md` "Archivos clave" reescrito con el mapa de módulos/funciones y la regla de orden de carga.
   - Commit `8279a0e`. Agentes reviewer + security + tester en verde.
 - **Violaciones CSP preexistentes corregidas** (commit `145ef68`, separado):
-  - `<script>` inline (flag `cinebox_visited`) → `boot.js` (en `<head>`, **sin defer**, para conservar el
-    timing pre-paint del que depende `html.cinebox-visited` para evitar el flash de bienvenida).
+  - `<script>` inline (flag `cinephora_visited`) → `boot.js` (en `<head>`, **sin defer**, para conservar el
+    timing pre-paint del que depende `html.cinephora-visited` para evitar el flash de bienvenida).
   - Estilos inline del footer → reglas `.app-credit` en `styles.css`. Sin cambio en la cabecera CSP.
 - **Pusheado a `origin/main`** (`eecc752..145ef68`) → deploy automático en Render disparado.
 

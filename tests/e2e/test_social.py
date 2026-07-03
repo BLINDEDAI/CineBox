@@ -13,7 +13,7 @@ Covers every ### Tester scope Playwright row:
           @1280 + @375; es-ES.
 
 Strategy (mirrors tests/e2e/test_custom_avatar_upload.py + test_public_profiles_a11y.py):
-  - Real CineBox server via conftest.py base_url fixture (no DB/auth required).
+  - Real Cinephora server via conftest.py base_url fixture (no DB/auth required).
   - AC-18 (authed SPA view): stub /api/config + /api/feed via page.route(),
     goto the SPA, set `_currentUser` + drive `showActivityView()` directly on
     `#activity-view` (production seam, per the tester-bundle's guidance for
