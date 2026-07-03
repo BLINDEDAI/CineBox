@@ -1870,6 +1870,101 @@ h2 {
   margin-top: 16px;
 }
 
+/* ── Sección de edición del modal (modal-edit-section, ADR-016) ──────────────
+   Bloque de formulario siempre expandido dentro de .modal-body que expone cada
+   editor de la tarjeta. Reutiliza las clases de control de la tarjeta
+   (.note-form/.progress-form/.date-form/.platform-picker/.stars/.status-select/
+   .note-public-toggle); aquí solo se define el contenedor y su layout. Sin
+   inline style= (CSP estricta, PS-006). */
+.modal-edit-section {
+  margin-top: 20px;
+  padding-top: 18px;
+  border-top: 1px solid var(--border);
+}
+
+.modal-edit-title {
+  font-size: 0.75rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: var(--text-muted);
+  margin: 0 0 14px;
+}
+
+.modal-edit-grid {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.modal-edit-field {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.modal-edit-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.modal-edit-field .status-select {
+  max-width: 220px;
+}
+
+.modal-edit-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 18px;
+}
+
+.modal-edit-delete {
+  color: var(--red-2);
+  border-color: rgba(255, 68, 61, 0.35);
+}
+
+.modal-edit-delete:hover {
+  background: rgba(255, 68, 61, 0.12);
+  border-color: rgba(255, 68, 61, 0.55);
+}
+
+/* Modo edición-solo (títulos sin tmdb_id): sin hero/backdrop, solo título +
+   sección de edición. El borde superior de .modal-edit-section sobra aquí. */
+.modal-body-editonly .modal-edit-section {
+  margin-top: 6px;
+  padding-top: 0;
+  border-top: none;
+}
+
+.modal-title-editonly {
+  margin: 0;
+  font-size: 1.3rem;
+}
+
+/* AC-15 — target-size >= 24px en la sección de edición del modal. Los controles
+   reutilizados de la tarjeta (.star ~19px, .platform-chip, .date-input,
+   .progress-*, save/cancel) tienen en la tarjeta un target < 24px: un gap
+   preexistente y fuera de alcance allí (la tarjeta no se toca, AC-12). En el
+   modal, donde AC-15 exige >= 24px, se agranda el target SOLO dentro de
+   .modal-edit-section, sin alterar el aspecto de la tarjeta. */
+.modal-edit-section .star,
+.modal-edit-section .platform-chip,
+.modal-edit-section .progress-save,
+.modal-edit-section .progress-cancel,
+.modal-edit-section .date-input,
+.modal-edit-section .progress-input {
+  min-height: 24px;
+}
+.modal-edit-section .star,
+.modal-edit-section .progress-save,
+.modal-edit-section .progress-cancel {
+  min-width: 24px;
+  align-items: center;
+  justify-content: center;
+}
+
 .modal-trailer {
   margin-top: 18px;
 }

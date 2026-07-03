@@ -2,11 +2,15 @@
 
 const modalContent = el("modal-content");
 let modalContext = null;
+// Id de la película que la sección de edición del modal está editando (ADR-016).
+// Es un contexto LOCAL del modal: no reutiliza los flags editing* de la tarjeta
+// (editingNoteId/…), que siguen siendo card-scoped. null = sin sección de edición.
+let modalEditId = null;
 
 // ---- Modal detalle ----
 function closeModal() {
   modalEl.classList.remove("is-open");
-  setTimeout(() => { modalEl.hidden = true; modalContent.innerHTML = ""; modalContext = null; }, 220);
+  setTimeout(() => { modalEl.hidden = true; modalContent.innerHTML = ""; modalContext = null; modalEditId = null; }, 220);
 }
 
 async function openDetail(tmdbId, type, hint = {}) {
@@ -23,6 +27,9 @@ async function openDetail(tmdbId, type, hint = {}) {
   const d = data.details;
   const existing = movies.find((x) => x.tmdb_id === tmdbId && x.media_type === type);
   const m = existing || hint;
+  // Contexto de edición local (ADR-016): solo hay sección de edición para un
+  // título de la colección; para búsqueda/descubrir/similares queda en null.
+  modalEditId = existing ? existing.id : null;
   modalContext = {
     tmdbId,
     type,
@@ -100,6 +107,7 @@ async function openDetail(tmdbId, type, hint = {}) {
       <div class="modal-list-action">
         <button class="btn-secondary btn-sm" type="button" id="modal-add-to-list">+ Añadir a lista</button>
       </div>
+      ${existing ? `<div class="modal-edit-section" id="modal-edit-section"></div>` : ""}
       ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
       ${providersHtml}
       ${directorHtml ? `<div class="modal-credits">${directorHtml}</div>` : ""}
@@ -107,6 +115,7 @@ async function openDetail(tmdbId, type, hint = {}) {
       ${castHtml}
       <div class="modal-similar" id="modal-similar-section"></div>
     </div>`;
+  if (existing) _rerenderModalEditSection();
   const addBtns = document.getElementById("modal-add-btns");
   if (addBtns) {
     addBtns.addEventListener("click", (e) => {
@@ -173,3 +182,220 @@ async function addFromModal(status) {
   }, status);
   if (added) closeModal();
 }
+
+// ---- Sección de edición del modal (ADR-016) ----
+// Expone en el modal cada editor que la tarjeta tiene hoy (estado, valoración,
+// fecha, progreso de serie, plataforma, nota + "Reseña pública", añadir a lista,
+// eliminar), siempre expandidos. Reutiliza las clases de estilo de la tarjeta
+// (.note-form/.progress-form/.date-form/.platform-picker/.stars/.status-select/
+// .note-public-toggle). La nota se escapa con esc() (convención SPA autenticada,
+// US-043). Los identificadores son ingleses (US-001); las etiquetas, es-ES.
+function _modalEditSectionHtml(m) {
+  const showProgress = m.media_type === "tv" && m.status !== "vista";
+  const noteVal = m.note || "";
+  const hasNote = noteVal.trim().length > 0;
+  return `
+    <h4 class="modal-edit-title">Editar</h4>
+    <div class="modal-edit-grid">
+      <div class="modal-edit-field">
+        <label class="modal-edit-label" for="modal-edit-status">Estado</label>
+        <select class="select btn-sm status-select" id="modal-edit-status" data-action="edit-status" aria-label="Cambiar estado">
+          <option value="pendiente" ${m.status === "pendiente" ? "selected" : ""}>Por ver</option>
+          <option value="viendo"    ${m.status === "viendo"    ? "selected" : ""}>Viendo</option>
+          <option value="vista"     ${m.status === "vista"     ? "selected" : ""}>Vista</option>
+          <option value="abandonada"${m.status === "abandonada"? "selected" : ""}>Abandonada</option>
+        </select>
+      </div>
+      <div class="modal-edit-field">
+        <span class="modal-edit-label" id="modal-edit-rating-label">Valoración</span>
+        <div class="stars" data-action="edit-rating" role="group" aria-labelledby="modal-edit-rating-label">${starsHtml(m.rating || 0)}</div>
+      </div>
+      <div class="modal-edit-field">
+        <label class="modal-edit-label" for="modal-edit-date">Fecha de visionado</label>
+        <div class="date-form">
+          <input class="date-input" id="modal-edit-date" type="date" value="${esc(m.watched_at || "")}" aria-label="Fecha de visionado">
+          <button class="progress-save" data-action="edit-date-save" type="button" aria-label="Guardar fecha">✓</button>
+          ${m.watched_at ? `<button class="progress-cancel" data-action="edit-date-clear" type="button" title="Quitar fecha" aria-label="Quitar fecha">—</button>` : ""}
+        </div>
+      </div>
+      ${showProgress ? `
+      <div class="modal-edit-field">
+        <span class="modal-edit-label">Progreso</span>
+        <div class="progress-form">
+          <label class="progress-label">T<input class="progress-input" type="number" min="1"${m.total_seasons ? ` max="${esc(m.total_seasons)}"` : ""} data-field="season" value="${m.current_season ?? ""}" placeholder="—" aria-label="Temporada"></label>
+          <label class="progress-label">E<input class="progress-input" type="number" min="1" data-field="episode" value="${m.current_episode ?? ""}" placeholder="—" aria-label="Episodio"></label>
+          <button class="progress-save" data-action="edit-progress-save" type="button" aria-label="Guardar progreso">✓</button>
+          ${m.total_seasons ? `<span class="progress-hint">de ${esc(m.total_seasons)} temporadas</span>` : ""}
+        </div>
+      </div>` : ""}
+      <div class="modal-edit-field">
+        <span class="modal-edit-label">Plataforma</span>
+        <div class="platform-picker">
+          ${PLATFORMS.map((p) => `<button class="platform-chip${m.platform === p ? " active" : ""}" data-action="edit-platform-pick" data-platform="${esc(p)}" type="button">${esc(p)}</button>`).join("")}
+          ${m.platform ? `<button class="platform-chip platform-chip-clear" data-action="edit-platform-pick" data-platform="" type="button">✕ Quitar</button>` : ""}
+        </div>
+      </div>
+      <div class="modal-edit-field modal-edit-field-note">
+        <label class="modal-edit-label" for="modal-edit-note">Nota personal</label>
+        <div class="note-form">
+          <textarea class="note-textarea" id="modal-edit-note" maxlength="500" placeholder="Tu nota personal…" aria-label="Nota personal">${esc(noteVal)}</textarea>
+          <label class="note-public-toggle">
+            <input type="checkbox" data-note-public${m.note_public ? " checked" : ""}${hasNote ? "" : " disabled"}>
+            <span class="note-public-label">Reseña pública</span>
+            <span class="note-public-hint" data-note-public-hint${hasNote ? " hidden" : ""}>Escribe una nota antes de publicarla.</span>
+          </label>
+          <div class="note-form-actions">
+            <span class="note-chars" data-note-chars>${noteVal.length}/500</span>
+            <button class="progress-save" data-action="edit-note-save" type="button">✓ Guardar</button>
+          </div>
+        </div>
+      </div>
+    </div>
+    <div class="modal-edit-actions">
+      <button class="btn-secondary btn-sm" data-action="edit-add-to-list" type="button">+ Añadir a lista</button>
+      <button class="icon-btn modal-edit-delete" data-action="edit-delete" type="button" aria-label="Eliminar ${esc(m.title || "")}">✕ Eliminar</button>
+    </div>`;
+}
+
+// Re-renderiza la sección de edición desde la película en memoria más reciente
+// (movies.find, AC-11). Si la película ya no está (borrada / colección recargada),
+// cierra el modal con elegancia en vez de dejar un editor obsoleto.
+function _rerenderModalEditSection() {
+  const container = document.getElementById("modal-edit-section");
+  if (!container) return;
+  const movie = movies.find((x) => x.id === modalEditId);
+  if (!movie) { closeModal(); return; }
+  container.innerHTML = _modalEditSectionHtml(movie);
+}
+
+// Guarda un edit y, si tuvo éxito, mantiene el modal abierto re-renderizando la
+// sección desde la película actualizada (AC-11). patchMovie ya hace await
+// loadMovies() (refresca la colección debajo) y devuelve true en éxito; ante
+// fallo muestra el error (incluido el 400 autoritativo de nota-pública, AC-8).
+async function _modalEditSave(id, payload) {
+  const ok = await patchMovie(id, payload);
+  if (ok) _rerenderModalEditSection();
+}
+
+// Modo edición-solo (AC-2): abre el modal para un título SIN tmdb_id sin pedir
+// /api/details ni /api/similar; solo renderiza la sección de edición desde la
+// película en memoria. Su póster (con data-edit-id) es el disparador desde la
+// tarjeta. openEditOnly vive en modal.js (4º módulo) y collection.js (3º) la
+// llama desde el cuerpo del delegador → tiempo de llamada, PS-003-safe.
+function openEditOnly(movieId) {
+  const movie = movies.find((x) => x.id === movieId);
+  if (!movie) return; // no hay nada que editar
+  modalContext = null;
+  modalEditId = movie.id;
+  modalContent.innerHTML = `
+    <div class="modal-body modal-body-editonly">
+      <h3 class="modal-title modal-title-editonly">${esc(movie.title || "")}${movie.year ? ` <span class="modal-title-year">(${esc(movie.year)})</span>` : ""}</h3>
+      <div class="modal-edit-section" id="modal-edit-section"></div>
+    </div>`;
+  modalEl.hidden = false;
+  void modalEl.offsetWidth;
+  modalEl.classList.add("is-open");
+  _rerenderModalEditSection();
+}
+
+// Delegadores adjuntados UNA vez al cargar sobre el contenedor estable
+// #modal-content (mismo patrón que el delegador de #collection), de modo que
+// sobreviven al re-render de la sección tras cada guardado (ADR-016 / AC-11).
+// Solo actúan sobre las acciones edit-* de la sección de edición; los demás
+// controles del modal (add-btns, add-to-list por id, similares) usan sus
+// propios listeners y no colisionan. modalContent se declaró arriba en este
+// mismo archivo → PS-003-safe en tiempo de carga; patchMovie/deleteMovie
+// (collection.js) y openAddToListPicker (settings.js) se invocan desde cuerpos
+// de manejador (tiempo de llamada).
+modalContent.addEventListener("click", (e) => {
+  const actionEl = e.target.closest("[data-action]");
+  if (!actionEl) return;
+  const action = actionEl.dataset.action;
+  if (!action || !action.startsWith("edit-")) return;
+  const movie = movies.find((x) => x.id === modalEditId);
+  if (!movie) { closeModal(); return; }
+  const id = movie.id;
+  if (action === "edit-rating") {
+    const star = e.target.closest(".star");
+    if (!star) return;
+    const value = +star.dataset.star;
+    _modalEditSave(id, { rating: movie.rating === value ? null : value });
+  } else if (action === "edit-date-save") {
+    const input = modalContent.querySelector("#modal-edit-date");
+    _modalEditSave(id, { watched_at: (input && input.value) || null });
+  } else if (action === "edit-date-clear") {
+    _modalEditSave(id, { watched_at: null });
+  } else if (action === "edit-progress-save") {
+    const form = actionEl.closest(".progress-form");
+    const s  = form.querySelector("[data-field='season']").value.trim();
+    const ep = form.querySelector("[data-field='episode']").value.trim();
+    const season  = s  ? parseInt(s, 10)  : null;
+    const episode = ep ? parseInt(ep, 10) : null;
+    if (s && (isNaN(season) || season < 1)) { showMessage("La temporada debe ser un número positivo.", "error"); return; }
+    if (ep && (isNaN(episode) || episode < 1)) { showMessage("El episodio debe ser un número positivo.", "error"); return; }
+    if (movie.total_seasons && season !== null && season > movie.total_seasons) {
+      showMessage(`La temporada no puede superar el total de ${movie.total_seasons} temporadas.`, "error");
+      return;
+    }
+    _modalEditSave(id, { current_season: season, current_episode: episode });
+  } else if (action === "edit-platform-pick") {
+    const platform = e.target.closest("[data-platform]")?.dataset.platform || null;
+    _modalEditSave(id, { platform: platform || null });
+  } else if (action === "edit-note-save") {
+    const ta = modalContent.querySelector("#modal-edit-note");
+    const note = ta ? ta.value.trim() : "";
+    if (note.length > 500) { showMessage("La nota no puede superar 500 caracteres.", "error"); return; }
+    // "Reseña pública": una nota vacía nunca puede quedar publicada (AC-8). El
+    // backend es la autoridad (400); esto es solo el reflejo cliente.
+    const publicCheckbox = modalContent.querySelector("[data-note-public]");
+    const notePublic = !!(publicCheckbox && publicCheckbox.checked) && note.length > 0;
+    _modalEditSave(id, { note, note_public: notePublic });
+  } else if (action === "edit-add-to-list") {
+    openAddToListPicker({
+      tmdb_id:    movie.tmdb_id,
+      media_type: movie.media_type,
+      title:      movie.title,
+      year:       movie.year,
+      poster_url: movie.poster_url,
+    });
+  } else if (action === "edit-delete") {
+    deleteMovie(id).then(() => closeModal());
+  }
+});
+
+modalContent.addEventListener("change", (e) => {
+  const sel = e.target.closest("[data-action='edit-status']");
+  if (!sel) return;
+  const movie = movies.find((x) => x.id === modalEditId);
+  if (!movie) { closeModal(); return; }
+  const status = sel.value;
+  const payload = { status };
+  // Paridad con el seam de estado de la tarjeta (app.js): al pasar a "vista",
+  // rellena fecha y plataforma por defecto si faltan.
+  if (status === "vista" && !movie.watched_at) payload.watched_at = todayIsoDate();
+  if (status === "vista" && !movie.platform) {
+    const defaultPlatform = getPref("default_platform", PLATFORMS, null);
+    if (defaultPlatform) payload.platform = defaultPlatform;
+  }
+  _modalEditSave(movie.id, payload);
+});
+
+// Reflejo cliente en vivo (AC-8): la casilla "Reseña pública" solo puede
+// activarse con una nota no vacía; al vaciar el textarea se desmarca +
+// deshabilita y se muestra la pista. Delegado en el contenedor estable.
+modalContent.addEventListener("input", (e) => {
+  const ta = e.target.closest("#modal-edit-note");
+  if (!ta) return;
+  const form = ta.closest(".note-form");
+  if (!form) return;
+  const counter = form.querySelector("[data-note-chars]");
+  const publicCheckbox = form.querySelector("[data-note-public]");
+  const publicHint = form.querySelector("[data-note-public-hint]");
+  if (counter) counter.textContent = `${ta.value.length}/500`;
+  if (publicCheckbox) {
+    const hasText = ta.value.trim().length > 0;
+    publicCheckbox.disabled = !hasText;
+    if (!hasText) publicCheckbox.checked = false;
+    if (publicHint) publicHint.hidden = hasText;
+  }
+});

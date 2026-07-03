@@ -188,6 +188,39 @@ class DetailsTotalSeasons(unittest.TestCase):
         self.assertIn("overview", payload["details"])
         self.assertIn("providers", payload["details"])
 
+    def test_backdrop_and_cast_shape_capped_at_8(self):
+        """AC-14 (modal-edit-section): _details exposes backdrop_path and returns
+        cast as a list of {name, profile_path} objects capped at 8 even when TMDB
+        returns more than 8 cast entries. This is the payload shape the redesigned
+        detail modal depends on; asserted here so the contract is regression-safe."""
+        cast_in = [
+            {"name": f"Actor {i}", "profile_path": f"/p{i}.jpg", "character": "Role"}
+            for i in range(12)
+        ]
+        responses = self._run_details(
+            mtype="movie",
+            tmdb_payload={
+                "title": "M",
+                "backdrop_path": "/bd.jpg",
+                "credits": {"cast": cast_in},
+            },
+        )
+        status, payload = responses[-1]
+        self.assertEqual(status, 200)
+        details = payload["details"]
+        self.assertIn("backdrop_path", details)
+        self.assertEqual(details["backdrop_path"], "/bd.jpg")
+        cast = details["cast"]
+        self.assertIsInstance(cast, list)
+        self.assertEqual(len(cast), 8, "cast capped at 8 when TMDB returns 12")
+        for member in cast:
+            self.assertEqual(set(member.keys()), {"name", "profile_path"})
+            self.assertIsInstance(member["name"], str)
+            self.assertIsInstance(member["profile_path"], str)
+        # Order preserved from TMDB (first 8 of 12).
+        self.assertEqual(cast[0]["name"], "Actor 0")
+        self.assertEqual(cast[7]["name"], "Actor 7")
+
     def test_no_key_degraded_response_unchanged(self):
         """AC-8: with no TMDB key, _details returns the existing needs_key response,
         no total_seasons key, no TMDB call."""
