@@ -466,7 +466,7 @@ def test_ac6_manual_progress_editor_superseded_by_episode_tracker(page: Page, ba
     this test used to exercise (`.progress-form [data-field='season']` +
     `edit-progress-save`, client-side season-over-total rejection) was
     deliberately REMOVED and replaced by the season selector + episode-list
-    tracker (`#modal-ep-season`, `[data-action='ep-toggle']`, ...). Position
+    tracker (`.modal-ep-season-pill`, `[data-action='ep-toggle']`, ...). Position
     is now derived-only from marked episodes; there is no manual season input
     to reject an over-total value against. This test was updated (not
     deleted) by the series-episode-progress Tester so the suite does not
@@ -498,8 +498,8 @@ def test_ac6_manual_progress_editor_superseded_by_episode_tracker(page: Page, ba
     assert page.locator("[data-action='edit-progress-save']").count() == 0, (
         "AC-14 (series-episode-progress): the manual save action must be gone"
     )
-    # The episode tracker's own season selector is what remains for a tv title.
-    assert page.locator("#modal-ep-season").count() == 1, (
+    # The episode tracker's own season selector (pills) is what remains for a tv title.
+    assert page.locator(".modal-ep-season-pill").count() >= 1, (
         "BR-13 (series-episode-progress): the season/episode tracker replaces "
         "the removed manual editor"
     )

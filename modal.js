@@ -123,8 +123,10 @@ async function openDetail(tmdbId, type, hint = {}) {
       <div class="modal-overview"><p>${overviewHtml}</p></div>
       ${castHtml}
       <div class="modal-similar" id="modal-similar-section"></div>
+      ${existing && existing.media_type === "tv" && existing.tmdb_id ? `<div class="modal-episodes-section" id="modal-episodes-section"></div>` : ""}
     </div>`;
   if (existing) _rerenderModalEditSection();
+  if (existing && existing.media_type === "tv" && existing.tmdb_id) _rerenderModalEpisodesSection();
   const addBtns = document.getElementById("modal-add-btns");
   if (addBtns) {
     addBtns.addEventListener("click", (e) => {
@@ -202,7 +204,6 @@ async function addFromModal(status) {
 // con esc() (convención SPA autenticada, US-043). Identificadores en inglés
 // (US-001); etiquetas es-ES.
 function _modalEditSectionHtml(m) {
-  const showTracker = m.media_type === "tv" && m.tmdb_id;
   const noteVal = m.note || "";
   const hasNote = noteVal.trim().length > 0;
   return `
@@ -229,16 +230,6 @@ function _modalEditSectionHtml(m) {
           ${m.watched_at ? `<button class="progress-cancel" data-action="edit-date-clear" type="button" title="Quitar fecha" aria-label="Quitar fecha">—</button>` : ""}
         </div>
       </div>
-      ${showTracker ? `
-      <div class="modal-edit-field modal-ep-tracker">
-        <span class="modal-edit-label" id="modal-ep-progress-label">Progreso por episodios</span>
-        <span class="modal-ep-progress" data-ep-progress${_episodeProgressText(m) ? "" : " hidden"}>${esc(_episodeProgressText(m))}</span>
-        <div class="modal-ep-season-select-row">
-          <label class="modal-ep-season-label" for="modal-ep-season">Temporada</label>
-          ${_seasonSelectHtml()}
-        </div>
-        <div class="modal-ep-list" data-ep-list></div>
-      </div>` : ""}
       <div class="modal-edit-field">
         <span class="modal-edit-label">Plataforma</span>
         <div class="platform-picker">
@@ -268,6 +259,32 @@ function _modalEditSectionHtml(m) {
     </div>`;
 }
 
+// Sección de episodios (series-episode-progress): bloque independiente al FINAL
+// del modal (tras reparto/similares). Antes vivía dentro de .modal-edit-section;
+// se extrajo para no empujar sinopsis/reparto hacia abajo con listas largas.
+function _modalEpisodesSectionHtml(m) {
+  return `
+    <h4 class="modal-edit-title">Episodios</h4>
+    <span class="modal-ep-progress" data-ep-progress${_episodeProgressText(m) ? "" : " hidden"}>${esc(_episodeProgressText(m))}</span>
+    <div class="modal-ep-season-select-row">
+      <span class="modal-ep-season-label">Temporada</span>
+      ${_seasonButtonsHtml()}
+    </div>
+    <div class="modal-ep-list" data-ep-list></div>`;
+}
+
+// Re-renderiza la sección de episodios desde la película en memoria y carga la
+// temporada seleccionada. Solo series con tmdb_id; si no, vacía el bloque.
+function _rerenderModalEpisodesSection() {
+  const container = document.getElementById("modal-episodes-section");
+  if (!container) return;
+  const movie = movies.find((x) => x.id === modalEditId);
+  if (!movie || movie.media_type !== "tv" || !movie.tmdb_id) { container.innerHTML = ""; return; }
+  container.innerHTML = _modalEpisodesSectionHtml(movie);
+  const active = container.querySelector("[data-action='ep-season-select'].is-active");
+  if (active) _loadEpisodeSeason(movie, +active.dataset.season);
+}
+
 // ---- Tracker de episodios por temporada (series-episode-progress) ----
 // Todo lo de abajo son helpers de render/manejo en TIEMPO DE LLAMADA (PS-003):
 // no hay sentencias de nivel superior nuevas, ni módulo/orden de carga nuevo.
@@ -292,7 +309,7 @@ function _episodeProgressText(m) {
 
 // Refresca el texto de la métrica en vivo tras un marcado, sin re-render total.
 function _updateEpisodeProgressDisplay(m) {
-  const container = document.getElementById("modal-edit-section");
+  const container = document.getElementById("modal-episodes-section");
   if (!container) return;
   const node = container.querySelector("[data-ep-progress]");
   if (!node) return;
@@ -303,19 +320,26 @@ function _updateEpisodeProgressDisplay(m) {
 
 // Selector de temporada: usa modalContext.seasons (ex-especiales); si no hay,
 // cae a 1..total_seasons; si tampoco, a la temporada 1 (borde graceful).
-function _seasonSelectHtml() {
+function _seasonOptions() {
   const ctx = modalContext || {};
-  let options;
   if (Array.isArray(ctx.seasons) && ctx.seasons.length) {
-    options = ctx.seasons.map((s) => ({ n: s.season_number, label: s.name || `Temporada ${s.season_number}` }));
-  } else {
-    const total = ctx.total_seasons && ctx.total_seasons > 0 ? ctx.total_seasons : 1;
-    options = [];
-    for (let n = 1; n <= total; n++) options.push({ n, label: `Temporada ${n}` });
+    return ctx.seasons.map((s) => ({ n: s.season_number, label: s.name || `Temporada ${s.season_number}` }));
   }
-  return `<select class="select btn-sm modal-ep-season" id="modal-ep-season" data-action="ep-season-select" aria-label="Seleccionar temporada">
-        ${options.map((o) => `<option value="${esc(o.n)}">${esc(o.label)}</option>`).join("")}
-      </select>`;
+  const total = ctx.total_seasons && ctx.total_seasons > 0 ? ctx.total_seasons : 1;
+  const out = [];
+  for (let n = 1; n <= total; n++) out.push({ n, label: `Temporada ${n}` });
+  return out;
+}
+
+// Selector de temporada como fila de botones (pills), no <select> (estilo
+// WatchForge). El botón activo lleva .is-active + aria-pressed. Se pinta desde
+// _seasonOptions(); el clic lo maneja el delegador (ep-season-select).
+function _seasonButtonsHtml(activeSeason) {
+  const opts = _seasonOptions();
+  const active = activeSeason != null ? activeSeason : (opts[0] && opts[0].n);
+  return `<div class="modal-ep-seasons" role="group" aria-label="Temporadas">
+        ${opts.map((o) => `<button type="button" class="modal-ep-season-pill${o.n === active ? " is-active" : ""}" data-action="ep-season-select" data-season="${esc(o.n)}" aria-pressed="${o.n === active ? "true" : "false"}">${esc(o.label)}</button>`).join("")}
+      </div>`;
 }
 
 // Still guardado: mismo allow-list que las carátulas/cast — solo image.tmdb.org
@@ -377,15 +401,15 @@ function _renderEpisodeList(listEl, season, seasonNumber) {
 // Carga (fetch) y pinta una temporada. Guardas anti-carrera: si el usuario cambió
 // de temporada o cerró el modal mientras cargaba, no se aplica el resultado.
 async function _loadEpisodeSeason(movie, seasonNumber) {
-  const container = document.getElementById("modal-edit-section");
+  const container = document.getElementById("modal-episodes-section");
   if (!container) return;
   const listEl = container.querySelector("[data-ep-list]");
   if (!listEl || !movie.tmdb_id) return;
   listEl.innerHTML = '<p class="modal-ep-loading">Cargando episodios…</p>';
   const { ok, data } = await api(`/api/tv/${movie.tmdb_id}/season/${seasonNumber}`);
   if (!listEl.isConnected) return; // modal cerrado / re-render mientras cargaba
-  const sel = container.querySelector("[data-action='ep-season-select']");
-  if (!sel || +sel.value !== seasonNumber) return; // el usuario ya cambió de temporada
+  const active = container.querySelector("[data-action='ep-season-select'].is-active");
+  if (!active || +active.dataset.season !== seasonNumber) return; // el usuario ya cambió de temporada
   if (!ok || !data || !data.ok) {
     listEl.innerHTML = `<p class="modal-ep-empty">${data && data.needs_key ? "Sin detalle de episodios disponible." : "No se pudieron cargar los episodios."}</p>`;
     return;
@@ -414,7 +438,7 @@ function _refreshSeasonControl(listEl, seasonNumber) {
 }
 
 function _applyEpisodeMarkToDom(body) {
-  const container = document.getElementById("modal-edit-section");
+  const container = document.getElementById("modal-episodes-section");
   if (!container) return;
   const listEl = container.querySelector("[data-ep-list]");
   if (!listEl) return;
@@ -456,8 +480,6 @@ function _rerenderModalEditSection() {
   const movie = movies.find((x) => x.id === modalEditId);
   if (!movie) { closeModal(); return; }
   container.innerHTML = _modalEditSectionHtml(movie);
-  const sel = container.querySelector("[data-action='ep-season-select']");
-  if (sel) _loadEpisodeSeason(movie, +sel.value);
 }
 
 // Guarda un edit y, si tuvo éxito, mantiene el modal abierto re-renderizando la
@@ -507,6 +529,20 @@ modalContent.addEventListener("click", (e) => {
   const movie = movies.find((x) => x.id === modalEditId);
   if (!movie) { closeModal(); return; }
   const id = movie.id;
+  // ---- Selección de temporada (botones/pills) ----
+  if (action === "ep-season-select") {
+    const season = +actionEl.dataset.season;
+    const container = document.getElementById("modal-episodes-section");
+    if (container) {
+      container.querySelectorAll("[data-action='ep-season-select']").forEach((btn) => {
+        const on = +btn.dataset.season === season;
+        btn.classList.toggle("is-active", on);
+        btn.setAttribute("aria-pressed", on ? "true" : "false");
+      });
+    }
+    _loadEpisodeSeason(movie, season);
+    return;
+  }
   // ---- Marcado de episodios (tracker de series) ----
   if (action === "ep-toggle") {
     const season  = +actionEl.dataset.season;
@@ -564,14 +600,9 @@ modalContent.addEventListener("change", (e) => {
   const actionEl = e.target.closest("[data-action]");
   if (!actionEl) return;
   const action = actionEl.dataset.action;
-  if (action !== "edit-status" && action !== "ep-season-select") return;
+  if (action !== "edit-status") return;
   const movie = movies.find((x) => x.id === modalEditId);
   if (!movie) { closeModal(); return; }
-  // Cambio de temporada → carga y pinta esa temporada (AC-2).
-  if (action === "ep-season-select") {
-    _loadEpisodeSeason(movie, +actionEl.value);
-    return;
-  }
   const status = actionEl.value;
   const payload = { status };
   // Paridad con el seam de estado de la tarjeta (app.js): al pasar a "vista",

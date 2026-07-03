@@ -350,7 +350,7 @@ def test_ac1_season_selector_and_episode_list_render(page: Page, base_url: str):
     _route_episodes_mark(page, base_url, _SERIES_ID, {"marks": set()})
     _open_detail_modal(page)
 
-    assert page.locator("#modal-ep-season").count() == 1, "AC-1: season selector must render"
+    assert page.locator(".modal-ep-season-pill").count() >= 1, "AC-1: season selector (pills) must render"
     rows = page.locator("[data-ep-row]")
     assert rows.count() == 2, "AC-1: season 1's two episodes must render"
     assert page.locator(".modal-ep-still, .modal-ep-still-fallback").count() >= 2
@@ -374,7 +374,7 @@ def test_ac2_switching_season_rerenders_episode_list(page: Page, base_url: str):
 
     assert page.locator("[data-ep-row]").count() == 2
 
-    page.locator("#modal-ep-season").select_option("2")
+    page.locator(".modal-ep-season-pill[data-season='2']").click()
     page.wait_for_timeout(400)
 
     rows = page.locator("[data-ep-row]")
@@ -556,7 +556,7 @@ def test_ac8_movie_modal_has_no_tracker_and_never_calls_season_endpoint(page: Pa
     page.route(re.compile(r"/api/tv/\d+/season/\d+$"), _fail_if_called)
     _open_detail_modal(page)
 
-    assert page.locator("#modal-ep-season").count() == 0, "AC-8: no season selector for a movie"
+    assert page.locator(".modal-ep-season-pill").count() == 0, "AC-8: no season selector for a movie"
     assert page.locator("[data-ep-list]").count() == 0, "AC-8: no episode list for a movie"
     assert page.locator("[data-action='ep-toggle']").count() == 0
     assert season_hits["season"] == 0, "AC-8: a movie modal must never call the season endpoint"
@@ -653,7 +653,7 @@ def test_ac15_tracker_a11y_mobile(page: Page, base_url: str):
     _open_series_with_tracker(page, base_url, hits)
 
     _inject_axe(page, base_url)
-    violations = _run_axe(page, "#modal-edit-section")
+    violations = _run_axe(page, "#modal-episodes-section")
     _screenshot(page, "ac15-mobile-axe")
     assert violations == [], (
         f"AC-15: axe found {len(violations)} critical/serious violations (mobile tracker): "
@@ -667,7 +667,7 @@ def test_ac15_keyboard_focus_and_target_size(page: Page, base_url: str):
     _open_series_with_tracker(page, base_url, hits)
 
     for sel in [
-        "#modal-ep-season",
+        ".modal-ep-season-pill",
         "[data-action='ep-toggle']",
         "[data-action='ep-season-mark']",
         "[data-action='ep-season-unmark']",
@@ -677,7 +677,7 @@ def test_ac15_keyboard_focus_and_target_size(page: Page, base_url: str):
         assert box["height"] >= 24, f"AC-15: {sel} height {box['height']}px < 24px"
         assert box["width"] >= 24, f"AC-15: {sel} width {box['width']}px < 24px"
 
-    page.locator("#modal-ep-season").focus()
+    page.locator(".modal-ep-season-pill").first.focus()
     assert _has_visible_focus(page), "AC-15: no visible focus indicator on the season selector"
     page.locator("[data-action='ep-toggle']").first.focus()
     assert _has_visible_focus(page), "AC-15: no visible focus indicator on an episode toggle"
@@ -689,8 +689,8 @@ def test_ac15_es_es_copy(page: Page, base_url: str):
     hits = {}
     _open_series_with_tracker(page, base_url, hits)
 
-    text = page.locator("#modal-edit-section .modal-ep-tracker").inner_text()
-    assert "Progreso por episodios" in text
+    text = page.locator("#modal-episodes-section").inner_text()
+    assert "episodios" in text.lower()
     assert "Temporada" in text
     assert "Marcar temporada" in text
     assert "Desmarcar temporada" in text

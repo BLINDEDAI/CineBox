@@ -1759,7 +1759,8 @@ h2 {
    (.note-form/.progress-form/.date-form/.platform-picker/.stars/.status-select/
    .note-public-toggle); aquí solo se define el contenedor y su layout. Sin
    inline style= (CSP estricta, PS-006). */
-.modal-edit-section {
+.modal-edit-section,
+.modal-episodes-section {
   margin-top: 20px;
   padding-top: 18px;
   border-top: 1px solid var(--border);
@@ -1849,13 +1850,10 @@ h2 {
 }
 
 /* ── Tracker de episodios por temporada (series-episode-progress) ────────────
-   Selector de temporada + lista de episodios dentro de .modal-edit-section.
-   Clases .modal-ep-*; sin inline style= (CSP estricta, PS-006). Targets >=24px;
-   el foco visible lo aporta la regla global :where(button,input,select). */
-.modal-ep-tracker {
-  gap: 10px;
-}
-
+   Selector de temporada (botones/pills) + lista de episodios en su propia
+   sección .modal-episodes-section al final del modal. Clases .modal-ep-*; sin
+   inline style= (CSP estricta, PS-006). Targets >=24px; el foco visible lo
+   aporta la regla global :where(button,input,select). */
 .modal-ep-progress {
   font-size: 0.85rem;
   font-weight: 700;
@@ -1879,9 +1877,34 @@ h2 {
   color: var(--text-soft);
 }
 
-.modal-ep-season {
-  max-width: 260px;
-  min-height: 32px;
+.modal-ep-seasons {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.modal-ep-season-pill {
+  padding: 6px 14px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.04);
+  color: var(--text-soft);
+  font: inherit;
+  font-size: 0.82rem;
+  font-weight: 700;
+  cursor: pointer;
+  transition: background 140ms ease, border-color 140ms ease, color 140ms ease;
+}
+
+.modal-ep-season-pill:hover {
+  border-color: rgba(255, 68, 61, 0.42);
+  color: var(--text);
+}
+
+.modal-ep-season-pill.is-active {
+  background: rgba(255, 68, 61, 0.16);
+  border-color: var(--red);
+  color: #ff8c84;
 }
 
 .modal-ep-list {
@@ -1923,9 +1946,9 @@ h2 {
 
 .modal-ep-item {
   display: flex;
-  align-items: flex-start;
-  gap: 12px;
-  padding: 10px;
+  align-items: stretch;
+  gap: 16px;
+  padding: 14px;
   border: 1px solid var(--border);
   border-radius: 10px;
   background: var(--bg-2);
@@ -1938,10 +1961,11 @@ h2 {
 
 .modal-ep-still {
   flex-shrink: 0;
-  width: 96px;
-  height: 54px;
+  align-self: stretch;
+  width: 200px;
+  min-height: 112px;
   object-fit: cover;
-  border-radius: 6px;
+  border-radius: 8px;
   background: var(--bg);
 }
 
@@ -1979,20 +2003,21 @@ h2 {
 
 .modal-ep-name {
   font-weight: 600;
+  font-size: 1.02rem;
   color: #fff;
 }
 
 .modal-ep-meta {
   display: flex;
   gap: 12px;
-  font-size: 0.75rem;
+  font-size: 0.8rem;
   color: var(--text-muted);
 }
 
 .modal-ep-overview {
   margin: 2px 0 0;
-  font-size: 0.82rem;
-  line-height: 1.5;
+  font-size: 0.9rem;
+  line-height: 1.55;
   color: var(--text-soft);
 }
 
@@ -2025,6 +2050,11 @@ h2 {
 @media (max-width: 480px) {
   .modal-ep-item {
     flex-wrap: wrap;
+  }
+  .modal-ep-still {
+    width: 100%;
+    min-height: 0;
+    aspect-ratio: 16 / 9;
   }
   .modal-ep-toggle {
     width: 100%;
