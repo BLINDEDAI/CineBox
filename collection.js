@@ -56,7 +56,7 @@ function renderCollection() {
   }
   const _html = list.map((m) => `
     <article class="card" data-id="${m.id}">
-      <div class="poster ${m.tmdb_id ? "cursor-pointer" : ""}" ${m.tmdb_id ? `data-tmdb="${esc(m.tmdb_id)}" data-type="${esc(m.media_type)}"` : ""}>
+      <div class="poster cursor-pointer" ${m.tmdb_id ? `data-tmdb="${esc(m.tmdb_id)}" data-type="${esc(m.media_type)}"` : `data-edit-id="${esc(m.id)}"`}>
         ${posterHtml(m)}
         <span class="status-badge ${m.status}">${{ pendiente: "Por ver", viendo: "Viendo", vista: "Vista", abandonada: "Abandonada" }[m.status] ?? m.status}</span>
         <span class="media-badge">${mediaIcon(m.media_type)}</span>
@@ -285,6 +285,11 @@ collectionEl.addEventListener("click", (e) => {
   const movie = movies.find((m) => m.id === id);
   const poster = e.target.closest(".poster[data-tmdb]");
   if (poster) { openDetail(+poster.dataset.tmdb, poster.dataset.type); return; }
+  // Título sin tmdb_id: su póster abre el modal en modo edición-solo (AC-2).
+  // openEditOnly vive en modal.js (4º módulo, cargado después); se llama desde
+  // este cuerpo de manejador → tiempo de llamada, PS-003-safe.
+  const editPoster = e.target.closest(".poster[data-edit-id]");
+  if (editPoster) { openEditOnly(+editPoster.dataset.editId); return; }
   const star = e.target.closest(".star");
   if (star) {
     const value = +star.dataset.star;
