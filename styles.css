@@ -1703,8 +1703,13 @@ h2 {
 .modal-meta {
   display: flex;
   flex-wrap: wrap;
-  gap: 8px;
+  gap: 10px;
   margin-bottom: 0;
+}
+
+.modal-meta .chip {
+  padding: 8px 15px;
+  font-size: 0.95rem;
 }
 
 .modal-body {
