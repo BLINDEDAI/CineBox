@@ -62,112 +62,12 @@ function renderCollection() {
         <span class="media-badge">${mediaIcon(m.media_type)}</span>
       </div>
       <div class="card-body">
-        <div>
-          <div class="card-title">${esc(m.title)}</div>
-          <div class="card-year">${esc(m.year) || "—"}</div>
-          ${editingDateId === m.id
-            ? `<div class="date-form">
-                 <input class="date-input" type="date" value="${esc(m.watched_at || '')}" aria-label="Fecha de visionado">
-                 <button class="progress-save" data-action="date-save" type="button" aria-label="Guardar">✓</button>
-                 ${m.watched_at ? `<button class="progress-cancel" data-action="date-clear" type="button" title="Quitar fecha">—</button>` : ""}
-                 <button class="progress-cancel" data-action="date-cancel" type="button" aria-label="Cancelar">✕</button>
-               </div>`
-            : m.watched_at
-              ? `<button class="date-btn" data-action="date" type="button" title="Editar fecha de visionado">📅 Vista el ${esc(m.watched_at)}</button>`
-              : ""}
-          ${m.media_type === "tv" && m.status !== "vista" ? (
-            editingProgressId === m.id
-              ? `<div class="progress-form">
-                   <label class="progress-label">T<input class="progress-input" type="number" min="1"${m.total_seasons ? ` max="${esc(m.total_seasons)}"` : ""} data-field="season" value="${m.current_season ?? ""}" placeholder="—" aria-label="Temporada"></label>
-                   <label class="progress-label">E<input class="progress-input" type="number" min="1" data-field="episode" value="${m.current_episode ?? ""}" placeholder="—" aria-label="Episodio"></label>
-                   <button class="progress-save" data-action="progress-save" type="button" aria-label="Guardar">✓</button>
-                   <button class="progress-cancel" data-action="progress-cancel" type="button" aria-label="Cancelar">✕</button>
-                   ${m.total_seasons ? `<span class="progress-hint">de ${esc(m.total_seasons)} temporadas</span>` : ""}
-                 </div>`
-              : `<button class="progress-btn ${(m.current_season || m.current_episode) ? "has-progress" : ""}" data-action="progress" type="button" title="Editar progreso">${(m.current_season || m.current_episode)
-                    ? (m.total_seasons
-                        ? `📍 S${m.current_season ?? "?"} · E${m.current_episode ?? "?"} de ${esc(m.total_seasons)} temporadas`
-                        : `📍 T${m.current_season ?? "?"}  E${m.current_episode ?? "?"}`)
-                    : "+ Progreso T/E"}</button>`
-          ) : ""}
-          ${editingPlatformId === m.id
-            ? `<div class="platform-picker">
-                 ${PLATFORMS.map((p) => `<button class="platform-chip${m.platform === p ? " active" : ""}" data-action="platform-pick" data-platform="${esc(p)}" type="button">${esc(p)}</button>`).join("")}
-                 ${m.platform ? `<button class="platform-chip platform-chip-clear" data-action="platform-pick" data-platform="" type="button">✕ Quitar</button>` : ""}
-                 <button class="progress-cancel" data-action="platform-cancel" type="button" aria-label="Cancelar">✕</button>
-               </div>`
-            : `<button class="platform-btn${m.platform ? " has-platform" : ""}" data-action="platform-open" type="button" title="Dónde la vi">${m.platform ? `▶ ${esc(m.platform)}` : "+ Plataforma"}</button>`
-          }
-        </div>
-        ${editingNoteId === m.id
-          ? `<div class="note-form">
-               <textarea class="note-textarea" maxlength="500" placeholder="Tu nota personal…" aria-label="Nota personal">${esc(m.note || "")}</textarea>
-               <label class="note-public-toggle">
-                 <input type="checkbox" data-note-public${m.note_public ? " checked" : ""}${(m.note || "").trim() ? "" : " disabled"}>
-                 <span class="note-public-label">Reseña pública</span>
-                 <span class="note-public-hint" data-note-public-hint${(m.note || "").trim() ? " hidden" : ""}>Escribe una nota antes de publicarla.</span>
-               </label>
-               <div class="note-form-actions">
-                 <span class="note-chars" data-note-chars></span>
-                 <button class="progress-save" data-action="note-save" type="button">✓ Guardar</button>
-                 <button class="progress-cancel" data-action="note-cancel" type="button">✕</button>
-               </div>
-             </div>`
-          : `<button class="note-btn ${m.note ? "has-note" : ""}" data-action="note" type="button" title="Editar nota personal">
-               ${m.note ? `<span>${esc(notePreview(m.note))}</span>` : "+ Nota"}
-               ${m.note && m.note_public ? `<span class="note-public-badge">Reseña pública</span>` : ""}
-             </button>`
-        }
+        <div class="card-title">${esc(m.title)}</div>
+        <div class="card-year">${esc(m.year) || "—"}</div>
         <div class="stars">${starsHtml(m.rating || 0)}</div>
-        <div class="card-actions">
-          <select class="select btn-sm status-select" data-action="status-change" aria-label="Cambiar estado">
-            <option value="pendiente" ${m.status === "pendiente" ? "selected" : ""}>Por ver</option>
-            <option value="viendo"    ${m.status === "viendo"    ? "selected" : ""}>Viendo</option>
-            <option value="vista"     ${m.status === "vista"     ? "selected" : ""}>Vista</option>
-            <option value="abandonada"${m.status === "abandonada"? "selected" : ""}>Abandonada</option>
-          </select>
-          <button class="icon-btn" data-action="add-to-list" type="button" aria-label="Añadir ${esc(m.title)} a una lista">＋ Lista</button>
-          <button class="icon-btn" data-action="delete" type="button" aria-label="Eliminar">✕</button>
-        </div>
       </div>
     </article>`).join("");
   collectionEl.innerHTML = _html;
-  if (editingProgressId !== null) {
-    const input = collectionEl.querySelector(`.card[data-id="${editingProgressId}"] .progress-input`);
-    if (input) input.focus();
-  }
-  if (editingDateId !== null) {
-    const input = collectionEl.querySelector(`.card[data-id="${editingDateId}"] .date-input`);
-    if (input) input.focus();
-  }
-  if (editingPlatformId !== null) {
-    const chip = collectionEl.querySelector(`.card[data-id="${editingPlatformId}"] .platform-chip`);
-    if (chip) chip.focus();
-  }
-  if (editingNoteId !== null) {
-    const ta = collectionEl.querySelector(`.card[data-id="${editingNoteId}"] .note-textarea`);
-    if (ta) {
-      ta.focus();
-      ta.setSelectionRange(ta.value.length, ta.value.length);
-      const form = ta.closest(".note-form");
-      const counter = form.querySelector("[data-note-chars]");
-      const publicCheckbox = form.querySelector("[data-note-public]");
-      const publicHint = form.querySelector("[data-note-public-hint]");
-      if (counter) counter.textContent = `${ta.value.length}/500`;
-      // AC-3 (client mirror of the authoritative backend 400): la casilla
-      // "Reseña pública" solo puede activarse con una nota no vacía. Al vaciar el
-      // textarea se desmarca + deshabilita y se muestra la pista.
-      ta.addEventListener("input", () => {
-        if (counter) counter.textContent = `${ta.value.length}/500`;
-        if (publicCheckbox) {
-          const hasText = ta.value.trim().length > 0;
-          publicCheckbox.disabled = !hasText;
-          if (!hasText) publicCheckbox.checked = false;
-          if (publicHint) publicHint.hidden = hasText;
-        }
-      });
-    }
-  }
 }
 
 function closePickPanel() {
@@ -295,66 +195,5 @@ collectionEl.addEventListener("click", (e) => {
     const value = +star.dataset.star;
     patchMovie(id, { rating: movie && movie.rating === value ? null : value });
     return;
-  }
-  const action = e.target.closest("[data-action]")?.dataset.action;
-  if (action === "delete") deleteMovie(id);
-  else if (action === "add-to-list" && movie) {
-    // Cuerpo de manejador → tiempo de llamada (PS-003); openAddToListPicker vive en sharing.js.
-    openAddToListPicker({
-      tmdb_id:    movie.tmdb_id,
-      media_type: movie.media_type,
-      title:      movie.title,
-      year:       movie.year,
-      poster_url: movie.poster_url,
-    });
-  }
-  else if (action === "note") { editingNoteId = id; renderCollection(); }
-  else if (action === "note-cancel") { editingNoteId = null; renderCollection(); }
-  else if (action === "note-save" && movie) {
-    const ta = card.querySelector(".note-textarea");
-    const note = ta ? ta.value.trim() : "";
-    if (note.length > 500) { showMessage("La nota no puede superar 500 caracteres.", "error"); return; }
-    // "Reseña pública": una nota vacía nunca puede quedar publicada (AC-3). El
-    // backend es la autoridad (400), esto es solo el reflejo cliente.
-    const publicCheckbox = card.querySelector("[data-note-public]");
-    const notePublic = !!(publicCheckbox && publicCheckbox.checked) && note.length > 0;
-    editingNoteId = null;
-    patchMovie(movie.id, { note, note_public: notePublic });
-  }
-  else if (action === "date") { editingDateId = id; renderCollection(); }
-  else if (action === "date-cancel") { editingDateId = null; renderCollection(); }
-  else if (action === "date-clear" && movie) {
-    editingDateId = null;
-    patchMovie(movie.id, { watched_at: null });
-  }
-  else if (action === "date-save" && movie) {
-    const input = card.querySelector(".date-input");
-    const watchedAt = input ? input.value : null;
-    editingDateId = null;
-    patchMovie(movie.id, { watched_at: watchedAt || null });
-  }
-  else if (action === "platform-open") { editingPlatformId = id; renderCollection(); }
-  else if (action === "platform-cancel") { editingPlatformId = null; renderCollection(); }
-  else if (action === "platform-pick") {
-    const platform = e.target.closest("[data-platform]")?.dataset.platform || null;
-    editingPlatformId = null;
-    patchMovie(id, { platform: platform || null });
-  }
-  else if (action === "progress") { editingProgressId = id; renderCollection(); }
-  else if (action === "progress-cancel") { editingProgressId = null; renderCollection(); }
-  else if (action === "progress-save" && movie) {
-    const form = card.querySelector(".progress-form");
-    const s = form.querySelector("[data-field='season']").value.trim();
-    const ep = form.querySelector("[data-field='episode']").value.trim();
-    const season = s ? parseInt(s, 10) : null;
-    const episode = ep ? parseInt(ep, 10) : null;
-    if (s && (isNaN(season) || season < 1)) { showMessage("La temporada debe ser un número positivo.", "error"); return; }
-    if (ep && (isNaN(episode) || episode < 1)) { showMessage("El episodio debe ser un número positivo.", "error"); return; }
-    if (movie.total_seasons && season !== null && season > movie.total_seasons) {
-      showMessage(`La temporada no puede superar el total de ${movie.total_seasons} temporadas.`, "error");
-      return;
-    }
-    editingProgressId = null;
-    patchMovie(movie.id, { current_season: season, current_episode: episode });
   }
 });

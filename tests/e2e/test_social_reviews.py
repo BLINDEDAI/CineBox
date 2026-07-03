@@ -204,12 +204,11 @@ def _goto_spa_and_open_collection(page: Page, base_url: str, movies: list):
 
 
 def _open_note_editor(page: Page, movie_id: int = _MOVIE_ID):
-    page.evaluate(
-        f"""() => {{
-            editingNoteId = {movie_id};
-            renderCollection();
-        }}"""
-    )
+    # Phase 3: title editing moved off the card into the detail modal's edit
+    # section. openEditOnly() opens that section for an in-memory title without
+    # any /api/details fetch, exposing the same #modal-edit-note + [data-note-public].
+    page.evaluate(f"() => {{ openEditOnly({movie_id}); }}")
+    page.wait_for_selector("#modal-edit-note", timeout=5000)
 
 
 def test_ac1_publish_toggle_renders_reflecting_note_public_state(page: Page, base_url: str):
@@ -250,17 +249,11 @@ def test_ac3_publish_toggle_disabled_when_note_empty(page: Page, base_url: str):
     _screenshot(page, "publish-toggle-disabled-empty-note")
 
 
-def test_ac1_published_note_shows_badge_on_collapsed_view(page: Page, base_url: str):
-    """A published note shows a 'Reseña pública' badge on the collapsed
-    note button so the owner sees at a glance which notes are public."""
-    page.set_viewport_size({"width": 1280, "height": 800})
-    _goto_spa_and_open_collection(page, base_url, [_mock_movie(note_public=True)])
-
-    badge = page.locator(".note-public-badge")
-    assert badge.count() == 1, "expected the 'Reseña pública' badge on a published note"
-    assert "pública" in badge.inner_text().lower()
-
-    _screenshot(page, "publish-badge-collapsed")
+# NOTE (Phase 3): the "collapsed note badge on the card" was removed — the card no
+# longer renders notes (poster + status badge + rating only); published state is now
+# shown by the checked publish toggle in the modal edit section, covered by
+# test_ac1_publish_toggle_checked_for_published_review. The old collapsed-badge test
+# was deleted rather than repointed to avoid duplicating that coverage.
 
 
 def test_ac18_publish_toggle_keyboard_focus(page: Page, base_url: str):
@@ -953,23 +946,26 @@ def test_ac9_xss_note_inert_on_public_profile(page: Page, base_url: str):
 
 
 def test_ac9_xss_note_inert_in_spa_collection_card(page: Page, base_url: str):
-    """Site 3/3 -- collection.js: the collapsed note preview and the editing
-    textarea both go through esc() -- markup renders as inert text, never
-    executes, in the authed SPA collection card."""
+    """Site 3/3 -- modal.js edit section: the note textarea renders the note via
+    esc() -- markup renders as inert text, never executes, in the authed SPA.
+    (Phase 3 moved note editing off the card into the detail modal.)"""
     page.set_viewport_size({"width": 1280, "height": 800})
     _goto_spa_and_open_collection(page, base_url, [_mock_movie(note=_XSS_NOTE, note_public=False)])
+    _open_note_editor(page)
 
     fired = page.evaluate("() => window.__xss_fired === true")
-    assert not fired, "AC-9: XSS payload in a collection-card note must NOT execute"
+    assert not fired, "AC-9: XSS payload in a note must NOT execute"
 
-    note_btn = page.locator(".note-btn")
-    assert note_btn.count() >= 1
+    note_ta = page.locator("#modal-edit-note")
+    assert note_ta.count() >= 1
     real_script_children = page.evaluate(
-        "() => document.querySelectorAll('.note-btn script').length"
+        "() => document.querySelectorAll('#modal-edit-section script').length"
     )
     assert real_script_children == 0, "AC-9: no real <script> element must be created in the DOM"
+    # The textarea holds the payload as inert text (browsers never parse HTML in a textarea).
+    assert _XSS_NOTE in note_ta.input_value()
 
-    _screenshot(page, "xss-collection-card-inert")
+    _screenshot(page, "xss-modal-note-inert")
 
 
 if __name__ == "__main__":

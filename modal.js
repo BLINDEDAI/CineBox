@@ -3,8 +3,9 @@
 const modalContent = el("modal-content");
 let modalContext = null;
 // Id de la película que la sección de edición del modal está editando (ADR-016).
-// Es un contexto LOCAL del modal: no reutiliza los flags editing* de la tarjeta
-// (editingNoteId/…), que siguen siendo card-scoped. null = sin sección de edición.
+// Contexto LOCAL del modal; null = sin sección de edición. Desde Fase 3 la tarjeta
+// ya no tiene editores inline (solo póster + badge + estrellas): toda la edición
+// de un título de la colección vive aquí.
 let modalEditId = null;
 
 // ---- Modal detalle ----
@@ -103,7 +104,7 @@ async function openDetail(tmdbId, type, hint = {}) {
       <div class="modal-add-btns" id="modal-add-btns">
         <button class="btn btn-sm" data-add-status="pendiente">+ Por ver</button>
         <button class="btn btn-sm btn-success" data-add-status="vista">✓ Vista</button>
-      </div>` : `<div class="modal-status-chip"><span class="chip chip-status">${esc(existing.status)}</span></div>`}
+      </div>` : ""}
       <div class="modal-list-action">
         <button class="btn-secondary btn-sm" type="button" id="modal-add-to-list">+ Añadir a lista</button>
       </div>

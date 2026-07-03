@@ -104,10 +104,6 @@ let discoverPage = 1;
 let discoverHasMore = false;
 let discoverSort = "popular";
 let pickedMovie = null;
-let editingProgressId = null;
-let editingNoteId = null;
-let editingPlatformId = null;
-let editingDateId = null;
 
 // ── Profile chip (sidebar) ──────────────────────────────────────────────────
 // Holds the last fetched profile so the click handler can branch without
@@ -396,25 +392,6 @@ resultsEl.addEventListener("click", (e) => {
   addItem(lastResults[idx], btn.dataset.status);
 });
 
-collectionEl.addEventListener("change", (e) => {
-  const sel = e.target.closest("[data-action='status-change']");
-  if (!sel) return;
-  const id = +e.target.closest(".card")?.dataset.id;
-  const status = sel.value;
-  if (!id || !status) return;
-  const movie = movies.find((m) => m.id === id);
-  const payload = { status };
-  if (status === "vista" && movie && !movie.watched_at) payload.watched_at = todayIsoDate();
-  // Plataforma por defecto (AC-6/AC-7): solo al pasar a "vista", si la película
-  // aún no tiene plataforma y hay una preferencia válida. getPref valida contra
-  // PLATFORMS → sin preferencia devuelve null y no se toca el payload.
-  if (status === "vista" && movie && !movie.platform) {
-    const defaultPlatform = getPref("default_platform", PLATFORMS, null);
-    if (defaultPlatform) payload.platform = defaultPlatform;
-  }
-  patchMovie(id, payload);
-});
-
 el("status-filter").addEventListener("change", (e) => {
   filter = e.target.value;
   renderCollection();
@@ -468,10 +445,6 @@ document.addEventListener("keydown", (e) => {
   if (listPickerEl && !listPickerEl.hidden) closeAddToListPicker();
   else if (!modalEl.hidden) closeModal();
   else if (!pickPanelEl.hidden) closePickPanel();
-  else if (editingPlatformId !== null) { editingPlatformId = null; renderCollection(); }
-  else if (editingProgressId !== null) { editingProgressId = null; renderCollection(); }
-  else if (editingDateId !== null) { editingDateId = null; renderCollection(); }
-  else if (editingNoteId !== null) { editingNoteId = null; renderCollection(); }
 });
 
 // Profile chip — navigate by current profile state (AC-2/AC-3/AC-4).

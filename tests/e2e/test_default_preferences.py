@@ -635,10 +635,12 @@ def test_ac6_platform_prefill_status_select_seam(page: Page, base_url: str):
     page.evaluate("() => { setPref('default_platform', 'Netflix'); }")
     # Load the collection then flip the status select to 'vista'.
     page.evaluate("() => loadMovies()")
-    page.wait_for_selector(".card[data-id='1'] .status-select", timeout=5000)
+    page.wait_for_selector(".card[data-id='1']", timeout=5000)
+    page.evaluate("() => openEditOnly(1)")
+    page.wait_for_selector("#modal-edit-status", timeout=5000)
     _screenshot(page, "ac6-before-watched")
 
-    page.select_option(".card[data-id='1'] .status-select", "vista")
+    page.select_option("#modal-edit-status", "vista")
     page.wait_for_timeout(400)
 
     body = page.evaluate("() => window.__lastPatch")
@@ -658,9 +660,11 @@ def test_ac7_no_platform_pref_no_prefill(page: Page, base_url: str):
 
     page.evaluate("() => { localStorage.removeItem('cinebox_prefs'); }")
     page.evaluate("() => loadMovies()")
-    page.wait_for_selector(".card[data-id='1'] .status-select", timeout=5000)
+    page.wait_for_selector(".card[data-id='1']", timeout=5000)
+    page.evaluate("() => openEditOnly(1)")
+    page.wait_for_selector("#modal-edit-status", timeout=5000)
 
-    page.select_option(".card[data-id='1'] .status-select", "vista")
+    page.select_option("#modal-edit-status", "vista")
     page.wait_for_timeout(400)
 
     payload = json.loads(page.evaluate("() => window.__lastPatch"))
@@ -712,8 +716,10 @@ def test_platform_prefill_respects_existing_platform(page: Page, base_url: str):
 
     page.evaluate("() => { setPref('default_platform', 'Netflix'); }")
     page.evaluate("() => loadMovies()")
-    page.wait_for_selector(".card[data-id='1'] .status-select", timeout=5000)
-    page.select_option(".card[data-id='1'] .status-select", "vista")
+    page.wait_for_selector(".card[data-id='1']", timeout=5000)
+    page.evaluate("() => openEditOnly(1)")
+    page.wait_for_selector("#modal-edit-status", timeout=5000)
+    page.select_option("#modal-edit-status", "vista")
     page.wait_for_timeout(400)
 
     payload = json.loads(page.evaluate("() => window.__lastPatch"))
