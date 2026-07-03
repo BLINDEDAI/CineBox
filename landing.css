@@ -301,27 +301,170 @@ html.cinephora-authed #welcome-screen { display: none; }
 .lw-feed-thumb { flex: 0 0 auto; width: 42px; aspect-ratio: 2 / 3; border-radius: 5px; overflow: hidden; border: 1px solid rgba(255, 255, 255, 0.08); }
 .lw-feed-thumb img { width: 100%; height: 100%; object-fit: cover; display: block; }
 
-/* ── Banda CTA ───────────────────────────────────────────────── */
-.landing-cta-band {
+/* ── Banda "Empieza hoy" ─────────────────────────────────────── */
+.landing-getstarted {
   text-align: center;
-  background:
-    radial-gradient(60% 120% at 50% 0%, rgba(255, 68, 61, 0.18), transparent 70%),
-    var(--panel, #0f131f);
-  border-top: 1px solid var(--line, rgba(255,255,255,0.09));
-  border-bottom: 1px solid var(--line, rgba(255,255,255,0.09));
+  max-width: 1000px;
+  background: radial-gradient(60% 120% at 50% 0%, rgba(255, 68, 61, 0.14), transparent 70%);
 }
-.landing-cta-band .landing-h2 { margin-bottom: 12px; }
-.landing-cta-sub { color: rgba(255,255,255,0.7); margin: 0 0 28px; font-size: 1.05rem; }
-.landing-cta-band .landing-btn-primary { margin: 0 auto; }
+.landing-getstarted .landing-eyebrow { text-align: center; }
+.landing-getstarted .landing-h2 { margin-bottom: 12px; }
+.landing-getstarted-sub {
+  color: rgba(255, 255, 255, 0.7);
+  margin: 0 auto 40px;
+  font-size: 1.08rem;
+  line-height: 1.55;
+  max-width: 52ch;
+}
+
+/* Tarjetas-stat */
+.landing-stats {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 16px;
+  margin-bottom: 22px;
+}
+.landing-stat {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 26px 18px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid var(--line, rgba(255,255,255,0.09));
+}
+.landing-stat-num {
+  font-size: clamp(1.5rem, 3.4vw, 2.1rem);
+  font-weight: 900;
+  color: var(--red);
+  line-height: 1;
+}
+.landing-stat-label { font-size: 0.9rem; color: rgba(255, 255, 255, 0.62); line-height: 1.35; }
+
+/* Comparativa Sin cuenta / Con cuenta */
+.landing-compare {
+  display: grid;
+  grid-template-columns: minmax(0, 560px);
+  justify-content: center;
+  gap: 16px;
+  margin-bottom: 40px;
+}
+.landing-compare-card {
+  position: relative;
+  text-align: left;
+  padding: 24px 24px 26px;
+  border-radius: 16px;
+  background: rgba(255, 255, 255, 0.02);
+  border: 1px solid var(--line, rgba(255,255,255,0.09));
+}
+.landing-compare-card--featured {
+  border-color: rgba(255, 68, 61, 0.55);
+  background:
+    radial-gradient(120% 80% at 50% 0%, rgba(255, 68, 61, 0.1), transparent 60%),
+    rgba(255, 255, 255, 0.02);
+  box-shadow: 0 0 0 1px rgba(255, 68, 61, 0.25), 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+.landing-compare-h {
+  font-size: 1.1rem;
+  color: #fff;
+  margin: 0 0 16px;
+  font-weight: 800;
+}
+.landing-compare-list { list-style: none; padding: 0; margin: 0; display: flex; flex-direction: column; gap: 12px; }
+.landing-compare-list li {
+  position: relative;
+  padding-left: 30px;
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.96rem;
+  line-height: 1.4;
+}
+.landing-compare-list li::before {
+  content: "";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 19px;
+  height: 19px;
+  border-radius: 50%;
+  background: rgba(43, 171, 74, 0.16);
+}
+/* El check es un glifo (::after) centrado sobre el disco (::before), sin imagen
+   externa ni inline style= — compatible con la CSP estricta. */
+.landing-compare-list li::after {
+  content: "\2713";
+  position: absolute;
+  left: 0;
+  top: 1px;
+  width: 19px;
+  height: 19px;
+  line-height: 19px;
+  text-align: center;
+  font-size: 0.72rem;
+  font-weight: 900;
+  color: #4ade80;
+}
+.landing-compare-card--featured .landing-compare-list li::before { background: rgba(255, 68, 61, 0.16); }
+.landing-compare-card--featured .landing-compare-list li::after { color: #ff8c84; }
+
+/* Disponible en */
+.landing-availon {
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  font-size: 0.7rem;
+  font-weight: 800;
+  color: rgba(255, 255, 255, 0.4);
+  margin: 0 0 14px;
+}
+.landing-platforms { display: flex; flex-wrap: wrap; justify-content: center; gap: 10px; margin-bottom: 40px; }
+.landing-platform {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 9px 18px;
+  border-radius: 999px;
+  border: 1px solid var(--line, rgba(255,255,255,0.12));
+  background: rgba(255, 255, 255, 0.03);
+  color: rgba(255, 255, 255, 0.82);
+  font-size: 0.9rem;
+  font-weight: 600;
+}
+.landing-platform .pf-ic { width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.6; opacity: 0.85; }
+
+.landing-getstarted-cta { display: flex; justify-content: center; }
+.landing-getstarted-cta .landing-btn-primary { margin: 0; }
+.landing-getstarted-login { margin: 18px 0 0; color: rgba(255, 255, 255, 0.6); font-size: 0.95rem; }
+.landing-linkbtn {
+  background: none;
+  border: none;
+  padding: 0;
+  font: inherit;
+  font-weight: 700;
+  color: var(--red);
+  cursor: pointer;
+}
+.landing-linkbtn:hover { text-decoration: underline; }
 
 /* ── FAQ (details/summary nativo) ────────────────────────────── */
-.landing-faq { max-width: 760px; }
+.landing-faq { max-width: 1000px; }
+.landing-faq-grid {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  align-items: start;
+}
 .landing-faq details {
   border: 1px solid var(--line, rgba(255,255,255,0.09));
-  border-radius: 12px;
-  margin-bottom: 12px;
+  border-radius: 14px;
   background: var(--panel, #0f131f);
   overflow: hidden;
+  transition: border-color 160ms ease, background 160ms ease;
+}
+.landing-faq details:hover { border-color: rgba(255, 255, 255, 0.2); }
+.landing-faq details[open] {
+  border-color: rgba(255, 68, 61, 0.4);
+  background:
+    radial-gradient(120% 100% at 0% 0%, rgba(255, 68, 61, 0.06), transparent 60%),
+    var(--panel, #0f131f);
 }
 .landing-faq summary {
   cursor: pointer;
@@ -337,17 +480,29 @@ html.cinephora-authed #welcome-screen { display: none; }
 .landing-faq summary::-webkit-details-marker { display: none; }
 .landing-faq summary::after {
   content: "+";
+  flex: 0 0 auto;
+  width: 24px;
+  height: 24px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 68, 61, 0.12);
   color: var(--red);
-  font-size: 1.4rem;
+  font-size: 1.3rem;
   font-weight: 400;
   line-height: 1;
+  transition: transform 200ms ease, background 160ms ease;
 }
-.landing-faq details[open] summary::after { content: "\2013"; }
+.landing-faq details[open] summary::after { content: "\2013"; transform: rotate(180deg); background: rgba(255, 68, 61, 0.22); }
 .landing-faq details > p {
   margin: 0;
   padding: 0 22px 20px;
   color: var(--muted, #8b93a7);
   line-height: 1.6;
+}
+@media (prefers-reduced-motion: no-preference) {
+  @keyframes lp-faq-open { from { opacity: 0; translate: 0 -6px; } to { opacity: 1; translate: 0 0; } }
+  .landing-faq details[open] > p { animation: lp-faq-open 240ms ease both; }
 }
 
 /* ── Footer ──────────────────────────────────────────────────── */
@@ -413,12 +568,16 @@ html.cinephora-authed #welcome-screen { display: none; }
   .landing-feature { grid-template-columns: 1fr; gap: 28px; margin-top: 48px; }
   .landing-feature .landing-feature-copy { order: 0; }
   .landing-feature .landing-feature-media { order: 1; }
+  .landing-compare { grid-template-columns: 1fr; }
+  .landing-compare-card--featured { order: -1; }
+  .landing-faq-grid { grid-template-columns: 1fr; }
 }
 @media (max-width: 560px) {
   .landing-section { padding: 52px 20px; }
   .landing-footer-cols { grid-template-columns: 1fr; }
   .landing-cta-row { width: 100%; }
   .landing-btn-primary, .landing-btn-secondary { width: 100%; text-align: center; }
+  .landing-stats { grid-template-columns: 1fr; }
 }
 
 /* ── Movimiento / animaciones ────────────────────────────────────────────────
@@ -465,7 +624,7 @@ html.cinephora-authed #welcome-screen { display: none; }
     .landing-features > .landing-eyebrow,
     .landing-features > .landing-h2,
     .landing-feature,
-    .landing-cta-band > *,
+    .landing-getstarted > *,
     .landing-faq > .landing-eyebrow,
     .landing-faq > .landing-h2,
     .landing-faq details {

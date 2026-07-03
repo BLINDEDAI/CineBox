@@ -190,41 +190,97 @@
           </div>
         </section>
 
-        <!-- 4. Banda CTA -->
-        <section class="landing-section landing-cta-band">
+        <!-- 4. Banda "Empieza hoy" -->
+        <section class="landing-section landing-getstarted">
+          <p class="landing-eyebrow">Empieza gratis</p>
           <h2 class="landing-h2">Empieza hoy</h2>
-          <p class="landing-cta-sub">Gratis, en español, sin complicaciones. Crea tu cuenta y empieza a organizar lo que ves.</p>
-          <button type="button" class="landing-btn-primary" data-landing-auth="register">Crear mi cuenta</button>
+          <p class="landing-getstarted-sub">Cuenta gratis, lista en menos de un minuto. Sin tarjeta, sin periodo de prueba, sin truco.</p>
+
+          <div class="landing-stats">
+            <div class="landing-stat">
+              <span class="landing-stat-num">Millones</span>
+              <span class="landing-stat-label">Películas y series vía TMDB</span>
+            </div>
+            <div class="landing-stat">
+              <span class="landing-stat-num">30 s</span>
+              <span class="landing-stat-label">En crear tu cuenta</span>
+            </div>
+            <div class="landing-stat">
+              <span class="landing-stat-num">100%</span>
+              <span class="landing-stat-label">Gratis, sin tarjeta</span>
+            </div>
+          </div>
+
+          <div class="landing-compare">
+            <div class="landing-compare-card landing-compare-card--featured">
+              <h3 class="landing-compare-h">Con tu cuenta gratis</h3>
+              <ul class="landing-compare-list">
+                <li>Tu colección de películas y series</li>
+                <li>Seguimiento por episodio y temporada</li>
+                <li>Descubre y añade con datos de TMDB</li>
+                <li>Estadísticas de lo que ves</li>
+                <li>Perfil social, reseñas y «me gusta»</li>
+                <li>Exporta o borra tus datos (GDPR)</li>
+              </ul>
+            </div>
+          </div>
+
+          <p class="landing-availon">Disponible en</p>
+          <div class="landing-platforms">
+            <span class="landing-platform">
+              <svg class="pf-ic" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9"/><path d="M3 12h18M12 3c2.6 2.7 2.6 15.3 0 18M12 3c-2.6 2.7-2.6 15.3 0 18"/></svg>
+              Web
+            </span>
+            <span class="landing-platform">
+              <svg class="pf-ic" viewBox="0 0 24 24" aria-hidden="true"><rect x="7" y="2.5" width="10" height="19" rx="2.4"/><path d="M10.5 18.5h3"/></svg>
+              Móvil (navegador)
+            </span>
+          </div>
+
+          <div class="landing-getstarted-cta">
+            <button type="button" class="landing-btn-primary" data-landing-auth="register">Crear mi cuenta</button>
+          </div>
+          <p class="landing-getstarted-login">¿Ya tienes cuenta? <button type="button" class="landing-linkbtn" data-landing-auth="login">Inicia sesión</button></p>
         </section>
 
         <!-- 5. FAQ -->
         <section class="landing-section landing-faq">
           <p class="landing-eyebrow">Preguntas frecuentes</p>
           <h2 class="landing-h2">Dudas rápidas</h2>
-          <details>
-            <summary>¿Es gratis?</summary>
-            <p>Sí. Cinephora es gratuito: creas tu cuenta y usas todo sin coste.</p>
-          </details>
-          <details>
-            <summary>¿Hace falta confirmar el email?</summary>
-            <p>No. Te registras con email y contraseña y entras directamente, sin pasos de verificación por correo.</p>
-          </details>
-          <details>
-            <summary>¿De dónde salen los datos de las películas y series?</summary>
-            <p>De TMDB (The Movie Database). Cinephora usa su API para búsquedas, fichas y carátulas, pero no está avalado ni certificado por TMDB.</p>
-          </details>
-          <details>
-            <summary>¿Puedo exportar o borrar mis datos?</summary>
-            <p>Sí. Puedes exportar toda tu colección cuando quieras, reimportarla y eliminar tu cuenta y tus datos por completo (GDPR).</p>
-          </details>
-          <details>
-            <summary>¿Hay app móvil?</summary>
-            <p>Todavía no hay app nativa, pero Cinephora funciona en el navegador del móvil y se adapta a la pantalla.</p>
-          </details>
-          <details>
-            <summary>¿Es privado por defecto?</summary>
-            <p>Sí. Tu colección es privada; solo compartes lo que decides publicar en tu perfil público o en tus reseñas.</p>
-          </details>
+          <div class="landing-faq-grid">
+            <details>
+              <summary>¿Es gratis de verdad?</summary>
+              <p>Sí, 100% gratis. No pedimos tarjeta, no hay plan de pago ni funciones «premium» escondidas: creas tu cuenta y tienes todo.</p>
+            </details>
+            <details>
+              <summary>¿Tengo que confirmar el email?</summary>
+              <p>No. Te registras con email y contraseña y entras al momento, sin correos de verificación de por medio.</p>
+            </details>
+            <details>
+              <summary>¿Puedo seguir series episodio a episodio?</summary>
+              <p>Sí. Marcas cada episodio y Cinephora recuerda por dónde vas en cada temporada — incluso en series que dejaste hace meses.</p>
+            </details>
+            <details>
+              <summary>¿De dónde salen las películas y series?</summary>
+              <p>De TMDB (The Movie Database): búsquedas, fichas, carátulas y reparto. Cinephora usa su API pero no está avalado ni certificado por TMDB.</p>
+            </details>
+            <details>
+              <summary>¿Es privado?</summary>
+              <p>Sí, privado por defecto. Tu colección solo la ves tú; compartes únicamente lo que publicas en tu perfil público o en tus reseñas.</p>
+            </details>
+            <details>
+              <summary>¿Puedo exportar o borrar mis datos?</summary>
+              <p>Cuando quieras. Exportas toda tu colección en un archivo, la reimportas donde quieras y puedes borrar tu cuenta y todos tus datos por completo (GDPR).</p>
+            </details>
+            <details>
+              <summary>¿Hay app móvil?</summary>
+              <p>Aún no hay app nativa, pero Cinephora funciona en el navegador del móvil y se adapta a cualquier pantalla.</p>
+            </details>
+            <details>
+              <summary>¿En qué idioma está?</summary>
+              <p>En español de principio a fin: interfaz, fichas y descripciones. Es justo lo que nos diferencia de las alternativas anglosajonas.</p>
+            </details>
+          </div>
         </section>
 
         <!-- 6. Footer -->
