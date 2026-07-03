@@ -1848,6 +1848,190 @@ h2 {
   justify-content: center;
 }
 
+/* ── Tracker de episodios por temporada (series-episode-progress) ────────────
+   Selector de temporada + lista de episodios dentro de .modal-edit-section.
+   Clases .modal-ep-*; sin inline style= (CSP estricta, PS-006). Targets >=24px;
+   el foco visible lo aporta la regla global :where(button,input,select). */
+.modal-ep-tracker {
+  gap: 10px;
+}
+
+.modal-ep-progress {
+  font-size: 0.85rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.modal-ep-progress[hidden] {
+  display: none;
+}
+
+.modal-ep-season-select-row {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+
+.modal-ep-season-label {
+  font-size: 0.78rem;
+  font-weight: 700;
+  color: var(--text-soft);
+}
+
+.modal-ep-season {
+  max-width: 260px;
+  min-height: 32px;
+}
+
+.modal-ep-list {
+  margin-top: 4px;
+}
+
+.modal-ep-loading,
+.modal-ep-empty {
+  color: var(--text-muted);
+  font-size: 0.85rem;
+  margin: 8px 0;
+}
+
+.modal-ep-season-bar {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-bottom: 12px;
+}
+
+.modal-ep-season-state {
+  font-size: 0.78rem;
+  color: var(--text-muted);
+}
+
+.modal-ep-season-btn {
+  min-height: 32px;
+}
+
+.modal-ep-items {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.modal-ep-item {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  padding: 10px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: var(--bg-2);
+}
+
+.modal-ep-item.is-watched {
+  border-color: rgba(69, 214, 103, 0.4);
+  background: rgba(69, 214, 103, 0.06);
+}
+
+.modal-ep-still {
+  flex-shrink: 0;
+  width: 96px;
+  height: 54px;
+  object-fit: cover;
+  border-radius: 6px;
+  background: var(--bg);
+}
+
+.modal-ep-still-fallback {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  color: var(--text-muted);
+}
+
+.modal-ep-still-fallback svg {
+  width: 22px;
+  height: 22px;
+}
+
+.modal-ep-body {
+  flex: 1 1 auto;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.modal-ep-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.modal-ep-num {
+  flex-shrink: 0;
+  font-weight: 700;
+  color: var(--text-muted);
+}
+
+.modal-ep-name {
+  font-weight: 600;
+  color: #fff;
+}
+
+.modal-ep-meta {
+  display: flex;
+  gap: 12px;
+  font-size: 0.75rem;
+  color: var(--text-muted);
+}
+
+.modal-ep-overview {
+  margin: 2px 0 0;
+  font-size: 0.82rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+
+.modal-ep-toggle {
+  flex-shrink: 0;
+  align-self: center;
+  min-height: 32px;
+  min-width: 96px;
+  padding: 6px 12px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-soft);
+  font-size: 0.8rem;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.modal-ep-toggle:hover {
+  border-color: var(--green);
+  color: #fff;
+}
+
+.modal-ep-toggle[aria-pressed="true"] {
+  background: rgba(69, 214, 103, 0.16);
+  border-color: var(--green);
+  color: var(--green);
+}
+
+@media (max-width: 480px) {
+  .modal-ep-item {
+    flex-wrap: wrap;
+  }
+  .modal-ep-toggle {
+    width: 100%;
+    align-self: stretch;
+  }
+}
+
 .modal-trailer {
   margin-top: 18px;
 }

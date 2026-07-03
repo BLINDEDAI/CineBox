@@ -147,8 +147,8 @@ sueltas con `psycopg2.connect`: usar siempre `with get_db() as cur:`.
 
 ### Rate limiting — endpoints que pegan a TMDB
 
-Los 5 endpoints que consumen la clave TMDB (`/api/search`, `/api/trending`,
-`/api/discover`, `/api/details`, `/api/similar`) pasan por `self._rate_limited(user_id)`
+Los 6 endpoints que consumen la clave TMDB (`/api/search`, `/api/trending`,
+`/api/discover`, `/api/details`, `/api/similar`, `/api/tv/{id}/season/{n}`) pasan por `self._rate_limited(user_id)`
 justo tras la auth. Ventana deslizante en memoria (por proceso): **por usuario**
 `RATE_MAX` (60) y **global** `RATE_GLOBAL_MAX` (300) por `RATE_WINDOW` (60 s). Al superar
 cualquiera → **429 + `Retry-After`**. Las constantes viven en `server.py`. Si se añade
