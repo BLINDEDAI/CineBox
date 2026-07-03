@@ -637,10 +637,10 @@ def test_ac6_platform_prefill_status_select_seam(page: Page, base_url: str):
     page.evaluate("() => loadMovies()")
     page.wait_for_selector(".card[data-id='1']", timeout=5000)
     page.evaluate("() => openEditOnly(1)")
-    page.wait_for_selector("#modal-edit-status", timeout=5000)
+    page.wait_for_selector(".modal-status-pill", timeout=5000)
     _screenshot(page, "ac6-before-watched")
 
-    page.select_option("#modal-edit-status", "vista")
+    page.locator(".modal-status-pill[data-status='vista']").click()
     page.wait_for_timeout(400)
 
     body = page.evaluate("() => window.__lastPatch")
@@ -662,9 +662,9 @@ def test_ac7_no_platform_pref_no_prefill(page: Page, base_url: str):
     page.evaluate("() => loadMovies()")
     page.wait_for_selector(".card[data-id='1']", timeout=5000)
     page.evaluate("() => openEditOnly(1)")
-    page.wait_for_selector("#modal-edit-status", timeout=5000)
+    page.wait_for_selector(".modal-status-pill", timeout=5000)
 
-    page.select_option("#modal-edit-status", "vista")
+    page.locator(".modal-status-pill[data-status='vista']").click()
     page.wait_for_timeout(400)
 
     payload = json.loads(page.evaluate("() => window.__lastPatch"))
@@ -718,8 +718,8 @@ def test_platform_prefill_respects_existing_platform(page: Page, base_url: str):
     page.evaluate("() => loadMovies()")
     page.wait_for_selector(".card[data-id='1']", timeout=5000)
     page.evaluate("() => openEditOnly(1)")
-    page.wait_for_selector("#modal-edit-status", timeout=5000)
-    page.select_option("#modal-edit-status", "vista")
+    page.wait_for_selector(".modal-status-pill", timeout=5000)
+    page.locator(".modal-status-pill[data-status='vista']").click()
     page.wait_for_timeout(400)
 
     payload = json.loads(page.evaluate("() => window.__lastPatch"))

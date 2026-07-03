@@ -306,7 +306,7 @@ def test_ac1_detail_modal_shows_edit_section_for_collection_title(
     section = page.locator("#modal-edit-section")
     assert section.count() == 1, "AC-1: expected the edit section inside the modal"
     # Every editor is exposed.
-    assert page.locator("#modal-edit-status").count() == 1
+    assert page.locator(".modal-status-pill").count() == 4
     assert page.locator("#modal-edit-section .stars .star").count() == 5
     assert page.locator("#modal-edit-date").count() == 1
     assert page.locator("#modal-edit-section .platform-chip").count() >= 1
@@ -363,7 +363,7 @@ def test_ac2_edit_only_mode_no_details_request(page: Page, base_url: str):
     assert page.locator("#modal .modal-hero").count() == 0
     assert page.locator("#modal .modal-cast").count() == 0
     # Full editability.
-    assert page.locator("#modal-edit-status").count() == 1
+    assert page.locator(".modal-status-pill").count() == 4
     assert page.locator("#modal-edit-note").count() == 1
     _screenshot(page, "ac2-edit-only-mode")
 
@@ -381,7 +381,7 @@ def test_ac3_status_change_persists_and_modal_stays_open(page: Page, base_url: s
     _route_similar(page, base_url, hits)
     _open_detail_modal(page)
 
-    page.locator("#modal-edit-status").select_option("viendo")
+    page.locator(".modal-status-pill[data-status='viendo']").click()
     page.wait_for_timeout(500)
 
     assert {"status": "viendo"} in store["patches"] or any(
@@ -392,7 +392,7 @@ def test_ac3_status_change_persists_and_modal_stays_open(page: Page, base_url: s
         "AC-11: modal must stay open after save"
     )
     assert page.locator("#modal-edit-section").count() == 1
-    selected = page.locator("#modal-edit-status").input_value()
+    selected = page.locator(".modal-status-pill.is-active").get_attribute("data-status")
     assert selected == "viendo", "AC-11: re-render must reflect the saved status"
     _screenshot(page, "ac3-status-change")
 
@@ -717,7 +717,7 @@ def test_ac15_keyboard_focus_and_target_size(page: Page, base_url: str):
 
     # Every interactive control has a >= 24px target.
     for sel in [
-        "#modal-edit-status",
+        ".modal-status-pill",
         "#modal-edit-section .stars .star",
         "#modal-edit-date",
         "[data-action='edit-date-save']",
@@ -733,9 +733,9 @@ def test_ac15_keyboard_focus_and_target_size(page: Page, base_url: str):
         assert box["width"] >= 24, f"AC-15: {sel} width {box['width']}px < 24px"
 
     # Keyboard-operable with a visible focus ring.
-    page.locator("#modal-edit-status").focus()
+    page.locator(".modal-status-pill").first.focus()
     assert _has_visible_focus(page), (
-        "AC-15: no visible focus indicator on the status select"
+        "AC-15: no visible focus indicator on the status pills"
     )
     _screenshot(page, "ac15-keyboard-focus")
 

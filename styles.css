@@ -1756,7 +1756,7 @@ h2 {
 /* ── Sección de edición del modal (modal-edit-section, ADR-016) ──────────────
    Bloque de formulario siempre expandido dentro de .modal-body que expone cada
    editor de la tarjeta. Reutiliza las clases de control de la tarjeta
-   (.note-form/.progress-form/.date-form/.platform-picker/.stars/.status-select/
+   (.note-form/.date-form/.platform-picker/.stars/
    .note-public-toggle); aquí solo se define el contenedor y su layout. Sin
    inline style= (CSP estricta, PS-006). */
 .modal-edit-section,
@@ -1791,10 +1791,6 @@ h2 {
   font-size: 0.78rem;
   font-weight: 700;
   color: var(--text-soft);
-}
-
-.modal-edit-field .status-select {
-  max-width: 220px;
 }
 
 .modal-edit-actions {
@@ -1877,13 +1873,15 @@ h2 {
   color: var(--text-soft);
 }
 
-.modal-ep-seasons {
+.modal-ep-seasons,
+.modal-status-pills {
   display: flex;
   flex-wrap: wrap;
   gap: 8px;
 }
 
-.modal-ep-season-pill {
+.modal-ep-season-pill,
+.modal-status-pill {
   padding: 6px 14px;
   border: 1px solid var(--border-strong);
   border-radius: 999px;
@@ -1906,6 +1904,26 @@ h2 {
   border-color: var(--red);
   color: #ff8c84;
 }
+
+/* Pills de estado: más grandes y con color semántico por estado (mismo código de
+   color que el badge de la carta). Inactivo = tinte claro sobre oscuro; activo =
+   relleno sólido + texto blanco (contraste AA). */
+.modal-status-pill {
+  padding: 9px 20px;
+  font-size: 0.92rem;
+}
+
+.modal-status-pill[data-status="pendiente"]  { color: #ffd68a; border-color: rgba(169, 103, 0, 0.6); }
+.modal-status-pill[data-status="viendo"]     { color: #a9d4ff; border-color: rgba(40, 120, 220, 0.55); }
+.modal-status-pill[data-status="vista"]      { color: #86e09b; border-color: rgba(43, 171, 74, 0.55); }
+.modal-status-pill[data-status="abandonada"] { color: #f0acac; border-color: rgba(150, 50, 60, 0.55); }
+
+.modal-status-pill:not(.is-active):hover { border-color: currentColor; }
+
+.modal-status-pill[data-status="pendiente"].is-active  { background: #8a5200; border-color: #a86a10; color: #fff; }
+.modal-status-pill[data-status="viendo"].is-active     { background: #1f5fb0; border-color: #3b7ccf; color: #fff; }
+.modal-status-pill[data-status="vista"].is-active      { background: #1a6e31; border-color: #2b8a45; color: #fff; }
+.modal-status-pill[data-status="abandonada"].is-active { background: #8a2a35; border-color: #ab4450; color: #fff; }
 
 .modal-ep-list {
   margin-top: 4px;

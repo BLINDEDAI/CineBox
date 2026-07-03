@@ -200,7 +200,7 @@ async function addFromModal(status) {
 // expandidos. Para series con tmdb_id sustituye el antiguo editor manual T/E por
 // el tracker de episodios por temporada (series-episode-progress, BR-13). Reutiliza
 // las clases de la tarjeta (.note-form/.date-form/.platform-picker/.stars/
-// .status-select/.note-public-toggle) + las nuevas .modal-ep-*. La nota se escapa
+// .note-public-toggle) + las nuevas .modal-status-pill/.modal-ep-*. La nota se escapa
 // con esc() (convención SPA autenticada, US-043). Identificadores en inglés
 // (US-001); etiquetas es-ES.
 function _modalEditSectionHtml(m) {
@@ -210,13 +210,12 @@ function _modalEditSectionHtml(m) {
     <h4 class="modal-edit-title">Editar</h4>
     <div class="modal-edit-grid">
       <div class="modal-edit-field">
-        <label class="modal-edit-label" for="modal-edit-status">Estado</label>
-        <select class="select btn-sm status-select" id="modal-edit-status" data-action="edit-status" aria-label="Cambiar estado">
-          <option value="pendiente" ${m.status === "pendiente" ? "selected" : ""}>Por ver</option>
-          <option value="viendo"    ${m.status === "viendo"    ? "selected" : ""}>Viendo</option>
-          <option value="vista"     ${m.status === "vista"     ? "selected" : ""}>Vista</option>
-          <option value="abandonada"${m.status === "abandonada"? "selected" : ""}>Abandonada</option>
-        </select>
+        <span class="modal-edit-label" id="modal-edit-status-label">Estado</span>
+        <div class="modal-status-pills" role="group" aria-labelledby="modal-edit-status-label">
+          ${[["pendiente", "Por ver"], ["viendo", "Viendo"], ["vista", "Vista"], ["abandonada", "Abandonada"]]
+            .map(([val, label]) => `<button type="button" class="modal-status-pill${m.status === val ? " is-active" : ""}" data-action="edit-status-pick" data-status="${val}" aria-pressed="${m.status === val ? "true" : "false"}">${label}</button>`)
+            .join("")}
+        </div>
       </div>
       <div class="modal-edit-field">
         <span class="modal-edit-label" id="modal-edit-rating-label">Valoración</span>
@@ -561,6 +560,19 @@ modalContent.addEventListener("click", (e) => {
     _markEpisodes(movie, { season, episodes, watched: action === "ep-season-mark" });
     return;
   }
+  if (action === "edit-status-pick") {
+    const status = actionEl.dataset.status;
+    const payload = { status };
+    // Paridad con el seam de estado (app.js): al pasar a "vista", rellena fecha
+    // y plataforma por defecto si faltan (AC-6/AC-7).
+    if (status === "vista" && !movie.watched_at) payload.watched_at = todayIsoDate();
+    if (status === "vista" && !movie.platform) {
+      const defaultPlatform = getPref("default_platform", PLATFORMS, null);
+      if (defaultPlatform) payload.platform = defaultPlatform;
+    }
+    _modalEditSave(id, payload);
+    return;
+  }
   if (action === "edit-rating") {
     const star = e.target.closest(".star");
     if (!star) return;
@@ -594,25 +606,6 @@ modalContent.addEventListener("click", (e) => {
   } else if (action === "edit-delete") {
     deleteMovie(id).then(() => closeModal());
   }
-});
-
-modalContent.addEventListener("change", (e) => {
-  const actionEl = e.target.closest("[data-action]");
-  if (!actionEl) return;
-  const action = actionEl.dataset.action;
-  if (action !== "edit-status") return;
-  const movie = movies.find((x) => x.id === modalEditId);
-  if (!movie) { closeModal(); return; }
-  const status = actionEl.value;
-  const payload = { status };
-  // Paridad con el seam de estado de la tarjeta (app.js): al pasar a "vista",
-  // rellena fecha y plataforma por defecto si faltan.
-  if (status === "vista" && !movie.watched_at) payload.watched_at = todayIsoDate();
-  if (status === "vista" && !movie.platform) {
-    const defaultPlatform = getPref("default_platform", PLATFORMS, null);
-    if (defaultPlatform) payload.platform = defaultPlatform;
-  }
-  _modalEditSave(movie.id, payload);
 });
 
 // Reflejo cliente en vivo (AC-8): la casilla "Reseña pública" solo puede
