@@ -1743,8 +1743,16 @@ h2 {
 
 .modal-add-btns {
   display: flex;
+  flex-wrap: wrap;
   gap: 10px;
   margin-top: 16px;
+}
+
+.modal-add-btns .btn,
+.modal-add-btns .btn-secondary {
+  min-height: 44px;
+  padding: 11px 20px;
+  font-size: 0.95rem;
 }
 
 .btn-success {
