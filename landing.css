@@ -420,3 +420,58 @@ html.cinephora-authed #welcome-screen { display: none; }
   .landing-cta-row { width: 100%; }
   .landing-btn-primary, .landing-btn-secondary { width: 100%; text-align: center; }
 }
+
+/* ── Movimiento / animaciones ────────────────────────────────────────────────
+   Todo en CSS (CSP estricta: sin <script> ni style= inline). Bajo
+   prefers-reduced-motion: no-preference, y el scroll-reveal además tras
+   @supports(animation-timeline) para que los navegadores sin scroll-driven
+   animations muestren el contenido estático (nunca opacity:0 irreversible). */
+@media (prefers-reduced-motion: no-preference) {
+
+  /* 1) Deriva ambiental de los pósters del hero. Anima `translate` (propiedad
+     independiente) para NO pisar el rotate(-3deg) del collage ni el
+     translateY(20px) de la columna central, que viven en `transform`. */
+  @keyframes lp-float {
+    0%, 100% { translate: 0 0; }
+    50%      { translate: 0 -12px; }
+  }
+  .landing-poster                 { animation: lp-float 7s ease-in-out infinite; }
+  .landing-poster:nth-child(2n)   { animation-delay: -1.1s; }
+  .landing-poster:nth-child(3n-1) { animation-duration: 8.4s; animation-delay: -2.3s; }
+  .landing-poster:nth-child(3n)   { animation-duration: 6.2s; animation-delay: -4.6s; }
+
+  /* 2) Entrada del hero al cargar (una vez, en cascada). */
+  @keyframes lp-rise {
+    from { opacity: 0; translate: 0 24px; }
+    to   { opacity: 1; translate: 0 0; }
+  }
+  @keyframes lp-fade { from { opacity: 0; } to { opacity: 1; } }
+  .landing-wordmark   { animation: lp-rise 620ms cubic-bezier(0.2, 0.7, 0.2, 1) both; }
+  .landing-tagline    { animation: lp-rise 620ms cubic-bezier(0.2, 0.7, 0.2, 1) 110ms both; }
+  .landing-cta-row    { animation: lp-rise 620ms cubic-bezier(0.2, 0.7, 0.2, 1) 210ms both; }
+  .landing-hero-media { animation: lp-fade 900ms ease 180ms both; }
+
+  /* 3) Micro-interacción: la ventana-mockup se eleva al pasar el ratón. */
+  .landing-window { transition: transform 260ms cubic-bezier(0.2, 0.7, 0.2, 1), box-shadow 260ms ease; }
+  .landing-feature-media:hover .landing-window {
+    transform: translateY(-8px);
+    box-shadow: 0 40px 90px rgba(0, 0, 0, 0.6);
+  }
+
+  /* 4) Revelado al hacer scroll — solo donde hay scroll-driven animations. El
+     scroller es .welcome-screen.landing (overflow-y:auto). Cada elemento revela
+     según su propia posición, así que escalonan solos al bajar. */
+  @supports (animation-timeline: view()) {
+    .landing-features > .landing-eyebrow,
+    .landing-features > .landing-h2,
+    .landing-feature,
+    .landing-cta-band > *,
+    .landing-faq > .landing-eyebrow,
+    .landing-faq > .landing-h2,
+    .landing-faq details {
+      animation: lp-rise 700ms cubic-bezier(0.2, 0.7, 0.2, 1) both;
+      animation-timeline: view();
+      animation-range: entry 5% cover 40%;
+    }
+  }
+}
