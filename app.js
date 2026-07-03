@@ -54,6 +54,22 @@ function _hideLoginScreen() {
   if (s) s.hidden = true;
 }
 
+// La landing (#welcome-screen) es ahora una landing de marketing que se muestra
+// SIEMPRE que no hay sesión (no solo la primera visita). No se elimina del DOM: se
+// oculta/muestra para que reaparezca tras un logout. `cinebox-authed` (clase en
+// <html>) es el gate pre-paint que pone boot.js; al mostrar la landing hay que
+// quitarlo para cubrir el caso borde de token caducado.
+function _showLanding() {
+  const w = document.getElementById("welcome-screen");
+  document.documentElement.classList.remove("cinebox-authed");
+  if (w) w.hidden = false;
+}
+
+function _hideLanding() {
+  const w = document.getElementById("welcome-screen");
+  if (w) w.hidden = true;
+}
+
 function _setLoginMode(mode) {
   _authMode = mode;
   const heading   = document.getElementById("login-heading");
@@ -545,17 +561,23 @@ async function initApp() {
       if (session) {
         _currentUser = session.user;
         _hideLoginScreen();
+        _hideLanding();
         _updateSidebarUser(session.user.email);
         // En la carga inicial NO recargamos aquí: el bloque «sesión inicial» de
         // más abajo ya llama a loadMovies(). El listener solo carga en logins
         // posteriores (SIGNED_IN, TOKEN_REFRESHED) → evita un doble fetch al abrir.
         if (event !== "INITIAL_SESSION") queueMicrotask(() => { loadMovies(); });
       } else {
+        // Logout: limpia estado y vuelve a la landing (se muestra siempre que no
+        // hay sesión). Si la landing no está en el DOM (p.ej. eliminada en un test o
+        // tras borrado de cuenta), cae al login como antes (mismo fallback que la
+        // lógica original `if (!ws)`).
         _currentUser = null;
         movies = [];
         renderCollection();
-        const ws = document.getElementById("welcome-screen");
-        if (!ws) _showLoginScreen();
+        const w = document.getElementById("welcome-screen");
+        if (w) { _hideLoginScreen(); _showLanding(); }
+        else { _showLoginScreen(); }
       }
     });
   }
@@ -566,32 +588,35 @@ async function initApp() {
     : null;
   _currentSession = session;
 
-  const visited = localStorage.getItem("cinebox_visited");
   const welcomeScreen = document.getElementById("welcome-screen");
 
-  // 4. Enganchar botones de bienvenida (después de saber si hay sesión)
+  // 4. Enganchar los CTAs de la landing (después de saber si hay sesión). Desde la
+  // landing se pasa a la pantalla de login/registro; la landing se oculta pero NO se
+  // elimina (debe reaparecer tras un logout). El wiring es por delegación para que
+  // todos los CTAs (hero, topbar, banda, footer) compartan un único handler robusto.
+  function _leaveWelcome(mode) {
+    if (mode) _setLoginMode(mode);
+    _hideLanding();
+    _showLoginScreen();
+  }
   if (welcomeScreen) {
-    function _leaveWelcome(mode) {
-      localStorage.setItem("cinebox_visited", "1");
-      if (mode) _setLoginMode(mode);
-      welcomeScreen.classList.add("is-hiding");
-      welcomeScreen.addEventListener("transitionend", () => {
-        welcomeScreen.remove();
-        if (_currentUser) {
-          showView("discover-view");
-        } else {
-          _showLoginScreen();
-        }
-      }, { once: true });
-    }
-    document.getElementById("welcome-register").addEventListener("click", () => _leaveWelcome("register"));
-    document.getElementById("welcome-login").addEventListener("click",    () => _leaveWelcome("login"));
+    const reg = document.getElementById("welcome-register");
+    if (reg) reg.addEventListener("click", () => _leaveWelcome("register"));
+    const log = document.getElementById("welcome-login");
+    if (log) log.addEventListener("click", () => _leaveWelcome("login"));
+    // CTAs adicionales (topbar/banda/footer) marcados con data-landing-auth.
+    welcomeScreen.addEventListener("click", (e) => {
+      const t = e.target.closest("[data-landing-auth]");
+      if (!t) return;
+      const mode = t.getAttribute("data-landing-auth") === "register" ? "register" : "login";
+      _leaveWelcome(mode);
+    });
   }
 
-  // 5. Routing inicial
+  // 5. Routing inicial: sesión → app; sin sesión → landing (siempre).
   if (session) {
     _currentUser = session.user;
-    if (welcomeScreen) welcomeScreen.remove();
+    _hideLanding();
     _hideLoginScreen();
     _updateSidebarUser(session.user.email);
     await loadMovies();
@@ -601,10 +626,14 @@ async function initApp() {
     // nombre de usuario (ADR-007) tiene precedencia y se muestra por encima si
     // aplica; esto solo enruta el aterrizaje autenticado normal.
     showView(getPref("home_view", HOME_VIEWS, "collection-view"));
-  } else if (visited) {
-    // Ya visitó antes pero no tiene sesión → login
-    if (welcomeScreen) welcomeScreen.remove();
-    _showLoginScreen();
+  } else {
+    // Sin sesión → landing de marketing. Caso borde: si boot.js ocultó la landing
+    // pre-paint por un token CADUCADO (heurística por-presencia-de-clave, no por
+    // validez), _showLanding reconcilia el estado quitando cinebox-authed y mostrando
+    // la landing. Queda un breve destello del app-shell (que no se oculta) entre el
+    // paint y la resolución de getSession(); es una limitación preexistente y solo
+    // afecta al raro caso de sesión caducada, no al login/logout normal.
+    _showLanding();
   }
   // else: primera visita sin sesión → se muestra la welcome screen normalmente
 

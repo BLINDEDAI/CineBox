@@ -6,30 +6,226 @@
     <title>CINEBOX · Mi colección</title>
     <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='13' fill='%23ff443d'/%3E%3Cpath d='M13 10.5 22 16l-9 5.5z' fill='%23fff'/%3E%3C/svg%3E">
     <link rel="stylesheet" href="styles.css">
+    <link rel="stylesheet" href="landing.css">
     <script src="boot.js"></script>
     <script src="vendor/supabase-js/2.108.1/supabase.min.js" integrity="sha384-EjUdIVmzWliPzdzhxZ9ZoO0etXLKWuUPUftAGxP6qH6Lm4oLwoLaJR0Ba4pIDiDL" crossorigin="anonymous"></script>
   </head>
   <body>
 
-    <div id="welcome-screen" class="welcome-screen" role="dialog" aria-label="Bienvenida a CINEBOX">
-      <div class="welcome-content">
-        <div class="welcome-logo">
-          <span class="welcome-mark" aria-hidden="true">
-            <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
+    <div id="welcome-screen" class="welcome-screen landing" role="region" aria-label="CineBox — presentación">
+      <div class="landing-inner">
+
+        <!-- 1. Topbar fija -->
+        <header class="landing-topbar">
+          <span class="landing-logo">
+            <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
+            CINE<strong>BOX</strong>
           </span>
-          <span class="welcome-name">CINE<strong>BOX</strong></span>
-        </div>
-        <p class="welcome-tagline">Guarda películas y series, lleva el seguimiento<br>de tus episodios y decide qué ver hoy.</p>
-        <ul class="welcome-features" aria-label="Características">
-          <li><span aria-hidden="true">🎬</span> Tu colección</li>
-          <li><span aria-hidden="true">📺</span> Seguimiento de series</li>
-          <li><span aria-hidden="true">📊</span> Estadísticas</li>
-          <li><span aria-hidden="true">🎲</span> ¿Qué veo hoy?</li>
-        </ul>
-        <div class="welcome-actions">
-          <button id="welcome-register" class="welcome-btn" type="button">Crear mi cuenta</button>
-          <button id="welcome-login" class="welcome-btn-secondary" type="button">Ya tengo cuenta</button>
-        </div>
+          <button type="button" class="landing-topbar-login" data-landing-auth="login">Iniciar sesión</button>
+        </header>
+
+        <!-- 2. Hero a dos columnas -->
+        <section class="landing-hero">
+          <div class="landing-hero-copy">
+            <h1 class="landing-wordmark">CINE<strong>BOX</strong></h1>
+            <p class="landing-tagline">Tu colección de películas y series, el seguimiento de cada episodio y la decisión de qué ver hoy — en español, en un solo sitio.</p>
+            <div class="landing-cta-row">
+              <button id="welcome-register" class="landing-btn-primary" type="button">Crear mi cuenta</button>
+              <button id="welcome-login" class="landing-btn-secondary" type="button">Ya tengo cuenta</button>
+            </div>
+          </div>
+          <div class="landing-hero-media" aria-hidden="true">
+            <div class="landing-poster-collage">
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/d5NXSklXo0qyIYkgV94XAgMIckC.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/49WJfeN0moxb9IPfGn8AIqMGskD.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/d5iIlFn5s0ImszYzBPb8JPIfbXD.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg" alt="" loading="lazy"></div>
+              <div class="landing-poster"><img src="https://image.tmdb.org/t/p/w342/3bhkrj58Vtu7enYsRolD1fZdja1.jpg" alt="" loading="lazy"></div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 3. Míralo por dentro: filas alternas con ventanas de app -->
+        <section class="landing-section landing-features">
+          <p class="landing-eyebrow">Míralo por dentro</p>
+          <h2 class="landing-h2">Así se ve CineBox</h2>
+
+          <!-- Fila 1 · Seguimiento por temporada -->
+          <div class="landing-feature">
+            <div class="landing-feature-copy">
+              <p class="landing-feature-eyebrow">Seguimiento por temporada</p>
+              <h3 class="landing-feature-h">No vuelvas a perder el hilo</h3>
+              <p class="landing-feature-p">Marca episodios según los ves y CineBox recuerda exactamente por dónde vas en cada serie — hasta en las que dejaste hace meses.</p>
+              <ul class="landing-feature-list">
+                <li>Progreso por episodio y por temporada</li>
+                <li>Retoma justo donde lo dejaste</li>
+                <li>Marca lo visto en un toque</li>
+              </ul>
+            </div>
+            <div class="landing-feature-media" aria-hidden="true">
+              <div class="landing-window">
+                <div class="landing-window-bar"><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-window-title">Continúa viendo</span></div>
+                <div class="landing-window-body">
+                  <div class="lw-card">
+                    <div class="lw-poster"><img src="https://image.tmdb.org/t/p/w342/49WJfeN0moxb9IPfGn8AIqMGskD.jpg" alt="" loading="lazy"></div>
+                    <div class="lw-bar"><span class="lw-fill"></span></div><span class="lw-meta">T4 · E5</span>
+                  </div>
+                  <div class="lw-card">
+                    <div class="lw-poster"><img src="https://image.tmdb.org/t/p/w342/39wmItIWsg5sZMyRUHLkWBcuVCM.jpg" alt="" loading="lazy"></div>
+                    <div class="lw-bar"><span class="lw-fill"></span></div><span class="lw-meta">Completa</span>
+                  </div>
+                  <div class="lw-card">
+                    <div class="lw-poster"><img src="https://image.tmdb.org/t/p/w342/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg" alt="" loading="lazy"></div>
+                    <div class="lw-bar"><span class="lw-fill"></span></div><span class="lw-meta">T1 · E3</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fila 2 · Tu colección (invertida) -->
+          <div class="landing-feature landing-feature--reverse">
+            <div class="landing-feature-copy">
+              <p class="landing-feature-eyebrow">Tu colección</p>
+              <h3 class="landing-feature-h">Todo lo tuyo, organizado</h3>
+              <p class="landing-feature-p">Guarda películas y series, ponles nota y estado, y encuéntralo todo de un vistazo, a tu manera.</p>
+              <ul class="landing-feature-list">
+                <li>Por ver, viendo, vista o abandonada</li>
+                <li>Valora con estrellas y escribe tus notas</li>
+                <li>Filtra y ordena como quieras</li>
+              </ul>
+            </div>
+            <div class="landing-feature-media" aria-hidden="true">
+              <div class="landing-window">
+                <div class="landing-window-bar"><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-window-title">Mi colección</span></div>
+                <div class="landing-window-body">
+                  <div class="lw-card">
+                    <div class="lw-poster"><span class="lw-badge lw-badge-porver">Por ver</span><img src="https://image.tmdb.org/t/p/w342/pB8BM7pdSp6B6Ih7QZ4DrQ3PmJK.jpg" alt="" loading="lazy"></div>
+                    <span class="lw-stars">★★★★★</span>
+                  </div>
+                  <div class="lw-card">
+                    <div class="lw-poster"><span class="lw-badge lw-badge-vista">Vista</span><img src="https://image.tmdb.org/t/p/w342/7IiTTgloJzvGI1TAYymCfbfl3vT.jpg" alt="" loading="lazy"></div>
+                    <span class="lw-stars">★★★★☆</span>
+                  </div>
+                  <div class="lw-card">
+                    <div class="lw-poster"><span class="lw-badge lw-badge-vista">Vista</span><img src="https://image.tmdb.org/t/p/w342/3bhkrj58Vtu7enYsRolD1fZdja1.jpg" alt="" loading="lazy"></div>
+                    <span class="lw-stars">★★★★★</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <!-- Fila 3 · Descubrir -->
+          <div class="landing-feature">
+            <div class="landing-feature-copy">
+              <p class="landing-feature-eyebrow">Descubrir con TMDB</p>
+              <h3 class="landing-feature-h">Encuentra tu próxima peli</h3>
+              <p class="landing-feature-p">Busca entre millones de títulos y añádelos a tu colección de un clic, con datos y carátulas de TMDB.</p>
+              <ul class="landing-feature-list">
+                <li>Búsqueda y tendencias al momento</li>
+                <li>Explora por género</li>
+                <li>Añade a «por ver» o «vista» de un toque</li>
+              </ul>
+            </div>
+            <div class="landing-feature-media" aria-hidden="true">
+              <div class="landing-window">
+                <div class="landing-window-bar"><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-dot"></span><span class="lw-window-title">Descubrir</span></div>
+                <div class="landing-window-body">
+                  <div class="lw-card">
+                    <div class="lw-poster"><img src="https://image.tmdb.org/t/p/w342/d5NXSklXo0qyIYkgV94XAgMIckC.jpg" alt="" loading="lazy"></div>
+                    <span class="lw-add">+ Por ver</span>
+                  </div>
+                  <div class="lw-card">
+                    <div class="lw-poster"><img src="https://image.tmdb.org/t/p/w342/9gk7adHYeDvHkCSEqAvQNLV5Uge.jpg" alt="" loading="lazy"></div>
+                    <span class="lw-add lw-add-watched">✓ Vista</span>
+                  </div>
+                  <div class="lw-card">
+                    <div class="lw-poster"><img src="https://image.tmdb.org/t/p/w342/gEU2QniE6E77NI6lCU6MxlNBvIx.jpg" alt="" loading="lazy"></div>
+                    <span class="lw-add">+ Por ver</span>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- 4. Banda CTA -->
+        <section class="landing-section landing-cta-band">
+          <h2 class="landing-h2">Empieza hoy</h2>
+          <p class="landing-cta-sub">Gratis, en español, sin complicaciones. Crea tu cuenta y empieza a organizar lo que ves.</p>
+          <button type="button" class="landing-btn-primary" data-landing-auth="register">Crear mi cuenta</button>
+        </section>
+
+        <!-- 5. FAQ -->
+        <section class="landing-section landing-faq">
+          <p class="landing-eyebrow">Preguntas frecuentes</p>
+          <h2 class="landing-h2">Dudas rápidas</h2>
+          <details>
+            <summary>¿Es gratis?</summary>
+            <p>Sí. CineBox es gratuito: creas tu cuenta y usas todo sin coste.</p>
+          </details>
+          <details>
+            <summary>¿Hace falta confirmar el email?</summary>
+            <p>No. Te registras con email y contraseña y entras directamente, sin pasos de verificación por correo.</p>
+          </details>
+          <details>
+            <summary>¿De dónde salen los datos de las películas y series?</summary>
+            <p>De TMDB (The Movie Database). CineBox usa su API para búsquedas, fichas y carátulas, pero no está avalado ni certificado por TMDB.</p>
+          </details>
+          <details>
+            <summary>¿Puedo exportar o borrar mis datos?</summary>
+            <p>Sí. Puedes exportar toda tu colección cuando quieras, reimportarla y eliminar tu cuenta y tus datos por completo (GDPR).</p>
+          </details>
+          <details>
+            <summary>¿Hay app móvil?</summary>
+            <p>Todavía no hay app nativa, pero CineBox funciona en el navegador del móvil y se adapta a la pantalla.</p>
+          </details>
+          <details>
+            <summary>¿Es privado por defecto?</summary>
+            <p>Sí. Tu colección es privada; solo compartes lo que decides publicar en tu perfil público o en tus reseñas.</p>
+          </details>
+        </section>
+
+        <!-- 6. Footer -->
+        <footer class="landing-footer">
+          <div class="landing-footer-cols">
+            <div class="landing-footer-brand">
+              <span class="landing-logo">
+                <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
+                CINE<strong>BOX</strong>
+              </span>
+              <p>Tu colección de cine y series, en español.</p>
+            </div>
+            <div class="landing-footer-col">
+              <h4>Producto</h4>
+              <button type="button" data-landing-auth="register">Crear cuenta</button>
+              <button type="button" data-landing-auth="login">Iniciar sesión</button>
+            </div>
+            <div class="landing-footer-col">
+              <h4>Legal</h4>
+              <a href="/privacy">Privacidad</a>
+              <a href="/terms">Términos</a>
+            </div>
+            <div class="landing-footer-col">
+              <h4>Sobre</h4>
+              <a href="/about">Sobre CineBox</a>
+            </div>
+            <div class="landing-footer-col">
+              <h4>Contacto</h4>
+              <a href="mailto:BL1NDED@proton.me">Escríbenos</a>
+            </div>
+          </div>
+          <div class="landing-footer-bottom">
+            <span>© CineBox</span>
+            <span>Datos por <a href="https://www.themoviedb.org" target="_blank" rel="noopener">TMDB</a>. Este producto usa la API de TMDB pero no está avalado ni certificado por TMDB.</span>
+          </div>
+        </footer>
+
       </div>
     </div>
 

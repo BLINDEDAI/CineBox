@@ -61,6 +61,27 @@ def _is_same_origin(url: str, base_url: str) -> bool:
     return (u.scheme, u.netloc) == (b.scheme, b.netloc)
 
 
+# The marketing landing (#welcome-screen) renders a decorative poster collage from
+# image.tmdb.org — an image origin ALREADY allow-listed in the server CSP
+# (`img-src ... https://image.tmdb.org ...`). Those are non-executable images, not a
+# script/CDN supply-chain vector, so they are exempt from the "no external CDN
+# fallback" assertion below. The exemption is deliberately narrow: ONLY resource_type
+# == "image" AND host == image.tmdb.org. Any other cross-origin request — a script
+# fallback, a non-image resource, or any other host — is still flagged.
+_CSP_ALLOWED_IMAGE_HOST = "image.tmdb.org"
+
+
+def _is_allowed_landing_image(request) -> bool:
+    """True only for a decorative landing poster: an <img> from the CSP-allowed host.
+
+    Scopes the AC-3 exemption to non-executable images from the single image origin
+    already permitted by the CSP; it can never mask a script/CDN fallback."""
+    return (
+        request.resource_type == "image"
+        and urlparse(request.url).hostname == _CSP_ALLOWED_IMAGE_HOST
+    )
+
+
 # ── AC-2: same-origin fetch, no jsDelivr, genuine bundle executes ─────────────
 
 
@@ -124,7 +145,9 @@ def test_sri_fail_closed_no_cdn_fallback(page, base_url):
     (a) window.supabase is undefined (the browser refused to execute the tampered
         script).
     (b) No request to cdn.jsdelivr.net (or any non-same-origin host) occurred as
-        a CDN fallback.
+        a CDN fallback — EXCEPT decorative landing posters (<img> from the
+        CSP-allow-listed image.tmdb.org), which are non-executable and cannot be a
+        script supply-chain vector (see _is_allowed_landing_image).
 
     No skip / xfail — a failing assertion fails the suite (AC-5).
     """
@@ -134,8 +157,11 @@ def test_sri_fail_closed_no_cdn_fallback(page, base_url):
     fallback_urls: list[str] = []
 
     def _record_external_request(request) -> None:
-        if not _is_same_origin(request.url, base_url):
-            fallback_urls.append(request.url)
+        if _is_same_origin(request.url, base_url):
+            return
+        if _is_allowed_landing_image(request):
+            return
+        fallback_urls.append(request.url)
 
     def _serve_corrupted(route):
         route.fulfill(
