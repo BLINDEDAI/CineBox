@@ -224,7 +224,7 @@ function _modalEditSectionHtml(m) {
       <div class="modal-edit-field">
         <label class="modal-edit-label" for="modal-edit-date">Fecha de visionado</label>
         <div class="date-form">
-          <input class="date-input" id="modal-edit-date" type="date" value="${esc(m.watched_at || "")}" aria-label="Fecha de visionado">
+          <input class="date-input" id="modal-edit-date" type="date" value="${esc((m.watched_at || "").slice(0, 10))}" aria-label="Fecha de visionado">
           <button class="progress-save" data-action="edit-date-save" type="button" aria-label="Guardar fecha">✓</button>
           ${m.watched_at ? `<button class="progress-cancel" data-action="edit-date-clear" type="button" title="Quitar fecha" aria-label="Quitar fecha">—</button>` : ""}
         </div>

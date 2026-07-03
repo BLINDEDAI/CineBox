@@ -1850,6 +1850,14 @@ h2 {
   justify-content: center;
 }
 
+/* Fecha de visionado: input más grande y con ancho acotado (no a todo el ancho). */
+.modal-edit-section .date-input {
+  flex: 0 0 auto;
+  width: 190px;
+  padding: 9px 14px;
+  font-size: 0.95rem;
+}
+
 /* ── Tracker de episodios por temporada (series-episode-progress) ────────────
    Selector de temporada (botones/pills) + lista de episodios en su propia
    sección .modal-episodes-section al final del modal. Clases .modal-ep-*; sin
