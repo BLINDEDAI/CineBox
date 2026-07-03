@@ -460,10 +460,22 @@ def test_ac5_watch_date_save_and_clear(page: Page, base_url: str):
 # ══════════════════════════════════════════════════════════════════════════════
 
 
-def test_ac6_series_progress_rejects_season_over_total(page: Page, base_url: str):
+def test_ac6_manual_progress_editor_superseded_by_episode_tracker(page: Page, base_url: str):
+    """AC-6 (modal-edit-section) is SUPERSEDED by BR-13/AC-14 of the later
+    series-episode-progress feature: the manual season/episode number editor
+    this test used to exercise (`.progress-form [data-field='season']` +
+    `edit-progress-save`, client-side season-over-total rejection) was
+    deliberately REMOVED and replaced by the season selector + episode-list
+    tracker (`#modal-ep-season`, `[data-action='ep-toggle']`, ...). Position
+    is now derived-only from marked episodes; there is no manual season input
+    to reject an over-total value against. This test was updated (not
+    deleted) by the series-episode-progress Tester so the suite does not
+    carry a permanently-red assertion for behaviour the spec intentionally
+    removed — see `CineBox-docs/specs/Collection/series-episode-progress-specs.md`
+    BR-13 / AC-14."""
     page.set_viewport_size({"width": 1280, "height": 800})
     hits = {}
-    store = _goto_spa(
+    _goto_spa(
         page,
         base_url,
         [
@@ -480,32 +492,18 @@ def test_ac6_series_progress_rejects_season_over_total(page: Page, base_url: str
     _route_similar(page, base_url, hits)
     _open_detail_modal(page)
 
-    season_input = page.locator(
-        "#modal-edit-section .progress-form [data-field='season']"
+    assert page.locator("#modal-edit-section .progress-form").count() == 0, (
+        "AC-14 (series-episode-progress): the manual progress-form must be gone"
     )
-    assert season_input.count() == 1, (
-        "AC-6: progress editor must render for a non-vista series"
+    assert page.locator("[data-action='edit-progress-save']").count() == 0, (
+        "AC-14 (series-episode-progress): the manual save action must be gone"
     )
-    season_input.fill("5")
-    page.locator("[data-action='edit-progress-save']").click()
-    page.wait_for_timeout(400)
-
-    msg = page.locator("#message").inner_text()
-    assert "no puede superar el total de 3 temporadas" in msg, (
-        f"AC-6: expected the season-over-total es-ES message, got: {msg!r}"
+    # The episode tracker's own season selector is what remains for a tv title.
+    assert page.locator("#modal-ep-season").count() == 1, (
+        "BR-13 (series-episode-progress): the season/episode tracker replaces "
+        "the removed manual editor"
     )
-    assert not any("current_season" in p for p in store["patches"]), (
-        "AC-6: an over-total season must NOT be PATCHed"
-    )
-
-    # A valid season persists.
-    season_input.fill("2")
-    page.locator("[data-action='edit-progress-save']").click()
-    page.wait_for_timeout(500)
-    assert any(p.get("current_season") == 2 for p in store["patches"]), (
-        "AC-6: valid season persists"
-    )
-    _screenshot(page, "ac6-series-progress")
+    _screenshot(page, "ac6-series-progress-superseded")
 
 
 def test_ac6_progress_hidden_for_vista_series(page: Page, base_url: str):

@@ -40,7 +40,15 @@ async function openDetail(tmdbId, type, hint = {}) {
     genre_ids:  d.genre_ids  || [],   // ids → el backend los mapea a nombres ES (consistente con la carátula)
     genres:     d.genres     || [],   // nombres; fallback si no hubiera ids
     total_seasons: d.total_seasons,   // total de temporadas TMDB (series); null si no aplica/no disponible
+    total_episodes: d.total_episodes, // total de episodios TMDB (series); denominador de «N/M» (BR-7); null si no aplica
+    seasons: d.seasons,               // [{season_number, name, episode_count}] ex-especiales; puebla el selector de temporada
+    watched_count: d.watched_count,   // marcas del usuario para este título (series); numerador de «N/M» en carga/reload (AC-6/AC-9)
   };
+  // Inicializa el contador en memoria desde el conteo autoritativo de /api/details
+  // para que la métrica muestre «N/M episodios» ya al abrir/recargar cuando hay
+  // marcas y total conocido (AC-6/AC-9), sin esperar a un toggle en sesión. Tras
+  // un POST de marcado se sigue usando el watched_count de esa respuesta.
+  if (existing) existing.watched_count = d.watched_count;
   // AC-7 — backfill oportunista: si la serie ya está en la colección sin total
   // y TMDB ahora lo devuelve, persistir una vez y mutar la entrada en memoria
   // (sin loadMovies() para no recargar la colección con el modal abierto).
@@ -186,13 +194,15 @@ async function addFromModal(status) {
 
 // ---- Sección de edición del modal (ADR-016) ----
 // Expone en el modal cada editor que la tarjeta tiene hoy (estado, valoración,
-// fecha, progreso de serie, plataforma, nota + "Reseña pública", añadir a lista,
-// eliminar), siempre expandidos. Reutiliza las clases de estilo de la tarjeta
-// (.note-form/.progress-form/.date-form/.platform-picker/.stars/.status-select/
-// .note-public-toggle). La nota se escapa con esc() (convención SPA autenticada,
-// US-043). Los identificadores son ingleses (US-001); las etiquetas, es-ES.
+// fecha, plataforma, nota + "Reseña pública", añadir a lista, eliminar), siempre
+// expandidos. Para series con tmdb_id sustituye el antiguo editor manual T/E por
+// el tracker de episodios por temporada (series-episode-progress, BR-13). Reutiliza
+// las clases de la tarjeta (.note-form/.date-form/.platform-picker/.stars/
+// .status-select/.note-public-toggle) + las nuevas .modal-ep-*. La nota se escapa
+// con esc() (convención SPA autenticada, US-043). Identificadores en inglés
+// (US-001); etiquetas es-ES.
 function _modalEditSectionHtml(m) {
-  const showProgress = m.media_type === "tv" && m.status !== "vista";
+  const showTracker = m.media_type === "tv" && m.tmdb_id;
   const noteVal = m.note || "";
   const hasNote = noteVal.trim().length > 0;
   return `
@@ -219,15 +229,15 @@ function _modalEditSectionHtml(m) {
           ${m.watched_at ? `<button class="progress-cancel" data-action="edit-date-clear" type="button" title="Quitar fecha" aria-label="Quitar fecha">—</button>` : ""}
         </div>
       </div>
-      ${showProgress ? `
-      <div class="modal-edit-field">
-        <span class="modal-edit-label">Progreso</span>
-        <div class="progress-form">
-          <label class="progress-label">T<input class="progress-input" type="number" min="1"${m.total_seasons ? ` max="${esc(m.total_seasons)}"` : ""} data-field="season" value="${m.current_season ?? ""}" placeholder="—" aria-label="Temporada"></label>
-          <label class="progress-label">E<input class="progress-input" type="number" min="1" data-field="episode" value="${m.current_episode ?? ""}" placeholder="—" aria-label="Episodio"></label>
-          <button class="progress-save" data-action="edit-progress-save" type="button" aria-label="Guardar progreso">✓</button>
-          ${m.total_seasons ? `<span class="progress-hint">de ${esc(m.total_seasons)} temporadas</span>` : ""}
+      ${showTracker ? `
+      <div class="modal-edit-field modal-ep-tracker">
+        <span class="modal-edit-label" id="modal-ep-progress-label">Progreso por episodios</span>
+        <span class="modal-ep-progress" data-ep-progress${_episodeProgressText(m) ? "" : " hidden"}>${esc(_episodeProgressText(m))}</span>
+        <div class="modal-ep-season-select-row">
+          <label class="modal-ep-season-label" for="modal-ep-season">Temporada</label>
+          ${_seasonSelectHtml()}
         </div>
+        <div class="modal-ep-list" data-ep-list></div>
       </div>` : ""}
       <div class="modal-edit-field">
         <span class="modal-edit-label">Plataforma</span>
@@ -258,15 +268,196 @@ function _modalEditSectionHtml(m) {
     </div>`;
 }
 
+// ---- Tracker de episodios por temporada (series-episode-progress) ----
+// Todo lo de abajo son helpers de render/manejo en TIEMPO DE LLAMADA (PS-003):
+// no hay sentencias de nivel superior nuevas, ni módulo/orden de carga nuevo.
+
+// Métrica de progreso (BR-7 / AC-6 / AC-9): «N/M episodios» cuando hay al menos
+// una marca conocida en sesión y TMDB da el total; si no, la etiqueta heredada
+// «S · E» derivada de la posición persistida; si tampoco, cadena vacía (oculto).
+// watched_count arranca en 0 (la tabla movies no lo trae) y se conoce tras el
+// primer POST de marcado en sesión — a partir de ahí muestra «N/M».
+function _episodeProgressText(m) {
+  // Prefiere el contador de la película en memoria (autoritativo tras un toggle en
+  // sesión, incl. 0 al desmarcar todo → gana sobre el de contexto); si no, el
+  // watched_count autoritativo de /api/details (carga/reload); si no, 0.
+  const watched = m.watched_count ?? (modalContext && modalContext.watched_count) ?? 0;
+  const total = modalContext && modalContext.total_episodes;
+  if (watched > 0 && total) return `${watched}/${total} episodios`;
+  if (m.current_season != null || m.current_episode != null) {
+    return `S${m.current_season ?? "?"} · E${m.current_episode ?? "?"}`;
+  }
+  return "";
+}
+
+// Refresca el texto de la métrica en vivo tras un marcado, sin re-render total.
+function _updateEpisodeProgressDisplay(m) {
+  const container = document.getElementById("modal-edit-section");
+  if (!container) return;
+  const node = container.querySelector("[data-ep-progress]");
+  if (!node) return;
+  const text = _episodeProgressText(m);
+  node.textContent = text; // textContent → seguro; sin esc necesario
+  node.hidden = !text;
+}
+
+// Selector de temporada: usa modalContext.seasons (ex-especiales); si no hay,
+// cae a 1..total_seasons; si tampoco, a la temporada 1 (borde graceful).
+function _seasonSelectHtml() {
+  const ctx = modalContext || {};
+  let options;
+  if (Array.isArray(ctx.seasons) && ctx.seasons.length) {
+    options = ctx.seasons.map((s) => ({ n: s.season_number, label: s.name || `Temporada ${s.season_number}` }));
+  } else {
+    const total = ctx.total_seasons && ctx.total_seasons > 0 ? ctx.total_seasons : 1;
+    options = [];
+    for (let n = 1; n <= total; n++) options.push({ n, label: `Temporada ${n}` });
+  }
+  return `<select class="select btn-sm modal-ep-season" id="modal-ep-season" data-action="ep-season-select" aria-label="Seleccionar temporada">
+        ${options.map((o) => `<option value="${esc(o.n)}">${esc(o.label)}</option>`).join("")}
+      </select>`;
+}
+
+// Still guardado: mismo allow-list que las carátulas/cast — solo image.tmdb.org
+// a partir del still_path relativo de TMDB; si falta, placeholder de texto (FILM).
+function _episodeStillHtml(stillPath) {
+  if (stillPath) return `<img class="modal-ep-still" src="https://image.tmdb.org/t/p/w300${esc(stillPath)}" alt="" loading="lazy">`;
+  return `<div class="modal-ep-still modal-ep-still-fallback" aria-hidden="true">${FILM}</div>`;
+}
+
+// Estado de la temporada (full/partial/none) → control de marcar/desmarcar (BR-6).
+function _seasonControlHtml(seasonNumber, state) {
+  const stateLabel = state === "all" ? "Temporada completa" : state === "partial" ? "Temporada a medias" : "Temporada sin ver";
+  const s = esc(seasonNumber);
+  return `
+      <span class="modal-ep-season-state" data-ep-season-state data-state="${esc(state)}">${stateLabel}</span>
+      <button class="btn-secondary btn-sm modal-ep-season-btn" type="button" data-action="ep-season-mark" data-season="${s}"${state === "all" ? " disabled" : ""}>Marcar temporada</button>
+      <button class="btn-secondary btn-sm modal-ep-season-btn" type="button" data-action="ep-season-unmark" data-season="${s}"${state === "none" ? " disabled" : ""}>Desmarcar temporada</button>`;
+}
+
+// Fila de episodio: still guardado, número + título, fecha, duración, sinopsis y
+// el toggle de visto (aria-pressed). Cada valor de episodio va por esc() (AC-11).
+function _episodeRowHtml(ep, seasonNumber) {
+  const epNum = ep.episode_number;
+  const runtime = (ep.runtime === null || ep.runtime === undefined) ? "—" : `${esc(ep.runtime)} min`;
+  const airDate = ep.air_date ? esc(ep.air_date) : "—";
+  const overview = ep.overview ? esc(ep.overview) : "";
+  const watched = !!ep.watched;
+  return `
+        <li class="modal-ep-item${watched ? " is-watched" : ""}" data-ep-row data-season="${esc(seasonNumber)}" data-episode="${esc(epNum)}">
+          ${_episodeStillHtml(ep.still_path)}
+          <div class="modal-ep-body">
+            <div class="modal-ep-head">
+              <span class="modal-ep-num">${esc(epNum)}</span>
+              <span class="modal-ep-name">${esc(ep.name || "")}</span>
+            </div>
+            <div class="modal-ep-meta">
+              <span class="modal-ep-air">${airDate}</span>
+              <span class="modal-ep-runtime">${runtime}</span>
+            </div>
+            ${overview ? `<p class="modal-ep-overview">${overview}</p>` : ""}
+          </div>
+          <button class="modal-ep-toggle" type="button" data-action="ep-toggle" data-season="${esc(seasonNumber)}" data-episode="${esc(epNum)}" aria-pressed="${watched ? "true" : "false"}" aria-label="${watched ? "Marcar episodio como no visto" : "Marcar episodio como visto"}">${watched ? "✓ Visto" : "Marcar visto"}</button>
+        </li>`;
+}
+
+// Pinta la lista de episodios + la barra de control de temporada dentro del
+// contenedor [data-ep-list].
+function _renderEpisodeList(listEl, season, seasonNumber) {
+  const episodes = (season && season.episodes) || [];
+  const total = episodes.length;
+  const watchedCount = episodes.filter((e) => e.watched).length;
+  const state = total === 0 ? "none" : watchedCount === total ? "all" : watchedCount === 0 ? "none" : "partial";
+  listEl.innerHTML = `
+      <div class="modal-ep-season-bar">${_seasonControlHtml(seasonNumber, state)}</div>
+      ${total ? `<ul class="modal-ep-items" role="list">${episodes.map((ep) => _episodeRowHtml(ep, seasonNumber)).join("")}</ul>`
+              : `<p class="modal-ep-empty">No hay episodios para esta temporada.</p>`}`;
+}
+
+// Carga (fetch) y pinta una temporada. Guardas anti-carrera: si el usuario cambió
+// de temporada o cerró el modal mientras cargaba, no se aplica el resultado.
+async function _loadEpisodeSeason(movie, seasonNumber) {
+  const container = document.getElementById("modal-edit-section");
+  if (!container) return;
+  const listEl = container.querySelector("[data-ep-list]");
+  if (!listEl || !movie.tmdb_id) return;
+  listEl.innerHTML = '<p class="modal-ep-loading">Cargando episodios…</p>';
+  const { ok, data } = await api(`/api/tv/${movie.tmdb_id}/season/${seasonNumber}`);
+  if (!listEl.isConnected) return; // modal cerrado / re-render mientras cargaba
+  const sel = container.querySelector("[data-action='ep-season-select']");
+  if (!sel || +sel.value !== seasonNumber) return; // el usuario ya cambió de temporada
+  if (!ok || !data || !data.ok) {
+    listEl.innerHTML = `<p class="modal-ep-empty">${data && data.needs_key ? "Sin detalle de episodios disponible." : "No se pudieron cargar los episodios."}</p>`;
+    return;
+  }
+  _renderEpisodeList(listEl, data.season, seasonNumber);
+}
+
+// Refleja una marca en el DOM ya pintado (sin re-render/re-fetch): actualiza las
+// filas afectadas y recalcula el estado de la barra de temporada.
+function _setRowWatched(row, watched) {
+  row.classList.toggle("is-watched", watched);
+  const toggle = row.querySelector("[data-action='ep-toggle']");
+  if (!toggle) return;
+  toggle.setAttribute("aria-pressed", watched ? "true" : "false");
+  toggle.setAttribute("aria-label", watched ? "Marcar episodio como no visto" : "Marcar episodio como visto");
+  toggle.textContent = watched ? "✓ Visto" : "Marcar visto";
+}
+
+function _refreshSeasonControl(listEl, seasonNumber) {
+  const rows = Array.from(listEl.querySelectorAll(`[data-ep-row][data-season="${seasonNumber}"]`));
+  const total = rows.length;
+  const watchedCount = rows.filter((r) => r.classList.contains("is-watched")).length;
+  const state = total === 0 ? "none" : watchedCount === total ? "all" : watchedCount === 0 ? "none" : "partial";
+  const bar = listEl.querySelector(".modal-ep-season-bar");
+  if (bar) bar.innerHTML = _seasonControlHtml(seasonNumber, state);
+}
+
+function _applyEpisodeMarkToDom(body) {
+  const container = document.getElementById("modal-edit-section");
+  if (!container) return;
+  const listEl = container.querySelector("[data-ep-list]");
+  if (!listEl) return;
+  const rows = listEl.querySelectorAll(`[data-ep-row][data-season="${body.season}"]`);
+  if (Array.isArray(body.episodes)) {
+    rows.forEach((row) => _setRowWatched(row, body.watched)); // marcado de temporada
+  } else if (body.episode != null) {
+    rows.forEach((row) => { if (+row.dataset.episode === body.episode) _setRowWatched(row, body.watched); });
+  }
+  _refreshSeasonControl(listEl, body.season);
+}
+
+// POST de marcado (individual o temporada) → actualiza la posición derivada y el
+// contador en la película en memoria (BR-8) y refleja el resultado en el DOM.
+async function _markEpisodes(movie, body) {
+  const { ok, data } = await api(`/api/movies/${movie.id}/episodes`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+  });
+  if (!ok || !data || !data.ok) {
+    showMessage("No se pudo actualizar el episodio. Inténtalo de nuevo.", "error");
+    return;
+  }
+  movie.current_season = data.current_season;
+  movie.current_episode = data.current_episode;
+  movie.watched_count = data.watched_count;
+  _applyEpisodeMarkToDom(body);
+  _updateEpisodeProgressDisplay(movie);
+}
+
 // Re-renderiza la sección de edición desde la película en memoria más reciente
 // (movies.find, AC-11). Si la película ya no está (borrada / colección recargada),
-// cierra el modal con elegancia en vez de dejar un editor obsoleto.
+// cierra el modal con elegancia en vez de dejar un editor obsoleto. Si hay tracker
+// de episodios, carga la temporada seleccionada (AC-1/AC-2).
 function _rerenderModalEditSection() {
   const container = document.getElementById("modal-edit-section");
   if (!container) return;
   const movie = movies.find((x) => x.id === modalEditId);
   if (!movie) { closeModal(); return; }
   container.innerHTML = _modalEditSectionHtml(movie);
+  const sel = container.querySelector("[data-action='ep-season-select']");
+  if (sel) _loadEpisodeSeason(movie, +sel.value);
 }
 
 // Guarda un edit y, si tuvo éxito, mantiene el modal abierto re-renderizando la
@@ -312,10 +503,28 @@ modalContent.addEventListener("click", (e) => {
   const actionEl = e.target.closest("[data-action]");
   if (!actionEl) return;
   const action = actionEl.dataset.action;
-  if (!action || !action.startsWith("edit-")) return;
+  if (!action || !(action.startsWith("edit-") || action.startsWith("ep-"))) return;
   const movie = movies.find((x) => x.id === modalEditId);
   if (!movie) { closeModal(); return; }
   const id = movie.id;
+  // ---- Marcado de episodios (tracker de series) ----
+  if (action === "ep-toggle") {
+    const season  = +actionEl.dataset.season;
+    const episode = +actionEl.dataset.episode;
+    const watched = actionEl.getAttribute("aria-pressed") !== "true";
+    _markEpisodes(movie, { season, episode, watched });
+    return;
+  }
+  if (action === "ep-season-mark" || action === "ep-season-unmark") {
+    const season = +actionEl.dataset.season;
+    const listEl = modalContent.querySelector("[data-ep-list]");
+    if (!listEl) return;
+    const episodes = Array.from(listEl.querySelectorAll(`[data-ep-row][data-season="${season}"]`))
+      .map((row) => +row.dataset.episode);
+    if (!episodes.length) return;
+    _markEpisodes(movie, { season, episodes, watched: action === "ep-season-mark" });
+    return;
+  }
   if (action === "edit-rating") {
     const star = e.target.closest(".star");
     if (!star) return;
@@ -326,19 +535,6 @@ modalContent.addEventListener("click", (e) => {
     _modalEditSave(id, { watched_at: (input && input.value) || null });
   } else if (action === "edit-date-clear") {
     _modalEditSave(id, { watched_at: null });
-  } else if (action === "edit-progress-save") {
-    const form = actionEl.closest(".progress-form");
-    const s  = form.querySelector("[data-field='season']").value.trim();
-    const ep = form.querySelector("[data-field='episode']").value.trim();
-    const season  = s  ? parseInt(s, 10)  : null;
-    const episode = ep ? parseInt(ep, 10) : null;
-    if (s && (isNaN(season) || season < 1)) { showMessage("La temporada debe ser un número positivo.", "error"); return; }
-    if (ep && (isNaN(episode) || episode < 1)) { showMessage("El episodio debe ser un número positivo.", "error"); return; }
-    if (movie.total_seasons && season !== null && season > movie.total_seasons) {
-      showMessage(`La temporada no puede superar el total de ${movie.total_seasons} temporadas.`, "error");
-      return;
-    }
-    _modalEditSave(id, { current_season: season, current_episode: episode });
   } else if (action === "edit-platform-pick") {
     const platform = e.target.closest("[data-platform]")?.dataset.platform || null;
     _modalEditSave(id, { platform: platform || null });
@@ -365,11 +561,18 @@ modalContent.addEventListener("click", (e) => {
 });
 
 modalContent.addEventListener("change", (e) => {
-  const sel = e.target.closest("[data-action='edit-status']");
-  if (!sel) return;
+  const actionEl = e.target.closest("[data-action]");
+  if (!actionEl) return;
+  const action = actionEl.dataset.action;
+  if (action !== "edit-status" && action !== "ep-season-select") return;
   const movie = movies.find((x) => x.id === modalEditId);
   if (!movie) { closeModal(); return; }
-  const status = sel.value;
+  // Cambio de temporada → carga y pinta esa temporada (AC-2).
+  if (action === "ep-season-select") {
+    _loadEpisodeSeason(movie, +actionEl.value);
+    return;
+  }
+  const status = actionEl.value;
   const payload = { status };
   // Paridad con el seam de estado de la tarjeta (app.js): al pasar a "vista",
   // rellena fecha y plataforma por defecto si faltan.

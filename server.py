@@ -268,6 +268,9 @@ def rate_check(buckets):
 _tmdb_cache = {}            # clave -> (expiry_monotónico, valor)
 _tmdb_cache_lock = threading.Lock()
 TMDB_CACHE_TTL = int(os.environ.get("TMDB_CACHE_TTL", 900))  # s; 0 = desactiva la caché
+# Metadatos de temporada: iguales para todos los usuarios y cambian rara vez →
+# TTL propio (~24 h) que anula TMDB_CACHE_TTL solo en esa llamada (CA-*, BR-3).
+SEASON_CACHE_TTL = int(os.environ.get("SEASON_CACHE_TTL", 86400))  # s; override por-llamada
 TMDB_CACHE_MAX = 500        # tope duro de entradas; purga expiradas + desaloja FIFO al superarlo
 
 
@@ -642,9 +645,13 @@ class Handler(SimpleHTTPRequestHandler):
             return None
         return verify_jwt(auth[7:])
 
-    def _tmdb(self, path, extra=None):
+    def _tmdb(self, path, extra=None, ttl=None):
+        # `ttl` (opcional) anula TMDB_CACHE_TTL SOLO para esta llamada (p. ej. el
+        # endpoint de temporada pasa ttl=SEASON_CACHE_TTL, CA-*). Sin él, se usa el
+        # default global de 900 s; los llamantes existentes quedan intactos.
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return None
+        cache_ttl = TMDB_CACHE_TTL if ttl is None else ttl
         params = {"api_key": os.environ["TMDB_API_KEY"].strip(), "language": "es-ES"}
         if extra:
             params.update(extra)
@@ -653,7 +660,7 @@ class Handler(SimpleHTTPRequestHandler):
         # Clave de caché: path + params ordenados, EXCLUYENDO api_key (es el
         # secreto y además constante por proceso). Determinista entre llamadas.
         cache_key = (path, tuple(sorted((k, v) for k, v in params.items() if k != "api_key")))
-        if TMDB_CACHE_TTL > 0:
+        if cache_ttl > 0:
             now = time.monotonic()
             with _tmdb_cache_lock:
                 hit = _tmdb_cache.get(cache_key)
@@ -663,7 +670,7 @@ class Handler(SimpleHTTPRequestHandler):
         with urllib.request.urlopen(url, timeout=10) as resp:
             data = json.loads(resp.read())   # un error de red/HTTP se propaga (no se cachea)
 
-        if TMDB_CACHE_TTL > 0:
+        if cache_ttl > 0:
             now = time.monotonic()
             with _tmdb_cache_lock:
                 if len(_tmdb_cache) >= TMDB_CACHE_MAX:   # purga oportunista de expiradas
@@ -671,7 +678,7 @@ class Handler(SimpleHTTPRequestHandler):
                         del _tmdb_cache[k]
                 while len(_tmdb_cache) >= TMDB_CACHE_MAX:  # tope duro: desaloja las más antiguas (FIFO)
                     del _tmdb_cache[next(iter(_tmdb_cache))]
-                _tmdb_cache[cache_key] = (now + TMDB_CACHE_TTL, data)
+                _tmdb_cache[cache_key] = (now + cache_ttl, data)
         return data
 
     # ── GET ───────────────────────────────────────────────────────────────────
@@ -692,6 +699,8 @@ class Handler(SimpleHTTPRequestHandler):
         if path == "/api/discover": return self._discover()
         if path == "/api/details":  return self._details()
         if path == "/api/similar":  return self._similar()
+        m = re.match(r"^/api/tv/(\d+)/season/(\d+)$", path)
+        if m:                       return self._season(int(m.group(1)), int(m.group(2)))
         if path == "/api/profile":  return self._get_profile()
         if path == "/api/lists":    return self._list_lists()
         if path == "/api/feed":     return self._feed()
@@ -936,6 +945,18 @@ class Handler(SimpleHTTPRequestHandler):
         if mt == "tv" and not runtime:
             ert     = d.get("episode_run_time") or []
             runtime = ert[0] if ert else None
+        # Marcas del usuario para esta serie (AC-6/AC-9): valor POR-USUARIO, así que
+        # es una query real scoped por user_id + tmdb_id — NUNCA de la caché _tmdb
+        # compartida. Permite pintar «N/M episodios» en la recarga, sin esperar a una
+        # marca de la sesión. 0 para películas (BR-1: no tienen episodios).
+        watched_count = 0
+        if mt == "tv":
+            with get_db() as cur:
+                cur.execute(
+                    "SELECT count(*) AS n FROM episode_progress "
+                    "WHERE user_id = %s AND tmdb_id = %s",
+                    (user_id, int(tid)))
+                watched_count = cur.fetchone()["n"]
         self._json(200, {"ok": True, "details": {
             "overview":       d.get("overview") or "Sin sinopsis disponible.",
             "genres":         [g["name"] for g in d.get("genres", [])],
@@ -952,6 +973,18 @@ class Handler(SimpleHTTPRequestHandler):
             "providers":      providers,
             "providers_link": wp_es.get("link", ""),
             "total_seasons":  d.get("number_of_seasons") if mt == "tv" else None,
+            # Aditivos series (BR-7 / AC-6): el total de episodios (denominador N/M)
+            # y las temporadas (menos la 0/especiales) que pueblan el selector. Ambos
+            # salen de la `d` ya obtenida — sin llamada TMDB extra (API-019 aditivo).
+            "total_episodes": d.get("number_of_episodes") if mt == "tv" else None,
+            "seasons": [
+                {"season_number": s.get("season_number"), "name": s.get("name"),
+                 "episode_count": s.get("episode_count")}
+                for s in d.get("seasons", [])
+                if s.get("season_number") not in (None, 0)
+            ] if mt == "tv" else None,
+            # Recuento por-usuario de episodios marcados (AC-6/AC-9): el numerador N.
+            "watched_count":  watched_count,
         }})
 
     def _similar(self):
@@ -985,6 +1018,49 @@ class Handler(SimpleHTTPRequestHandler):
             })
         self._json(200, {"ok": True, "results": items})
 
+    def _season(self, tmdb_id, season):
+        """GET /api/tv/{tmdb_id}/season/{n} — metadatos de una temporada desde TMDB
+        (still, número + título, fecha de emisión, duración, sinopsis) fusionados con
+        las marcas de vista del usuario. Autenticado (PS-001) y rate-limited (PS-005:
+        pega a TMDB). Proyección allow-list; `watched` por episodio deriva de las
+        marcas. Error crudo de TMDB nunca se serializa (invariants → 502 genérico)."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        if self._rate_limited(user_id):
+            return
+        if not os.environ.get("TMDB_API_KEY", "").strip():
+            return self._json(200, {"ok": False, "needs_key": True})
+        try:
+            d = self._tmdb(f"/tv/{tmdb_id}/season/{season}", ttl=SEASON_CACHE_TTL)
+        except Exception:
+            return self._json(502, {"ok": False, "error": "No se pudo consultar TMDB."})
+        # Marcas del usuario para esta temporada en UNA query (PS-002), scoped por
+        # user_id (PS-001). Set de episodios vistos para el flag `watched`.
+        with get_db() as cur:
+            cur.execute(
+                "SELECT season, episode FROM episode_progress "
+                "WHERE user_id = %s AND tmdb_id = %s AND season = %s",
+                (user_id, tmdb_id, season))
+            watched = {r["episode"] for r in cur.fetchall()}
+        episodes = [
+            {
+                "episode_number": e.get("episode_number"),
+                "name":           e.get("name"),
+                "air_date":       e.get("air_date"),
+                "runtime":        e.get("runtime"),
+                "overview":       e.get("overview"),
+                "still_path":     e.get("still_path"),
+                "watched":        e.get("episode_number") in watched,
+            }
+            for e in (d.get("episodes") or [])
+        ]
+        self._json(200, {"ok": True, "season": {
+            "season_number": d.get("season_number"),
+            "name":          d.get("name"),
+            "episodes":      episodes,
+        }})
+
     # ── POST ──────────────────────────────────────────────────────────────────
 
     @_db_guard
@@ -1003,6 +1079,9 @@ class Handler(SimpleHTTPRequestHandler):
         m = re.match(r"^/api/reviews/(\d+)/likes$", self.path)
         if m:
             return self._like_review(int(m.group(1)))
+        m = re.match(r"^/api/movies/(\d+)/episodes$", self.path)
+        if m:
+            return self._set_episodes(int(m.group(1)))
         if self.path != "/api/movies":
             return self._json(404, {"ok": False, "error": "Ruta no encontrada"})
         user_id = self._get_user_id()
@@ -1088,6 +1167,110 @@ class Handler(SimpleHTTPRequestHandler):
 
         notify_discord(title, year, status, media_type, poster, user_id)
         self._json(201, {"ok": True, "id": new_id})
+
+    def _set_episodes(self, movie_id):
+        """POST /api/movies/{id}/episodes — marca/desmarca episodios (uno o toda la
+        temporada) de una serie de la colección. Un solo endpoint (no DELETE) con un
+        booleano `watched`, evitando el caveat de cuerpo en DELETE (RFC 9110 §9.3.5;
+        misma razón que ADR-009). No pega a TMDB → sigue el patrón de PATCH (auth +
+        scoping, sin rate limiter). Deriva y sincroniza current_season/current_episode
+        (BR-8) en la MISMA transacción vía _recompute_progress."""
+        user_id = self._get_user_id()
+        if not user_id:
+            return self._json(401, {"ok": False, "error": "No autenticado"})
+        try:
+            data = self._read_json()
+        except (ValueError, json.JSONDecodeError):
+            return self._json(400, {"ok": False, "error": "JSON inválido"})
+        # Validación de cuerpo (US-040): season int≥1; watched bool obligatorio;
+        # episode int≥1|null; episodes lista de int≥1|null. bool es subclase de int
+        # en Python, por eso se excluye explícitamente donde se espera un entero.
+        season = data.get("season")
+        if not isinstance(season, int) or isinstance(season, bool) or season < 1:
+            return self._json(400, {"ok": False, "error": "Parámetros inválidos"})
+        watched = data.get("watched")
+        if not isinstance(watched, bool):
+            return self._json(400, {"ok": False, "error": "Parámetros inválidos"})
+        episode = data.get("episode")
+        if episode is not None and (not isinstance(episode, int) or isinstance(episode, bool) or episode < 1):
+            return self._json(400, {"ok": False, "error": "Parámetros inválidos"})
+        episodes = data.get("episodes")
+        if episodes is not None:
+            if not isinstance(episodes, list) or not all(
+                    isinstance(n, int) and not isinstance(n, bool) and n >= 1 for n in episodes):
+                return self._json(400, {"ok": False, "error": "Parámetros inválidos"})
+        # Números de episodio afectados: `episode` (uno) ∪ `episodes` (lote). Al
+        # desmarcar sin ninguno de los dos → toda la temporada (episodes vacíos).
+        ep_nums = []
+        if episode is not None:
+            ep_nums.append(episode)
+        if episodes:
+            ep_nums.extend(episodes)
+        ep_nums = sorted(set(ep_nums))
+
+        with get_db() as cur:
+            # Resolver el título por (id, user_id) — IDOR-safe: id ajeno/inexistente
+            # es indistinguible (404). 400 si no es serie (BR-1). PS-001 scoping.
+            cur.execute(
+                "SELECT tmdb_id, media_type FROM movies WHERE id = %s AND user_id = %s",
+                (movie_id, user_id))
+            row = cur.fetchone()
+            if row is None:
+                return self._json(404, {"ok": False, "error": "No encontrada"})
+            if row["media_type"] != "tv":
+                return self._json(400, {"ok": False, "error": "Solo aplica a series"})
+            tmdb_id = row["tmdb_id"]
+            if tmdb_id is None:
+                # Una serie sin tmdb_id no tiene metadatos de temporada; nada que marcar.
+                return self._json(400, {"ok": False, "error": "La serie no tiene datos de TMDB"})
+            if watched:
+                # Marcar exige episodios concretos (uno o lote). Sin ninguno → nada
+                # que insertar (no existe "marcar toda la temporada" sin sus números).
+                for ep in ep_nums:
+                    cur.execute(
+                        "INSERT INTO episode_progress (user_id, tmdb_id, season, episode) "
+                        "VALUES (%s, %s, %s, %s) ON CONFLICT DO NOTHING",
+                        (user_id, tmdb_id, season, ep))
+            else:
+                # Desmarcar: episodios concretos si se indican, si no toda la temporada.
+                if ep_nums:
+                    cur.execute(
+                        "DELETE FROM episode_progress WHERE user_id = %s AND tmdb_id = %s "
+                        "AND season = %s AND episode = ANY(%s)",
+                        (user_id, tmdb_id, season, ep_nums))
+                else:
+                    cur.execute(
+                        "DELETE FROM episode_progress WHERE user_id = %s AND tmdb_id = %s "
+                        "AND season = %s",
+                        (user_id, tmdb_id, season))
+            # Deriva-y-sincroniza (BR-8/PS-004) en la MISMA transacción.
+            watched_count, current_season, current_episode = self._recompute_progress(
+                cur, user_id, tmdb_id, movie_id)
+        self._json(200, {"ok": True, "current_season": current_season,
+                         "current_episode": current_episode, "watched_count": watched_count})
+
+    def _recompute_progress(self, cur, user_id, tmdb_id, movie_id):
+        """Deriva la posición «¿dónde voy?» del MÁXIMO episodio visto y la sincroniza
+        en movies.current_season/current_episode (BR-8). NULL/NULL cuando no quedan
+        marcas. Corre DENTRO de la transacción del llamante (recibe el cursor).
+        Devuelve (watched_count, current_season, current_episode)."""
+        cur.execute(
+            "SELECT season, episode FROM episode_progress "
+            "WHERE user_id = %s AND tmdb_id = %s "
+            "ORDER BY season DESC, episode DESC LIMIT 1",
+            (user_id, tmdb_id))
+        top = cur.fetchone()
+        current_season  = top["season"]  if top else None
+        current_episode = top["episode"] if top else None
+        cur.execute(
+            "UPDATE movies SET current_season = %s, current_episode = %s "
+            "WHERE id = %s AND user_id = %s",
+            (current_season, current_episode, movie_id, user_id))
+        cur.execute(
+            "SELECT count(*) AS n FROM episode_progress WHERE user_id = %s AND tmdb_id = %s",
+            (user_id, tmdb_id))
+        watched_count = cur.fetchone()["n"]
+        return watched_count, current_season, current_episode
 
     # ── PATCH ─────────────────────────────────────────────────────────────────
 
@@ -1253,12 +1436,25 @@ class Handler(SimpleHTTPRequestHandler):
         user_id = self._get_user_id()
         if not user_id:
             return self._json(401, {"ok": False, "error": "No autenticado"})
+        movie_id = int(m.group(1))
         with get_db() as cur:
+            # Metadatos previos al borrado para la purga de marcas de episodio
+            # (prevención de huérfanos: no hay FK/cascade — ver migración 004).
+            cur.execute(
+                "SELECT media_type, tmdb_id FROM movies WHERE id = %s AND user_id = %s",
+                (movie_id, user_id))
+            row = cur.fetchone()
             cur.execute(
                 "DELETE FROM movies WHERE id = %s AND user_id = %s",
-                (int(m.group(1)), user_id))
+                (movie_id, user_id))
             if cur.rowcount == 0:
                 return self._json(404, {"ok": False, "error": "No encontrada"})
+            # Solo series con tmdb_id: evita borrar las marcas de una serie con el
+            # mismo entero como id cuando se elimina una película (GD-*, orphan-prev).
+            if row and row["media_type"] == "tv" and row["tmdb_id"] is not None:
+                cur.execute(
+                    "DELETE FROM episode_progress WHERE user_id = %s AND tmdb_id = %s",
+                    (user_id, row["tmdb_id"]))
         self._json(200, {"ok": True})
 
     # ── Borrado de cuenta (RTBF) ─────────────────────────────────────────────────
@@ -1444,6 +1640,9 @@ class Handler(SimpleHTTPRequestHandler):
         #    Idempotente: en un reintento los borrados afectan a cero filas.
         with get_db() as cur:
             cur.execute("DELETE FROM movies WHERE user_id = %s", (user_id,))
+            # RTBF de las marcas de episodio (GD-*/BR-10/AC-13): la tabla no tiene FK
+            # a movies, así que la erasure es explícita (no cae por cascade).
+            cur.execute("DELETE FROM episode_progress WHERE user_id = %s", (user_id,))
             # RTBF de la capa social (ADR-014/GD-*): borrar activity + follows
             # ANTES de lists, para que el cascade de activity.list_id (ON DELETE
             # CASCADE al borrar lists) no compita con este borrado explícito.
