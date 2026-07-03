@@ -113,9 +113,10 @@ async function openDetail(tmdbId, type, hint = {}) {
         <button class="btn btn-sm" data-add-status="pendiente">+ Por ver</button>
         <button class="btn btn-sm btn-success" data-add-status="vista">✓ Vista</button>
       </div>` : ""}
+      ${!existing ? `
       <div class="modal-list-action">
         <button class="btn-secondary btn-sm" type="button" id="modal-add-to-list">+ Añadir a lista</button>
-      </div>
+      </div>` : ""}
       ${existing ? `<div class="modal-edit-section" id="modal-edit-section"></div>` : ""}
       ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
       ${providersHtml}

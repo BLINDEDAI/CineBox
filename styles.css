@@ -1815,6 +1815,15 @@ h2 {
   border-color: rgba(255, 68, 61, 0.55);
 }
 
+/* Acciones del modal más grandes: añadir a lista, eliminar y ver tráiler. */
+.modal-edit-actions .btn-secondary,
+.modal-edit-actions .modal-edit-delete,
+.modal-trailer .btn {
+  min-height: 44px;
+  padding: 11px 20px;
+  font-size: 0.95rem;
+}
+
 /* Modo edición-solo (títulos sin tmdb_id): sin hero/backdrop, solo título +
    sección de edición. El borde superior de .modal-edit-section sobra aquí. */
 .modal-body-editonly .modal-edit-section {
