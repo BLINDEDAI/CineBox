@@ -722,6 +722,10 @@ class Handler(SimpleHTTPRequestHandler):
         if re.match(r"^/u/[a-z0-9_-]{3,30}$", path) or re.match(r"^/l/[0-9a-fA-F-]{36}$", path):
             self.path = "/public.html"
             return super().do_GET()
+        # Páginas estáticas informativas/legales con URL limpia (sin auth).
+        if path in ("/privacy", "/terms", "/about"):
+            self.path = path + ".html"
+            return super().do_GET()
         parts = [p for p in decoded_path.split("/") if p]
         if (decoded_path.lower().endswith(BLOCKED)
                 or any(p.startswith(".") for p in parts)):
