@@ -1858,6 +1858,21 @@ h2 {
   font-size: 0.95rem;
 }
 
+/* Estrellas de valoración y chips de plataforma más grandes en el modal. */
+.modal-edit-section .stars {
+  gap: 5px;
+}
+
+.modal-edit-section .star svg {
+  width: 28px;
+  height: 28px;
+}
+
+.modal-edit-section .platform-chip {
+  padding: 8px 15px;
+  font-size: 0.9rem;
+}
+
 /* ── Tracker de episodios por temporada (series-episode-progress) ────────────
    Selector de temporada (botones/pills) + lista de episodios en su propia
    sección .modal-episodes-section al final del modal. Clases .modal-ep-*; sin
