@@ -1982,12 +1982,20 @@ h2 {
 }
 
 .modal-ep-season-state {
-  font-size: 0.78rem;
+  font-size: 0.85rem;
   color: var(--text-muted);
 }
 
 .modal-ep-season-btn {
-  min-height: 32px;
+  min-height: 44px;
+  padding: 11px 18px;
+  font-size: 0.92rem;
+}
+
+/* Pills de temporada más grandes (a juego con los de estado). */
+.modal-ep-season-pill {
+  padding: 9px 18px;
+  font-size: 0.9rem;
 }
 
 .modal-ep-items {
