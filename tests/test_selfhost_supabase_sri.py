@@ -180,9 +180,17 @@ class IndexHtmlScriptTagTests(unittest.TestCase):
 
 
 class VendorPathServedTests(unittest.TestCase):
-    """AC-1 server-side half — the vendored bundle must exist on disk and must NOT
-    be caught by the BLOCKED extension filter or the dot-segment guard, so the
-    static do_GET fall-through reaches super().do_GET() and serves the file.
+    """AC-1 server-side half — the vendored bundle must exist on disk and must be
+    genuinely SERVED by the static handler.
+
+    Post static-serving-allowlist-hardening, there is no `server.BLOCKED` deny-list
+    any more (removed — subsumed by the allow-list, BR-1 of
+    static-serving-allowlist-hardening-specs.md). The contract is now an allow-list:
+    `vendor/` is an allow-listed directory prefix (`server.STATIC_DIRS`) and the
+    bundle is an existing regular file beneath it, so `send_head()` (the single
+    GET+HEAD choke point, see server.py `_static_allowlisted`) must let it through.
+    These tests assert the behavioural outcome — a real 200 over HTTP — rather than
+    white-boxing the (now-removed) extension-based deny mechanism.
     """
 
     VENDOR_PATH = "vendor/supabase-js/2.108.1/supabase.min.js"
@@ -202,17 +210,10 @@ class VendorPathServedTests(unittest.TestCase):
             "Vendored bundle is empty",
         )
 
-    def test_vendor_path_not_blocked_by_extension(self) -> None:
-        """The vendor .js path must not match any entry in server.BLOCKED."""
-        path = self.VENDOR_PATH
-        for blocked_ext in server.BLOCKED:
-            self.assertFalse(
-                path.lower().endswith(blocked_ext),
-                f"Vendor path {path!r} is blocked by BLOCKED entry {blocked_ext!r}",
-            )
-
     def test_vendor_path_not_blocked_by_dot_segment(self) -> None:
-        """No segment in the vendor path must start with '.' (dot-segment guard)."""
+        """No segment in the vendor path must start with '.' (still a relevant
+        sanity check under the allow-list: a dot-prefixed segment would resolve
+        outside the allow-listed directory prefix)."""
         import urllib.parse
 
         decoded = urllib.parse.unquote(self.VENDOR_PATH)
@@ -224,14 +225,78 @@ class VendorPathServedTests(unittest.TestCase):
             f"Vendor path has dot-prefixed segment(s) that would be blocked: {dot_parts}",
         )
 
-    def test_vendor_url_path_not_blocked_by_extension(self) -> None:
-        """The URL path with leading slash also passes the BLOCKED check."""
-        path = "/" + self.VENDOR_PATH
-        for blocked_ext in server.BLOCKED:
-            self.assertFalse(
-                path.lower().endswith(blocked_ext),
-                f"URL path {path!r} is blocked by BLOCKED entry {blocked_ext!r}",
-            )
+    def test_vendor_path_is_allowlisted_directory_prefix(self) -> None:
+        """`server.BLOCKED` no longer exists (removed, allow-list-era) — this
+        supersedes the old `test_vendor_path_not_blocked_by_extension`. The
+        vendor path's leading segment must be one of the allow-listed directory
+        prefixes (`server.STATIC_DIRS`), which is what makes it servable."""
+        self.assertFalse(
+            hasattr(server, "BLOCKED"),
+            "server.BLOCKED should no longer exist — the allow-list subsumed it",
+        )
+        leading_segment = self.VENDOR_PATH.split("/", 1)[0]
+        self.assertIn(
+            leading_segment,
+            server.STATIC_DIRS,
+            f"Vendor path leading segment {leading_segment!r} is not an "
+            f"allow-listed directory prefix: {server.STATIC_DIRS!r}",
+        )
+
+    def test_vendor_url_path_is_allowlisted_directory_prefix(self) -> None:
+        """The URL path with leading slash resolves to the same allow-listed
+        directory prefix. Supersedes the old
+        `test_vendor_url_path_not_blocked_by_extension`."""
+        url_path = "/" + self.VENDOR_PATH
+        leading_segment = url_path.lstrip("/").split("/", 1)[0]
+        self.assertIn(
+            leading_segment,
+            server.STATIC_DIRS,
+            f"URL path {url_path!r} leading segment is not an allow-listed "
+            f"directory prefix: {server.STATIC_DIRS!r}",
+        )
+
+    def test_vendor_bundle_is_genuinely_served_over_http(self) -> None:
+        """Behavioural proof (not just static analysis of the path string): boot
+        the real server.Handler and assert a live HTTP GET for the vendor bundle
+        returns 200 with a non-empty JS body. This is the allow-list-era
+        replacement for the old extension-deny-list assertions — it proves the
+        asset actually serves, not merely that a removed mechanism wouldn't have
+        blocked it."""
+        import functools
+        import http.server
+        import socket
+        import threading
+        import time
+        import urllib.request
+
+        host = "127.0.0.1"
+        handler = functools.partial(server.Handler, directory=str(BASE_DIR))
+        httpd = http.server.ThreadingHTTPServer((host, 0), handler)
+        port = httpd.server_address[1]
+        thread = threading.Thread(target=httpd.serve_forever, daemon=True)
+        thread.start()
+        try:
+            deadline = time.monotonic() + 10.0
+            while time.monotonic() < deadline:
+                try:
+                    with socket.create_connection((host, port), timeout=0.05):
+                        break
+                except OSError:
+                    time.sleep(0.05)
+            else:
+                self.fail("test server did not start accepting connections")
+
+            with urllib.request.urlopen(
+                f"http://{host}:{port}/{self.VENDOR_PATH}", timeout=10
+            ) as resp:
+                self.assertEqual(resp.status, 200)
+                self.assertIn("javascript", resp.headers.get("Content-Type", ""))
+                body = resp.read()
+                self.assertGreater(len(body), 0)
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+            thread.join(timeout=10.0)
 
 
 # ── SRI self-check: hash in index.html == sha384 of vendored bytes ───────────

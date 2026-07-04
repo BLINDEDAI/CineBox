@@ -36,8 +36,22 @@ import psycopg2.pool
 
 BASE_DIR = Path(__file__).resolve().parent
 HOST, PORT = "0.0.0.0", int(os.environ.get("PORT", 8000))
-BLOCKED    = (".env", ".py", ".pyc")
 MAX_BODY   = 64 * 1024  # 64 KB — evita OOM por Content-Length malicioso
+
+# Allow-list de assets estáticos que la app de navegador referencia realmente.
+# Serving deny-by-default (BR-1): cualquier path que no case aquí → 404. La verja
+# vive en send_head() (único punto de paso de GET+HEAD) y decide pertenencia contra
+# el path normalizado por translate_path y confinado a BASE_DIR (US-040), de modo que
+# variantes `.`/`..`/`%2e`/slash-duplicado no pueden colarse. Un asset nuevo del
+# frontend DEBE añadirse aquí o dará 404 en producción (BR-7). Sustituye a la antigua
+# deny-list de 3 extensiones (subsumida por la allow-list).
+STATIC_FILES = frozenset({
+    "index.html", "public.html", "privacy.html", "terms.html", "about.html",
+    "boot.js", "api.js", "ui.js", "collection.js", "modal.js", "discover.js",
+    "stats.js", "settings.js", "activity.js", "app.js", "public.js",
+    "styles.css", "landing.css", "legal.css",
+})
+STATIC_DIRS = ("assets", "vendor")   # sirve solo archivos regulares existentes debajo
 
 TMDB_IMG  = "https://image.tmdb.org/t/p/w342"
 TMDB_LOGO = "https://image.tmdb.org/t/p/w45"
@@ -685,8 +699,7 @@ class Handler(SimpleHTTPRequestHandler):
 
     @_db_guard
     def do_GET(self):
-        path         = self.path.split("?", 1)[0]
-        decoded_path = urllib.parse.unquote(path)
+        path = self.path.split("?", 1)[0]
         if path == "/health":       return self._json(200, {"ok": True, "status": "up"})
         if path == "/api/config":   return self._json(200, {
             "supabase_url":      supabase_base_url(),
@@ -726,11 +739,69 @@ class Handler(SimpleHTTPRequestHandler):
         if path in ("/privacy", "/terms", "/about"):
             self.path = path + ".html"
             return super().do_GET()
-        parts = [p for p in decoded_path.split("/") if p]
-        if (decoded_path.lower().endswith(BLOCKED)
-                or any(p.startswith(".") for p in parts)):
-            return self._json(404, {"ok": False, "error": "No encontrado"})
+        # Fall-through estático: la allow-list se aplica en send_head() (verja única
+        # de GET+HEAD). Un path no allow-listed → 404 genérico allí, no aquí.
         return super().do_GET()
+
+    # ── Serving estático: allow-list deny-by-default ───────────────────────────
+
+    def _static_allowlisted(self):
+        """Resuelve la petición a un path de archivo confinado a BASE_DIR y decide
+        la pertenencia a la allow-list. Devuelve True si el path servido está
+        permitido, False en caso contrario. La decisión se toma contra el path
+        normalizado por translate_path (que ya resuelve %xx, `.`/`..` y slashes
+        duplicados y no puede escapar de BASE_DIR, US-040), de modo que variantes
+        codificadas o de traversal no cuelan un path no allow-listed por la verja.
+        Los prefijos de directorio (`assets/`, `vendor/`) solo permiten archivos
+        regulares existentes debajo — nunca el directorio en sí ni un subdirectorio
+        (AC-5)."""
+        resolved = Path(self.translate_path(self.path)).resolve()
+        try:
+            rel = resolved.relative_to(BASE_DIR)
+        except ValueError:
+            return False                    # fuera de BASE_DIR — nunca servir
+        parts = rel.parts
+        if not parts:                       # raíz ('/') → shell index.html
+            return True
+        if len(parts) == 1 and parts[0] in STATIC_FILES:
+            return True
+        if parts[0] in STATIC_DIRS and resolved.is_file():
+            return True
+        return False
+
+    def _deny_static(self):
+        """Emite el 404 genérico de denegación estática de forma HEAD-safe: mismo
+        status + Content-Type/Content-Length + cabeceras de seguridad (vía
+        end_headers) que en GET, pero SIN escribir body en HEAD. `send_head()` es el
+        único punto de paso de GET y HEAD; el do_HEAD del stdlib nunca copia body, así
+        que escribir uno en HEAD viola la semántica HEAD (RFC 7231 §4.3.2) y puede
+        corromper el framing en conexiones keep-alive. El 404 de GET conserva su body."""
+        body = json.dumps({"ok": False, "error": "No encontrado"},
+                          ensure_ascii=False).encode("utf-8")
+        self.send_response(404)
+        self.send_header("Content-Type", "application/json; charset=utf-8")
+        self.send_header("Content-Length", str(len(body)))
+        self.end_headers()
+        if self.command != "HEAD":
+            self.wfile.write(body)
+
+    def send_head(self):
+        """Único punto de paso de GET (vía super().do_GET) y HEAD (vía do_HEAD del
+        base): aplica la allow-list aquí para que HEAD no sea un bypass del gate
+        (AC-8). Un path no allow-listed emite el 404 genérico HEAD-safe (con las
+        cabeceras de seguridad vía end_headers) y devuelve None para que no se copie
+        ningún body de archivo."""
+        if not self._static_allowlisted():
+            self._deny_static()
+            return None
+        return super().send_head()
+
+    def list_directory(self, path):
+        """Sin listado de directorios jamás (BR-3/AC-5): defensa en profundidad
+        detrás de la verja de send_head. Cualquier path de directorio → 404 genérico
+        HEAD-safe, nunca un índice navegable del árbol interno."""
+        self._deny_static()
+        return None
 
     def _list_movies(self):
         user_id = self._get_user_id()
