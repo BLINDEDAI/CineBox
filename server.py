@@ -585,6 +585,14 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_header("X-Frame-Options", "DENY")
         self.send_header("X-Content-Type-Options", "nosniff")
         self.send_header("Referrer-Policy", "no-referrer")
+        # HSTS solo sobre HTTPS de cara al cliente (RFC 6797): Render termina el
+        # TLS y reenvia HTTP + X-Forwarded-Proto: https. Sin esa marca (dev/e2e
+        # en http://localhost) no se emite, para no forzar https://localhost.
+        # Mismo parseo de primer salto que _client_ip usa para X-Forwarded-For.
+        xfproto = self.headers.get("X-Forwarded-Proto", "").split(",")[0].strip().lower()
+        if xfproto == "https":
+            self.send_header("Strict-Transport-Security",
+                             "max-age=63072000; includeSubDomains; preload")
         # supabase-js se sirve desde el mismo origen (vendor/) con SRI; no se
         # confia en ningun CDN externo para scripts -> script-src 'self'.
         self.send_header(
@@ -593,6 +601,9 @@ class Handler(SimpleHTTPRequestHandler):
             "script-src 'self'; "
             "img-src 'self' https://image.tmdb.org https://*.supabase.co data: blob:; "
             "connect-src 'self' https://*.supabase.co; "
+            "object-src 'none'; "
+            "base-uri 'self'; "
+            "form-action 'self'; "
             "frame-ancestors 'none'",
         )
         super().end_headers()

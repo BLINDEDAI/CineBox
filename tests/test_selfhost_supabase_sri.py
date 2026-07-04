@@ -13,6 +13,7 @@ in the tester handoff.
 """
 
 import base64
+import email.message
 import hashlib
 import re
 import unittest
@@ -39,10 +40,13 @@ def _emitted_csp() -> str:
     Content-Security-Policy value it emits.
 
     Handler.__new__ skips __init__, so no socket/connection needed.  We inject
-    only the attributes end_headers() touches: send_header (intercepted) and
-    the superclass chain (mocked so super().end_headers() is a no-op).
+    only the attributes end_headers() touches: send_header (intercepted), the
+    request headers (read for the X-Forwarded-Proto HSTS gate; empty here, so no
+    HSTS and the CSP is unaffected) and the superclass chain (mocked so
+    super().end_headers() is a no-op).
     """
     h = server.Handler.__new__(server.Handler)
+    h.headers = email.message.Message()  # no X-Forwarded-Proto -> HSTS gate closed
 
     captured: dict[str, str] = {}
 
