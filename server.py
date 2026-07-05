@@ -12,7 +12,10 @@ Config en .env:
     TMDB_API_KEY=...
     DISCORD_WEBHOOK_URL=...
 """
+import email.utils
+import gzip
 import hashlib
+import io
 import json
 import os
 import re
@@ -52,6 +55,17 @@ STATIC_FILES = frozenset({
     "styles.css", "landing.css", "legal.css",
 })
 STATIC_DIRS = ("assets", "vendor")   # sirve solo archivos regulares existentes debajo
+
+# Tipos de contenido de texto elegibles para gzip (ADR-020, BR-2). Los binarios ya
+# comprimidos (image/png|jpeg|webp) quedan fuera a propósito (BR-3): recomprimir gasta
+# CPU sin ganancia. `.js` puede resolverse como application/javascript (Python < 3.11)
+# o text/javascript (>= 3.11); ambos deben entrar o el mayor asset de texto viaja sin
+# comprimir.
+GZIP_TYPES = frozenset({
+    "text/html", "text/css", "application/javascript", "text/javascript",
+    "application/json", "image/svg+xml",
+})
+GZIP_MIN_SIZE = 1024   # cuerpos < 1 KB no se comprimen: la cabecera gzip los engordaría
 
 TMDB_IMG  = "https://image.tmdb.org/t/p/w342"
 TMDB_LOGO = "https://image.tmdb.org/t/p/w45"
@@ -608,11 +622,64 @@ class Handler(SimpleHTTPRequestHandler):
         )
         super().end_headers()
 
+    # ── Compresión gzip + Cache-Control por clase (ADR-020) ────────────────────
+
+    def _gzip_eligible(self, ctype):
+        """True si el tipo de contenido es texto elegible para gzip (BR-2/BR-3).
+        Descarta el sufijo `; charset=…` antes de comparar. png/jpeg/webp (y todo
+        lo que no esté en GZIP_TYPES) devuelven False: nunca se recomprimen."""
+        base = (ctype or "").split(";", 1)[0].strip().lower()
+        return base in GZIP_TYPES
+
+    def _client_accepts_gzip(self):
+        """True si el header Accept-Encoding ofrece `gzip` sin desactivarlo con
+        `q=0` (BR-1). `gzip;q=0` significa rechazo explícito → no comprimir."""
+        for token in self.headers.get("Accept-Encoding", "").split(","):
+            parts = token.split(";")
+            if parts[0].strip().lower() != "gzip":
+                continue
+            for p in parts[1:]:
+                p = p.strip().lower()
+                if p.startswith("q="):
+                    try:
+                        return float(p[2:]) > 0
+                    except ValueError:
+                        return False
+            return True
+        return False
+
+    def _maybe_gzip(self, body, ctype):
+        """Comprime `body` solo si el cliente ofrece gzip Y el tipo es elegible Y
+        supera el umbral mínimo. Devuelve (bytes, comprimido?). `mtime=0` hace la
+        salida determinista (BR-4). El llamante fija Content-Encoding/Content-Length
+        sobre los bytes DEVUELTOS solo cuando el segundo elemento es True."""
+        if (self._client_accepts_gzip() and self._gzip_eligible(ctype)
+                and len(body) >= GZIP_MIN_SIZE):
+            return gzip.compress(body, mtime=0), True
+        return body, False
+
+    def _cache_control_for(self, ctype):
+        """Cache-Control por clase para respuestas estáticas: no-cache para HTML
+        (revalida cada uso, un deploy se ve al instante, BR-6); resto de estáticos
+        `public, max-age=300, must-revalidate` (BR-5). Nunca `immutable` (los nombres
+        de archivo no llevan hash de contenido)."""
+        base = (ctype or "").split(";", 1)[0].strip().lower()
+        if base == "text/html":
+            return "no-cache"
+        return "public, max-age=300, must-revalidate"
+
     def _json(self, status, payload, extra_headers=None):
         body = json.dumps(payload, ensure_ascii=False, default=_json_default).encode("utf-8")
+        body, gz = self._maybe_gzip(body, "application/json")
         self.send_response(status)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        # Toda respuesta JSON/dinámica es no-store (BR-7/AS-028): una caché compartida
+        # jamás debe guardar una respuesta autenticada y servirla a otro usuario.
+        self.send_header("Cache-Control", "no-store")
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
+            self.send_header("Vary", "Accept-Encoding")
         for k, v in (extra_headers or {}).items():
             self.send_header(k, str(v))
         self.end_headers()
@@ -792,6 +859,7 @@ class Handler(SimpleHTTPRequestHandler):
         self.send_response(404)
         self.send_header("Content-Type", "application/json; charset=utf-8")
         self.send_header("Content-Length", str(len(body)))
+        self.send_header("Cache-Control", "no-store")   # un 4xx nunca se cachea (AS-028)
         self.end_headers()
         if self.command != "HEAD":
             self.wfile.write(body)
@@ -805,7 +873,64 @@ class Handler(SimpleHTTPRequestHandler):
         if not self._static_allowlisted():
             self._deny_static()
             return None
-        return super().send_head()
+        return self._serve_static()
+
+    def _serve_static(self):
+        """Sirve un archivo allow-listed con compresión gzip condicional y
+        Cache-Control por clase (ADR-020). Reemplaza la cola `super().send_head()`
+        DESPUÉS de que la verja allow-list de send_head haya pasado; la verja NO
+        cambia (BR-8). Conserva la revalidación condicional If-Modified-Since → 304
+        del stdlib (AC-12) y la paridad HEAD/GET (AC-11): HEAD recorre el MISMO
+        camino de cabeceras —incluida la compresión para obtener el Content-Length
+        COMPRIMIDO— y anuncia el mismo Content-Encoding + Content-Length + Cache-Control
+        que el GET equivalente, sin body (do_HEAD del base descarta el objeto devuelto).
+        Nunca acorta a la longitud sin comprimir en HEAD (ese es el bug de framing)."""
+        path = self.translate_path(self.path)
+        if os.path.isdir(path):                        # solo la raíz '/' llega aquí:
+            path = os.path.join(path, "index.html")    # la allow-list deniega otros dirs
+        try:
+            f = open(path, "rb")
+        except OSError:
+            self._deny_static()
+            return None
+        with f:
+            fs    = os.fstat(f.fileno())
+            ctype = self.guess_type(path)
+            # Revalidación condicional (AC-12): mismo chequeo que SimpleHTTPRequestHandler.
+            # Un 304 no lleva body ni Content-Encoding, pero SÍ el Cache-Control de clase y
+            # Vary, para no perder la política en el (frecuente) camino condicional.
+            if ("If-Modified-Since" in self.headers
+                    and "If-None-Match" not in self.headers):
+                try:
+                    ims = email.utils.parsedate_to_datetime(self.headers["If-Modified-Since"])
+                except (TypeError, IndexError, OverflowError, ValueError):
+                    ims = None
+                if ims is not None:
+                    if ims.tzinfo is None:
+                        ims = ims.replace(tzinfo=timezone.utc)
+                    if ims.tzinfo is timezone.utc:
+                        last_modif = datetime.fromtimestamp(fs.st_mtime, timezone.utc)
+                        last_modif = last_modif.replace(microsecond=0)
+                        if last_modif <= ims:
+                            self.send_response(304)
+                            self.send_header("Cache-Control", self._cache_control_for(ctype))
+                            self.send_header("Vary", "Accept-Encoding")
+                            self.end_headers()
+                            return None
+            raw = f.read()
+        body, gz = self._maybe_gzip(raw, ctype)
+        self.send_response(200)
+        self.send_header("Content-Type", ctype)
+        self.send_header("Content-Length", str(len(body)))
+        self.send_header("Last-Modified", self.date_time_string(fs.st_mtime))
+        self.send_header("Cache-Control", self._cache_control_for(ctype))
+        # Vary en TODA respuesta estática —comprimida y sin comprimir— para que una
+        # caché compartida separe las variantes gzip/identity (AC-13).
+        self.send_header("Vary", "Accept-Encoding")
+        if gz:
+            self.send_header("Content-Encoding", "gzip")
+        self.end_headers()
+        return io.BytesIO(body)
 
     def list_directory(self, path):
         """Sin listado de directorios jamás (BR-3/AC-5): defensa en profundidad
