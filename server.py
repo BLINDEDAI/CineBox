@@ -53,6 +53,7 @@ STATIC_FILES = frozenset({
     "boot.js", "api.js", "ui.js", "collection.js", "modal.js", "discover.js",
     "stats.js", "settings.js", "activity.js", "app.js", "public.js",
     "styles.css", "landing.css", "legal.css",
+    "robots.txt", "sitemap.xml",
 })
 STATIC_DIRS = ("assets", "vendor")   # sirve solo archivos regulares existentes debajo
 
