@@ -17,3 +17,6 @@ test-results/
 
 # Configuración local de Claude Code (hooks, permisos): no es parte del repo público.
 .claude/
+
+# Local DB backups (pg_dump) — never commit (full user data, large)
+backups/
