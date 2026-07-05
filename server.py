@@ -19,8 +19,10 @@ import io
 import json
 import os
 import re
+import sys
 import threading
 import time
+import traceback
 import urllib.error
 import urllib.parse
 import urllib.request
@@ -574,6 +576,105 @@ def notify_discord(title, year, status, media_type, poster_url="", user_id=None)
         embed["image"] = {"url": poster_url}
     payload = json.dumps({"embeds": [embed]}).encode("utf-8")
     threading.Thread(target=_send_discord, args=(url, payload), daemon=True).start()
+
+
+# ── Alertas de error (Discord) ────────────────────────────────────────────────
+# Manda una alerta REDACTADA a DISCORD_WEBHOOK_ERRORS cuando una excepción NO
+# controlada escapa del handler (bug real; los errores esperados los gestiona cada
+# endpoint y nunca llegan aquí). Opt-in: sin la env var no se emite nada. El cliente
+# NUNCA recibe estos detalles — la traza solo va a tu canal privado de Discord.
+_SECRET_ENV_KEYS = (
+    "SUPABASE_SERVICE_KEY", "SUPABASE_ANON_KEY", "DATABASE_URL", "TMDB_API_KEY",
+    "DISCORD_WEBHOOK_ERRORS", "DISCORD_WEBHOOK_PENDIENTE", "DISCORD_WEBHOOK_VISTA",
+    "DISCORD_WEBHOOK_URL", "DB_PASSWORD",
+)
+
+
+def _redact(text):
+    """Enmascara secretos antes de mandar una traza a Discord: valores de env
+    conocidos, JWTs, pares clave-secreto y credenciales en URLs de Postgres."""
+    if not text:
+        return text
+    for k in _SECRET_ENV_KEYS:
+        v = os.environ.get(k, "").strip()
+        if v and len(v) >= 8:
+            text = text.replace(v, "[REDACTED]")
+    # Claves Supabase con prefijo (formato nuevo): sb_secret_… / sb_publishable_…
+    text = re.sub(r"sb_(?:secret|publishable)_[A-Za-z0-9]+", "[REDACTED_SUPABASE_KEY]", text)
+    # JWTs (header.payload.signature): el prefijo eyJ ya es señal fuerte de JWT.
+    text = re.sub(r"eyJ[A-Za-z0-9_-]+(?:\.[A-Za-z0-9_-]+){2}", "[REDACTED_JWT]", text)
+    # Bearer <token> separado por espacio (token opaco no-JWT).
+    text = re.sub(r"(?i)\bbearer\s+\S+", "Bearer [REDACTED]", text)
+    # Cabecera Authorization COMPLETA (Basic/Bearer/Digest…) hasta fin de línea: el
+    # valor entero es el secreto; un \S+ dejaría escapar 'Basic <base64>' (user:pass).
+    text = re.sub(r"(?i)(authorization)\s*[:=]\s*\S[^\r\n]*", r"\1: [REDACTED]", text)
+    # clave sensible = valor / clave: valor.
+    text = re.sub(r"(?i)(token|password|passwd|secret|api[_-]?key)"
+                  r"(['\"]?\s*[:=]\s*['\"]?)\S+", r"\1\2[REDACTED]", text)
+    # credenciales en URLs de Postgres.
+    text = re.sub(r"(postgres(?:ql)?://[^:/\s]+:)[^@\s]+(@)", r"\1[REDACTED]\2", text)
+    return text
+
+
+# Dedupe/cooldown: si un endpoint entra en bucle de error, la MISMA traza no se
+# re-alerta antes de _ALERT_COOLDOWN — evita inundar Discord y una tormenta de
+# hilos. La firma es la cola YA redactada (sin secretos en las claves del dict).
+_ALERT_LOCK = threading.Lock()
+_ALERT_LAST = {}            # firma -> time.monotonic() del último envío
+_ALERT_COOLDOWN = 300.0     # segundos
+
+
+def _should_alert(redacted_tb):
+    sig = redacted_tb[-300:]
+    now = time.monotonic()
+    with _ALERT_LOCK:
+        if now - _ALERT_LAST.get(sig, 0.0) < _ALERT_COOLDOWN:
+            return False
+        _ALERT_LAST[sig] = now
+        if len(_ALERT_LAST) > 256:      # poda para acotar memoria
+            for k in [k for k, t in _ALERT_LAST.items() if now - t >= _ALERT_COOLDOWN]:
+                _ALERT_LAST.pop(k, None)
+        return True
+
+
+def notify_error(tb_text):
+    url = os.environ.get("DISCORD_WEBHOOK_ERRORS", "").strip()
+    if not url:
+        return
+    tb = _redact(tb_text or "").strip()
+    if not _should_alert(tb):    # misma traza en bucle -> una sola alerta por ventana
+        return
+    if len(tb) > 1800:           # la COLA de la traza (la línea de la excepción) es lo útil
+        tb = "…\n" + tb[-1800:]
+    embed = {
+        "title":       "🚨 Error no controlado en Cinephora",
+        "description": f"```\n{tb}\n```",
+        "color":       0xE03131,
+    }
+    payload = json.dumps({"embeds": [embed]}).encode("utf-8")
+    threading.Thread(target=_send_discord, args=(url, payload), daemon=True).start()
+
+
+# Excepciones benignas: el cliente cerró la conexión. No son bugs → no se alerta.
+# TimeoutError se EXCLUYE a propósito: un timeout de urllib contra TMDB/Supabase
+# también es TimeoutError y sí queremos enterarnos de una caída/lentitud upstream.
+_BENIGN_CONN_ERRORS = (BrokenPipeError, ConnectionResetError, ConnectionAbortedError)
+
+
+class ErrorNotifyingServer(ThreadingHTTPServer):
+    """ThreadingHTTPServer que, ante una excepción NO controlada del handler,
+    además de loguear a stderr (Render) manda una alerta redactada a Discord.
+    Ignora las desconexiones de cliente para no generar ruido."""
+
+    def handle_error(self, request, client_address):
+        exc = sys.exc_info()[1]
+        super().handle_error(request, client_address)   # conserva el log a stderr
+        if isinstance(exc, _BENIGN_CONN_ERRORS):
+            return
+        try:
+            notify_error(traceback.format_exc())
+        except Exception:
+            pass
 
 
 # ── Handler HTTP ──────────────────────────────────────────────────────────────
@@ -3031,12 +3132,14 @@ def main():
     if base:
         _jwks_client = PyJWKClient(f"{base}/auth/v1/.well-known/jwks.json")
     handler = partial(Handler, directory=str(BASE_DIR))
-    with ThreadingHTTPServer((HOST, PORT), handler) as httpd:
+    with ErrorNotifyingServer((HOST, PORT), handler) as httpd:
         tmdb = "sí" if os.environ.get("TMDB_API_KEY") else "no (modo manual)"
         hook = "sí" if (os.environ.get("DISCORD_WEBHOOK_PENDIENTE")
                         or os.environ.get("DISCORD_WEBHOOK_VISTA")
                         or os.environ.get("DISCORD_WEBHOOK_URL")) else "no"
-        print(f"Cineteca en http://{HOST}:{PORT}  ·  TMDB: {tmdb}  ·  Discord: {hook}  (Ctrl+C para parar)")
+        errhook = "sí" if os.environ.get("DISCORD_WEBHOOK_ERRORS") else "no"
+        print(f"Cineteca en http://{HOST}:{PORT}  ·  TMDB: {tmdb}  ·  Discord: {hook}  ·  "
+              f"Alertas error: {errhook}  (Ctrl+C para parar)")
         try:
             httpd.serve_forever()
         except KeyboardInterrupt:
