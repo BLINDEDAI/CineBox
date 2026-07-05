@@ -722,7 +722,35 @@ class Handler(SimpleHTTPRequestHandler):
             "form-action 'self'; "
             "frame-ancestors 'none'",
         )
+        # Permissions-Policy: deniega (allow-list vacia `()`) toda capacidad
+        # potente que la app NO usa. Incondicional como la CSP (no gateado por
+        # transporte): valido y seguro en http y https. La app no invoca ninguna:
+        # el avatar es <input type=file> (no camara/display-capture) y los
+        # trailers abren en pestana externa (no reproductor embebido autoplay/
+        # fullscreen/encrypted-media). Reduce el radio de impacto de cualquier
+        # inyeccion o inclusion de terceros futura (ADR-022, BR-1/BR-1a).
+        self.send_header(
+            "Permissions-Policy",
+            "accelerometer=(), autoplay=(), camera=(), display-capture=(), "
+            "encrypted-media=(), fullscreen=(), geolocation=(), gyroscope=(), "
+            "magnetometer=(), microphone=(), midi=(), payment=(), usb=()",
+        )
+        # CORP same-origin: impide que otros sitios incrusten nuestras respuestas
+        # como subrecurso cross-origin `no-cors` (superficie de lectura Spectre).
+        # No rompe los subrecursos same-origin propios (JS/CSS/imagenes/bundle
+        # supabase). La imagen OG (assets/og-cinephora.png) se sirve same-origin y
+        # los crawlers la piden como recurso top-level y la re-hostean en su CDN,
+        # asi que same-origin no afecta la tarjeta de preview (ADR-022, BR-2/BR-2a).
+        self.send_header("Cross-Origin-Resource-Policy", "same-origin")
         super().end_headers()
+
+    def version_string(self):
+        # Oculta la version del stack en el header Server (ADR-022, BR-3): la base
+        # stdlib devuelve "SimpleHTTP/0.6 Python/3.14.3", regalando servidor+version
+        # exactos para cruzar con CVEs. Un token generico sin "Python"/"SimpleHTTP"
+        # elimina esa divulgacion en su origen (Render lo re-emite como
+        # x-render-origin-server). send_response() lo llama en cada respuesta.
+        return "Cinephora"
 
     # ── Compresión gzip + Cache-Control por clase (ADR-020) ────────────────────
 
