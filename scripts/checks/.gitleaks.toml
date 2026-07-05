@@ -17,3 +17,9 @@ paths = [
   '''(^|/)\.venv/''',
   '''(^|/)\.env$''',
 ]
+
+[[allowlists]]
+description = "Redaction test fixtures: tests/test_error_alerts.py deliberately embeds fake secret-shaped strings (JWTs, sb_secret_/sb_publishable_ keys, Basic-auth base64, KEY=value pairs) to PROVE _redact() masks them before an error alert leaves the process. No real secrets live here."
+paths = [
+  '''(^|/)tests/test_error_alerts\.py$''',
+]
