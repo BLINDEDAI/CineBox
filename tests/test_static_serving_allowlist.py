@@ -22,11 +22,13 @@ import http.client
 import http.server
 import re
 import socket
+import struct
 import threading
 import time
 import unittest
 import urllib.error
 import urllib.request
+import xml.etree.ElementTree as ET
 from pathlib import Path
 
 import server
@@ -420,6 +422,326 @@ class DriftGuardTests(StaticServerTestCase):
         # Sanity: make sure the parser actually found references to check —
         # an empty run would make this test vacuously green.
         self.assertGreater(checked, 5, "drift guard found suspiciously few local refs to check")
+
+
+# ── AC-1: /robots.txt ─────────────────────────────────────────────────────────
+
+
+class RobotsTxtTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-1: robots.txt allows crawling and names
+    the sitemap on the canonical www host."""
+
+    def test_robots_txt_serves_200_text_allows_crawling_and_names_sitemap(self):
+        status, headers, body = self._get("/robots.txt")
+        self.assertEqual(status, 200)
+        content_type = headers.get("Content-Type", "")
+        self.assertIn("text/plain", content_type, f"unexpected content type {content_type!r}")
+        text = body.decode("utf-8")
+        self.assertIn("User-agent", text)
+        self.assertIn("Allow: /", text)
+        self.assertIn("Sitemap: https://www.cinephora.com/sitemap.xml", text)
+
+
+# ── AC-2: /sitemap.xml ────────────────────────────────────────────────────────
+
+
+class SitemapXmlTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-2: sitemap.xml is a valid urlset listing
+    exactly the four canonical www URLs, excluding the app/public-profile surface."""
+
+    EXPECTED_LOCS = {
+        "https://www.cinephora.com/",
+        "https://www.cinephora.com/about",
+        "https://www.cinephora.com/privacy",
+        "https://www.cinephora.com/terms",
+    }
+
+    def test_sitemap_xml_serves_200_xml_and_is_parseable(self):
+        status, headers, body = self._get("/sitemap.xml")
+        self.assertEqual(status, 200)
+        content_type = headers.get("Content-Type", "")
+        self.assertTrue(
+            "xml" in content_type,
+            f"sitemap.xml served content-type {content_type!r}, expected an xml type",
+        )
+        # Parseable per AC-2 -- a malformed sitemap must fail this test, not the assertions below.
+        root = ET.fromstring(body)
+        self.assertTrue(root.tag.endswith("urlset"), f"unexpected root tag {root.tag!r}")
+
+    def test_sitemap_xml_lists_exactly_the_four_www_urls(self):
+        _, _, body = self._get("/sitemap.xml")
+        root = ET.fromstring(body)
+        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        locs = {loc.text.strip() for loc in root.findall(".//sm:loc", ns)}
+        self.assertEqual(locs, self.EXPECTED_LOCS)
+
+    def test_sitemap_xml_excludes_app_and_public_profile_routes(self):
+        # Check the *parsed* <loc> path components, not a raw substring search --
+        # the sitemap schema's own closing tags (</url>, </loc>) contain "/u" and
+        # "/l" as bare substrings and would false-positive a naive text search.
+        _, _, body = self._get("/sitemap.xml")
+        root = ET.fromstring(body)
+        ns = {"sm": "http://www.sitemaps.org/schemas/sitemap/0.9"}
+        locs = [loc.text.strip() for loc in root.findall(".//sm:loc", ns)]
+        for loc in locs:
+            path = loc[len("https://www.cinephora.com") :]
+            with self.subTest(loc=loc):
+                self.assertFalse(path.startswith("/u"), f"{loc} looks like a public-profile route")
+                self.assertFalse(path.startswith("/l"), f"{loc} looks like a shared-list route")
+                self.assertNotIn("public.html", loc)
+
+
+# ── AC-3: per-page description + self-canonical on the four static pages ─────
+
+
+class StaticPagesDescriptionAndCanonicalTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-3: each of the four indexable static
+    pages carries a unique <meta name="description"> and a self-<link
+    rel="canonical"> to its own clean-route www URL."""
+
+    PAGE_TO_CANONICAL = {
+        "index.html": "https://www.cinephora.com/",
+        "about.html": "https://www.cinephora.com/about",
+        "privacy.html": "https://www.cinephora.com/privacy",
+        "terms.html": "https://www.cinephora.com/terms",
+    }
+
+    @staticmethod
+    def _description(html):
+        m = re.search(r'<meta\s+name="description"\s+content="([^"]*)"', html)
+        return m.group(1) if m else None
+
+    @staticmethod
+    def _canonical(html):
+        m = re.search(r'<link\s+rel="canonical"\s+href="([^"]*)"', html)
+        return m.group(1) if m else None
+
+    def test_each_static_page_has_a_description_and_self_canonical(self):
+        for page, canonical_url in self.PAGE_TO_CANONICAL.items():
+            with self.subTest(page=page):
+                _, _, body = self._get("/" + page)
+                html = body.decode("utf-8")
+                description = self._description(html)
+                self.assertIsNotNone(description, f"{page} is missing <meta name=\"description\">")
+                self.assertGreater(len(description), 0, f"{page} has an empty description")
+                self.assertEqual(
+                    self._canonical(html), canonical_url,
+                    f"{page} canonical does not point to its own clean-route www URL",
+                )
+
+    def test_descriptions_are_unique_across_the_four_pages(self):
+        descriptions = []
+        for page in self.PAGE_TO_CANONICAL:
+            _, _, body = self._get("/" + page)
+            descriptions.append(self._description(body.decode("utf-8")))
+        self.assertEqual(
+            len(descriptions), len(set(descriptions)),
+            f"expected 4 unique descriptions, got {descriptions}",
+        )
+
+
+# ── AC-4 / AC-5: Open Graph + Twitter tag sets on all five public pages ──────
+
+
+class OpenGraphAndTwitterTagsTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-4/AC-5: all five public pages expose the
+    full Open Graph set and the Twitter summary_large_image set; the four static
+    pages additionally carry a per-page og:url."""
+
+    STATIC_PAGES = ["index.html", "about.html", "privacy.html", "terms.html"]
+    ALL_PAGES = STATIC_PAGES + ["public.html"]
+    OG_IMAGE_URL = "https://www.cinephora.com/assets/og-cinephora.png"
+
+    @staticmethod
+    def _meta_property(html, prop):
+        m = re.search(
+            rf'<meta\s+property="{re.escape(prop)}"\s+content="([^"]*)"', html,
+        )
+        return m.group(1) if m else None
+
+    @staticmethod
+    def _meta_name(html, name):
+        m = re.search(rf'<meta\s+name="{re.escape(name)}"\s+content="([^"]*)"', html)
+        return m.group(1) if m else None
+
+    def test_all_five_pages_expose_the_full_og_set(self):
+        for page in self.ALL_PAGES:
+            with self.subTest(page=page):
+                _, _, body = self._get("/" + page)
+                html = body.decode("utf-8")
+                self.assertEqual(self._meta_property(html, "og:type"), "website", page)
+                self.assertEqual(self._meta_property(html, "og:site_name"), "Cinephora", page)
+                self.assertTrue(self._meta_property(html, "og:title"), f"{page} missing og:title")
+                self.assertTrue(
+                    self._meta_property(html, "og:description"), f"{page} missing og:description",
+                )
+                self.assertEqual(self._meta_property(html, "og:image"), self.OG_IMAGE_URL, page)
+                self.assertEqual(self._meta_property(html, "og:image:width"), "1200", page)
+                self.assertEqual(self._meta_property(html, "og:image:height"), "630", page)
+                self.assertEqual(self._meta_property(html, "og:locale"), "es_ES", page)
+
+    def test_the_four_static_pages_additionally_carry_a_per_page_og_url(self):
+        for page in self.STATIC_PAGES:
+            with self.subTest(page=page):
+                _, _, body = self._get("/" + page)
+                html = body.decode("utf-8")
+                og_url = self._meta_property(html, "og:url")
+                self.assertIsNotNone(og_url, f"{page} is missing og:url")
+                self.assertTrue(og_url.startswith("https://www.cinephora.com/"), og_url)
+
+    def test_all_five_pages_expose_the_twitter_summary_large_image_set(self):
+        for page in self.ALL_PAGES:
+            with self.subTest(page=page):
+                _, _, body = self._get("/" + page)
+                html = body.decode("utf-8")
+                self.assertEqual(
+                    self._meta_name(html, "twitter:card"), "summary_large_image", page,
+                )
+                self.assertTrue(self._meta_name(html, "twitter:title"), f"{page} missing twitter:title")
+                self.assertTrue(
+                    self._meta_name(html, "twitter:description"),
+                    f"{page} missing twitter:description",
+                )
+                self.assertEqual(
+                    self._meta_name(html, "twitter:image"), self.OG_IMAGE_URL, page,
+                )
+
+
+# ── AC-6: branded OG image serves 200 image/png at 1200x630 ─────────────────
+
+
+class OgImageTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-6: /assets/og-cinephora.png serves 200
+    image/png at exactly 1200x630, read from the PNG IHDR chunk in the served
+    bytes (no image library)."""
+
+    @staticmethod
+    def _png_dimensions(body):
+        # PNG signature (8 bytes) + IHDR chunk: length(4) + "IHDR"(4) + width(4) + height(4).
+        # Width = bytes 16..20, height = bytes 20..24 (big-endian), per the PNG spec.
+        width = struct.unpack(">I", body[16:20])[0]
+        height = struct.unpack(">I", body[20:24])[0]
+        return width, height
+
+    def test_og_image_serves_200_png_at_1200x630(self):
+        status, headers, body = self._get("/assets/og-cinephora.png")
+        self.assertEqual(status, 200)
+        self.assertIn("image/png", headers.get("Content-Type", ""))
+        self.assertGreater(len(body), 24, "PNG body too short to contain an IHDR chunk")
+        self.assertEqual(body[:8], b"\x89PNG\r\n\x1a\n", "not a valid PNG signature")
+        width, height = self._png_dimensions(body)
+        self.assertEqual((width, height), (1200, 630))
+
+
+# ── AC-9: public.html is noindex with no canonical ───────────────────────────
+
+
+class PublicHtmlNoindexTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-9: public.html <head> carries
+    <meta name="robots" content="noindex"> and no <link rel="canonical">, since
+    it is one static shell served for every /u/<username> and /l/<share_token>."""
+
+    def test_public_html_has_noindex_and_no_canonical(self):
+        _, _, body = self._get("/public.html")
+        html = body.decode("utf-8")
+        self.assertRegex(html, r'<meta\s+name="robots"\s+content="noindex">')
+        self.assertNotRegex(html, r'<link\s+rel="canonical"')
+
+    def test_public_profile_route_also_has_noindex_and_no_canonical(self):
+        # /u/<username> serves public.html verbatim (ExistingRoutesUnchangedTests
+        # already proves byte-equality) -- re-assert on the actual routed response
+        # so this AC does not depend on that other test class staying green.
+        _, _, body = self._get("/u/some-test-user")
+        html = body.decode("utf-8")
+        self.assertRegex(html, r'<meta\s+name="robots"\s+content="noindex">')
+        self.assertNotRegex(html, r'<link\s+rel="canonical"')
+
+
+# ── AC-7: perimeter regression — only the two new files newly serve ─────────
+
+
+class NewFilesOnlyPerimeterRegressionTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-7: the previously-hardened internal
+    paths still 404; STATIC_FILES gained exactly the two new crawler filenames
+    and nothing else."""
+
+    EXPECTED_NEW_STATIC_FILES = {"robots.txt", "sitemap.xml"}
+
+    def test_static_files_allowlist_gained_only_the_two_new_filenames(self):
+        # Mirrors the drift-guard's own sanity-check style: assert the frozenset's
+        # membership directly, so a broader (accidental) allow-list widening fails
+        # this test even if every individual URL still 404s or 200s as expected.
+        pre_existing = {
+            "index.html", "public.html", "privacy.html", "terms.html", "about.html",
+            "boot.js", "api.js", "ui.js", "collection.js", "modal.js", "discover.js",
+            "stats.js", "settings.js", "activity.js", "app.js", "public.js",
+            "styles.css", "landing.css", "legal.css",
+        }
+        added = server.STATIC_FILES - pre_existing
+        self.assertEqual(added, self.EXPECTED_NEW_STATIC_FILES)
+
+    def test_internal_paths_still_404_after_the_allowlist_change(self):
+        paths = [
+            "/migrations/001_public_profiles_and_lists.sql",
+            "/CLAUDE.md",
+            "/vendor/",
+        ]
+        for path in paths:
+            with self.subTest(path=path):
+                status, _, _ = self._get(path)
+                self.assertEqual(status, 404, f"{path} did not 404")
+
+
+# ── AC-8: CSP/HSTS unchanged + no inline script/style on the changed pages ──
+
+
+class SecurityHeadersUnchangedTests(StaticServerTestCase):
+    """seo-and-open-graph-public-pages AC-8: the CSP header on a public page and
+    on the two new crawler files is byte-identical to the existing perimeter
+    CSP; HSTS is emitted under X-Forwarded-Proto: https; no inline <script> or
+    <style> appears in any changed page."""
+
+    EXPECTED_CSP = (
+        "default-src 'self'; "
+        "script-src 'self'; "
+        "img-src 'self' https://image.tmdb.org https://*.supabase.co data: blob:; "
+        "connect-src 'self' https://*.supabase.co; "
+        "object-src 'none'; "
+        "base-uri 'self'; "
+        "form-action 'self'; "
+        "frame-ancestors 'none'"
+    )
+
+    def test_csp_byte_identical_on_public_page_and_the_two_new_files(self):
+        for path in ("/", "/robots.txt", "/sitemap.xml"):
+            with self.subTest(path=path):
+                _, headers, _ = self._get(path)
+                self.assertEqual(headers.get("Content-Security-Policy"), self.EXPECTED_CSP, path)
+
+    def test_hsts_emitted_when_forwarded_proto_is_https(self):
+        req = urllib.request.Request(self.base_url + "/", method="GET")
+        req.add_header("X-Forwarded-Proto", "https")
+        with urllib.request.urlopen(req, timeout=10) as resp:
+            hsts = resp.headers.get("Strict-Transport-Security")
+        self.assertIsNotNone(hsts, "HSTS header not emitted under X-Forwarded-Proto: https")
+        self.assertIn("max-age=63072000", hsts)
+
+    def test_hsts_absent_without_forwarded_proto_header(self):
+        _, headers, _ = self._get("/")
+        self.assertIsNone(headers.get("Strict-Transport-Security"))
+
+    def test_changed_pages_have_no_inline_script_or_style(self):
+        for page in ("index.html", "about.html", "privacy.html", "terms.html", "public.html"):
+            with self.subTest(page=page):
+                _, _, body = self._get("/" + page)
+                html = body.decode("utf-8")
+                # An inline <script> is one with no src= attribute (a src="..." script
+                # is an external reference, not inline code); likewise <style> blocks
+                # (as opposed to <link rel="stylesheet">) would be inline CSS.
+                for m in re.finditer(r"<script\b([^>]*)>", html, re.IGNORECASE):
+                    attrs = m.group(1)
+                    self.assertIn("src=", attrs, f"{page} has an inline <script> tag: {m.group(0)!r}")
+                self.assertNotIn("<style", html.lower(), f"{page} has an inline <style> block")
 
 
 if __name__ == "__main__":
