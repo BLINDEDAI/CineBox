@@ -5,6 +5,10 @@ let _supabase = null;
 let _currentUser = null;
 let _currentSession = null; // cacheada por onAuthStateChange; evita llamar a getSession() en cada api()
 let _authMode = "login"; // "login" | "register"
+// Marca que la sesión en mano es una sesión de RECUPERACIÓN (PASSWORD_RECOVERY):
+// suprime el aterrizaje autenticado normal para mostrar el formulario de nueva
+// contraseña. Literal — no referencia ningún global, seguro en tiempo de carga (PS-003).
+let _passwordRecovery = false;
 
 // ── Username validation (mirror of server-side _normalize_username) ──────────
 // Client-side mirror of server.py's _USERNAME_RE + RESERVED_USERNAMES. Advisory
@@ -54,6 +58,20 @@ function _hideLoginScreen() {
   if (s) s.hidden = true;
 }
 
+// Pantalla de nueva contraseña (deep-link de recuperación). Sibling de #login-screen
+// (como #username-gate). Al revelarla se quita `cinephora-authed` de <html> igual que
+// _showLanding, para que la puerta pre-paint no deje asomando el shell del app.
+function _showPasswordRecovery() {
+  const s = document.getElementById("password-recovery-screen");
+  document.documentElement.classList.remove("cinephora-authed");
+  if (s) s.hidden = false;
+}
+
+function _hidePasswordRecovery() {
+  const s = document.getElementById("password-recovery-screen");
+  if (s) s.hidden = true;
+}
+
 // La landing (#welcome-screen) es ahora una landing de marketing que se muestra
 // SIEMPRE que no hay sesión (no solo la primera visita). No se elimina del DOM: se
 // oculta/muestra para que reaparezca tras un logout. `cinephora-authed` (clase en
@@ -79,6 +97,9 @@ function _setLoginMode(mode) {
   const successEl = document.getElementById("login-success");
   const usernameField = document.getElementById("login-username-field");
   const usernameHint  = document.getElementById("login-username-hint");
+  const forgotLink = document.getElementById("login-forgot-link");
+  const resetForm  = document.getElementById("password-reset-form");
+  const loginForm  = document.getElementById("login-form");
   if (mode === "register") {
     heading.textContent = "Crear cuenta";
     submit.textContent  = "Registrarse";
@@ -91,6 +112,13 @@ function _setLoginMode(mode) {
     if (usernameField) usernameField.hidden = true;
   }
   if (usernameHint) usernameHint.textContent = "";
+  // Affordance "¿Olvidaste tu contraseña?": solo en modo login. Cambiar de modo
+  // también colapsa cualquier reveal abierto del formulario de reset, devolviendo
+  // el formulario de inicio de sesión (esto es lo que "revierte" _setLoginMode).
+  if (resetForm) resetForm.hidden = true;
+  if (loginForm) loginForm.hidden = false;
+  if (toggle) toggle.hidden = false;
+  if (forgotLink) forgotLink.hidden = (mode === "register");
   errorEl.hidden   = true;
   successEl.hidden = true;
 }
@@ -557,6 +585,17 @@ async function initApp() {
   //    loadMovies() se difiere con queueMicrotask para no correr dentro del lock.
   if (_supabase) {
     _supabase.auth.onAuthStateChange((event, session) => {
+      // PASSWORD_RECOVERY (deep-link de recuperación) — PRIMERA rama, ADITIVA. Muestra
+      // el formulario de nueva contraseña y RETORNA antes del aterrizaje normal
+      // SIGNED_IN / INITIAL_SESSION (no loadMovies, no revelar el app) (AC-5/AC-11).
+      if (event === "PASSWORD_RECOVERY") {
+        _passwordRecovery = true;
+        _currentSession = session;
+        _hideLanding();
+        _hideLoginScreen();
+        _showPasswordRecovery();
+        return;
+      }
       _currentSession = session;
       if (session) {
         _currentUser = session.user;
@@ -613,8 +652,11 @@ async function initApp() {
     });
   }
 
-  // 5. Routing inicial: sesión → app; sin sesión → landing (siempre).
-  if (session) {
+  // 5. Routing inicial: sesión → app; sin sesión → landing (siempre). Si getSession()
+  // resolvió una sesión de RECUPERACIÓN (token del fragmento de URL), _passwordRecovery
+  // está puesto y NO se revela el app ni la landing por debajo de la pantalla de
+  // recuperación (el listener PASSWORD_RECOVERY ya la mostró) (AC-5).
+  if (session && !_passwordRecovery) {
     _currentUser = session.user;
     _hideLanding();
     _hideLoginScreen();
@@ -626,7 +668,7 @@ async function initApp() {
     // nombre de usuario (ADR-007) tiene precedencia y se muestra por encima si
     // aplica; esto solo enruta el aterrizaje autenticado normal.
     showView(getPref("home_view", HOME_VIEWS, "collection-view"));
-  } else {
+  } else if (!_passwordRecovery) {
     // Sin sesión → landing de marketing. Caso borde: si boot.js ocultó la landing
     // pre-paint por un token CADUCADO (heurística por-presencia-de-clave, no por
     // validez), _showLanding reconcilia el estado quitando cinephora-authed y mostrando
@@ -711,8 +753,173 @@ async function initApp() {
     _setLoginMode(_authMode === "login" ? "register" : "login");
   });
 
+  // 7b. Reveal + envío de la solicitud de reset (superficie de login). Todos los
+  // getElementById van guardados con `if (el)` (error conocido: el elemento puede no
+  // existir). El reveal oculta el formulario de login y muestra #password-reset-form;
+  // #reset-back (o cambiar de modo vía _setLoginMode) lo revierte.
+  const forgotLink = document.getElementById("login-forgot-link");
+  const resetForm  = document.getElementById("password-reset-form");
+  const resetBack  = document.getElementById("reset-back");
+  const resetEmail = document.getElementById("reset-email");
+  const resetHint  = document.getElementById("reset-hint");
+  const loginFormEl   = document.getElementById("login-form");
+  const loginToggleEl = document.getElementById("login-toggle");
+
+  function _showResetRequestForm() {
+    if (loginFormEl) loginFormEl.hidden = true;
+    if (loginToggleEl) loginToggleEl.hidden = true;
+    if (forgotLink) forgotLink.hidden = true;
+    if (resetForm) resetForm.hidden = false;
+    if (resetHint) { resetHint.textContent = ""; resetHint.classList.remove("login-error"); }
+    if (resetEmail) resetEmail.focus();
+  }
+
+  if (forgotLink) forgotLink.addEventListener("click", _showResetRequestForm);
+  if (resetBack) {
+    resetBack.addEventListener("click", () => {
+      if (resetEmail) resetEmail.value = "";
+      if (resetHint) { resetHint.textContent = ""; resetHint.classList.remove("login-error"); }
+      _setLoginMode("login"); // restaura #login-form / #login-toggle / #login-forgot-link
+    });
+  }
+  if (resetForm) {
+    resetForm.addEventListener("submit", (e) => { e.preventDefault(); _requestPasswordReset(); });
+  }
+
+  // 7c. Formulario de nueva contraseña (deep-link de recuperación) + "pedir un nuevo enlace".
+  const recoveryForm = document.getElementById("password-recovery-form");
+  if (recoveryForm) {
+    recoveryForm.addEventListener("submit", (e) => { e.preventDefault(); _submitNewPassword(); });
+  }
+  const recoveryAgain = document.getElementById("recovery-request-again");
+  if (recoveryAgain) {
+    recoveryAgain.addEventListener("click", () => {
+      _passwordRecovery = false;
+      _hidePasswordRecovery();
+      _setLoginMode("login");
+      _showLoginScreen();
+      _showResetRequestForm();
+    });
+  }
+
   // 8. Cerrar sesión (footer). Comparte el camino con el botón de Ajustes → Cuenta.
   document.getElementById("logout-btn").addEventListener("click", () => { signOut(); });
+}
+
+// ── Reset de contraseña (superficie de login, pre-auth) ──────────────────────
+// Anti-enumeración: en TODO camino (existe / no existe / error SDK) se muestra el
+// MISMO mensaje genérico byte-idéntico; el resultado nunca se inspecciona para el
+// mensaje. Un email vacío/malformado se bloquea antes con validación de formato
+// (advisory) sin ninguna llamada a Supabase. El email es secreto: nunca se loguea,
+// ni va a la URL, ni al backend. Cuerpo de función → tiempo de llamada (PS-003).
+async function _requestPasswordReset() {
+  const emailEl  = document.getElementById("reset-email");
+  const hintEl   = document.getElementById("reset-hint");
+  const submitEl = document.getElementById("reset-submit");
+  const email = (emailEl ? emailEl.value : "").trim();
+
+  // (1) Comprobación de formato SOLO advisory — nunca ramifica por existencia de
+  // cuenta. Un email vacío/malformado → error de campo, sin llamada Supabase (AC-4).
+  const EMAIL_RE = /^[^@\s]+@[^@\s]+\.[^@\s]+$/;
+  if (!email || !EMAIL_RE.test(email)) {
+    if (hintEl) { hintEl.textContent = "Introduce un email válido."; hintEl.classList.add("login-error"); }
+    if (emailEl) emailEl.focus();
+    return;
+  }
+
+  // (2) Deshabilitar submit en vuelo. El error/resultado se traga y NUNCA se
+  // inspecciona para el mensaje (anti-enumeración). redirectTo es la propia URL del
+  // app (window.location.origin), nunca un query param del usuario (open-redirect).
+  if (submitEl) submitEl.disabled = true;
+  try {
+    if (_supabase) {
+      await _supabase.auth.resetPasswordForEmail(email, { redirectTo: window.location.origin });
+    }
+  } catch (e) {
+    // Tragado — el resultado nunca se refleja en el mensaje.
+  }
+
+  // (3) SIEMPRE el mismo mensaje genérico byte-idéntico (AC-2/AC-3/AC-10).
+  if (hintEl) {
+    hintEl.classList.remove("login-error");
+    hintEl.textContent =
+      "Si existe una cuenta con ese email, te hemos enviado un enlace para restablecer la contraseña.";
+  }
+  if (submitEl) submitEl.disabled = false;
+}
+
+// ── Nueva contraseña (sesión de recuperación) ────────────────────────────────
+// Reusa las reglas de fuerza de change-password: MIN_PASSWORD_LENGTH (settings.js,
+// cargado antes de app.js — referencia solo en cuerpo de función, PS-003-safe) y los
+// mismos mensajes byte-idénticos. Lee sin recortar (una contraseña puede llevar
+// espacios legítimos). Sin llamada a updateUser si falla la validación cliente. En
+// éxito limpia campos + confirma + enruta a login; en error muestra mensaje genérico
+// de enlace caducado + revela "pedir un nuevo enlace". La contraseña nunca se loguea,
+// ni va a la URL, ni al backend; el error SDK crudo nunca se renderiza.
+async function _submitNewPassword() {
+  const newEl    = document.getElementById("recovery-new-password");
+  const repeatEl = document.getElementById("recovery-new-password-repeat");
+  const hintEl   = document.getElementById("recovery-hint");
+  const submitEl = document.getElementById("recovery-submit");
+  const againBtn = document.getElementById("recovery-request-again");
+  if (!newEl || !repeatEl) return;
+
+  // (1) Leer SIN recortar (misma regla que _changePassword).
+  const newValue = newEl.value;
+  const repeat   = repeatEl.value;
+
+  const fail = (msg, focusEl) => {
+    if (hintEl) { hintEl.textContent = msg; hintEl.classList.add("login-error"); }
+    if (focusEl) focusEl.focus();
+  };
+
+  // (2) Validación cliente ANTES de cualquier llamada SDK — mensajes byte-idénticos a
+  // _changePassword. Cualquier fallo retorna SIN llamar a updateUser (AC-6/AC-7).
+  if (newValue.length < MIN_PASSWORD_LENGTH) {
+    fail("La nueva contraseña debe tener al menos 8 caracteres.", newEl);
+    return;
+  }
+  if (newValue !== repeat) {
+    fail("Las contraseñas no coinciden.", repeatEl);
+    return;
+  }
+
+  // (3) Deshabilitar submit en vuelo (evita doble envío).
+  if (submitEl) submitEl.disabled = true;
+  if (hintEl) hintEl.classList.remove("login-error");
+
+  let updateError = null;
+  try {
+    if (!_supabase) throw new Error("sin cliente supabase");
+    const { error } = await _supabase.auth.updateUser({ password: newValue });
+    updateError = error;
+  } catch (e) {
+    updateError = e; // nunca se inspecciona/renderiza — solo camino genérico
+  }
+
+  if (!updateError) {
+    // (4) Éxito: limpiar campos, confirmar y enrutar a login (AC-8). La confirmación
+    // se pone DESPUÉS de _setLoginMode (que oculta #login-success).
+    newEl.value = "";
+    repeatEl.value = "";
+    _passwordRecovery = false;
+    _hidePasswordRecovery();
+    _setLoginMode("login");
+    _showLoginScreen();
+    const loginSuccess = document.getElementById("login-success");
+    if (loginSuccess) {
+      loginSuccess.textContent = "Contraseña actualizada. Inicia sesión con tu nueva contraseña.";
+      loginSuccess.hidden = false;
+    }
+    if (submitEl) submitEl.disabled = false;
+    return;
+  }
+
+  // (5) Error (token caducado/inválido o sin sesión de recuperación): mensaje genérico
+  // + revelar "pedir un nuevo enlace" (AC-9). El error SDK crudo nunca se muestra.
+  if (hintEl) { hintEl.textContent = "El enlace ha caducado o no es válido."; hintEl.classList.add("login-error"); }
+  if (againBtn) againBtn.hidden = false;
+  if (submitEl) submitEl.disabled = false;
 }
 
 // Cierre de sesión único. Lo invocan tanto el botón del footer (#logout-btn)

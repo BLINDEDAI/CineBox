@@ -2773,6 +2773,13 @@ h2 {
 .login-toggle-btn:hover { color: var(--text-soft); }
 .login-toggle-btn span { color: var(--accent); font-weight: 600; }
 
+/* forgot-password / recovery reset flow — reuse .login-* / .btn, minimal spacing.
+   .login-hint sets NO color so the toggled `.login-error` (red, defined above) wins
+   for the field-level validation message; the neutral message inherits card text. */
+.login-forgot-link { margin-top: -12px; }
+.login-hint { font-size: 0.85rem; text-align: center; margin: 0; }
+.login-hint[hidden] { display: none; }
+
 /* sidebar logout / user email */
 .sidebar-user-email {
   font-size: 0.72rem;
