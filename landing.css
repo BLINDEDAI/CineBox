@@ -515,7 +515,7 @@ html.cinephora-authed #welcome-screen { display: none; }
   margin: 0 auto;
   padding: 48px 28px 24px;
   display: grid;
-  grid-template-columns: 1.4fr repeat(4, 1fr);
+  grid-template-columns: 1.4fr repeat(5, 1fr);
   gap: 32px;
 }
 .landing-footer-brand { display: flex; flex-direction: column; gap: 10px; }
