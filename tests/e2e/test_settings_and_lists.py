@@ -723,19 +723,165 @@ def _setup_settings_view(page: Page, base_url: str, profile=None, lists=None):
 
 
 def test_ac3_settings_perfil_renders_username_field(page: Page, base_url: str):
-    """AC-3: Ajustes → Perfil shows the username input."""
+    """AC-1 (immutable-username-after-claim) — DELIBERATE SUPERSESSION, not a
+    regression: this test previously asserted the editable #settings-username-input
+    was present/visible for a profile that already has a username. That behaviour
+    is exactly what immutable-username-after-claim removes (spec § Open Questions):
+    once a username is set, Ajustes → Perfil now shows it READ-ONLY — no editable
+    input, no "Guardar" button — while the /u/<username> link and the three
+    visibility toggles remain present and functional.
+    """
     page.set_viewport_size({"width": 1280, "height": 800})
-    _setup_settings_view(page, base_url)
+    _setup_settings_view(page, base_url)  # _PROFILE_A already has username 'useralpha'
 
+    assert page.locator("#settings-username-form").count() == 0, (
+        "AC-1: editable #settings-username-form must NOT render when a username is set"
+    )
+    assert page.locator("#settings-username-input").count() == 0, (
+        "AC-1: #settings-username-input must NOT render when a username is set"
+    )
+    assert page.locator("[data-settings-action='save-username']").count() == 0, (
+        "AC-1: save-username action must NOT render when a username is set"
+    )
+
+    readonly = page.locator(".settings-username-readonly")
+    assert readonly.count() == 1, "AC-1: read-only username display not rendered"
+    assert "useralpha" in readonly.inner_text(), (
+        f"AC-1: expected 'useralpha' in the read-only display, got {readonly.inner_text()!r}"
+    )
+
+    link = page.locator("a.settings-username-link")
+    assert link.count() == 1, "AC-1: /u/<username> link missing in read-only state"
+    href = link.get_attribute("href")
+    assert href and "/u/useralpha" in href, f"AC-1: expected '/u/useralpha' in href, got {href!r}"
+
+    for field in ("is_public", "show_collection", "show_stats"):
+        assert page.locator(f"[data-settings-toggle='{field}']").count() == 1, (
+            f"AC-1: visibility toggle {field!r} missing in the read-only state"
+        )
+
+    _screenshot(page, "ac1-username-readonly")
+
+
+# ── AC-2 (immutable-username-after-claim): no-username claim form still works ─
+
+
+def _setup_settings_view_claim_state(page: Page, base_url: str):
+    """Open Ajustes → Perfil with NO stored username (claim-form state).
+
+    Avoids _mount_authenticated_user()'s call into _loadProfileChip(), which
+    raises the #username-gate when the username is null (tester-bundle §6): sets
+    _currentUser directly (incl. email) and defensively hides the gate, mirroring
+    test_ac5_no_username_is_public_disabled / test_ac5_save_username_enables_is_public.
+    """
+    _route_config(page, base_url)
+    _route_profile(page, base_url, _PROFILE_NO_USERNAME)
+    _route_lists(page, base_url, _LISTS_EMPTY)
+    _goto_spa(page, base_url)
+    page.evaluate(
+        """(emailAddr) => {
+            const ws = document.getElementById('welcome-screen');
+            if (ws) ws.remove();
+            _currentUser = { id: 'test-user-claim-state', email: emailAddr };
+            _updateSidebarUser(emailAddr);
+            const gate = document.getElementById('username-gate');
+            if (gate) { gate.hidden = true; gate.classList.remove('is-open'); }
+        }""",
+        "user@example.com",
+    )
+    _open_settings_view(page)
+    page.evaluate(
+        """() => {
+            const gate = document.getElementById('username-gate');
+            if (gate) { gate.hidden = true; gate.classList.remove('is-open'); }
+        }"""
+    )
+
+
+def test_immutable_username_ac2_claim_form_shown_and_first_claim_saves(
+    page: Page, base_url: str
+):
+    """AC-2: with no stored username (legacy/edge account), the editable claim
+    form (input + "Guardar") is shown, the read-only display is absent, and a
+    first-claim save fires PATCH /api/profile with the typed username."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _route_config(page, base_url)
+
+    profile_state = {"data": _PROFILE_NO_USERNAME}
+    patched = {"body": None}
+
+    def _profile_router(route):
+        if route.request.method == "PATCH":
+            patched["body"] = route.request.post_data_json
+            profile_state["data"] = {
+                "ok": True,
+                "profile": {
+                    "username": "newclaim",
+                    "is_public": False,
+                    "show_collection": False,
+                    "show_stats": False,
+                },
+            }
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps({"ok": True}),
+            )
+        else:
+            route.fulfill(
+                status=200, content_type="application/json",
+                body=json.dumps(profile_state["data"]),
+            )
+
+    # Narrow, method-branching route registered LAST (Playwright route is LIFO).
+    page.route(f"{base_url}/api/profile", _profile_router)
+    _route_lists(page, base_url, _LISTS_EMPTY)
+
+    _goto_spa(page, base_url)
+    page.evaluate(
+        """(emailAddr) => {
+            const ws = document.getElementById('welcome-screen');
+            if (ws) ws.remove();
+            _currentUser = { id: 'test-user-ac2-claim', email: emailAddr };
+            _updateSidebarUser(emailAddr);
+            const gate = document.getElementById('username-gate');
+            if (gate) { gate.hidden = true; gate.classList.remove('is-open'); }
+        }""",
+        "user@example.com",
+    )
+    _open_settings_view(page)
+    page.evaluate(
+        """() => {
+            const gate = document.getElementById('username-gate');
+            if (gate) { gate.hidden = true; gate.classList.remove('is-open'); }
+        }"""
+    )
+
+    form = page.locator("#settings-username-form")
+    assert form.count() == 1, (
+        "AC-2: editable #settings-username-form must render when no username is set"
+    )
     input_el = page.locator("#settings-username-input")
-    assert input_el.count() == 1, "AC-3: #settings-username-input not found"
-    assert input_el.is_visible(), "AC-3: username input not visible"
+    assert input_el.count() == 1 and input_el.is_visible(), (
+        "AC-2: #settings-username-input must be visible in the claim state"
+    )
+    save_btn = page.locator("[data-settings-action='save-username']")
+    assert save_btn.count() == 1, "AC-2: save-username button missing in the claim state"
+    assert page.locator(".settings-username-readonly").count() == 0, (
+        "AC-2: the read-only display must NOT render when there is no username yet"
+    )
 
-    # The value should match the stubbed username
-    value = input_el.get_attribute("value")
-    assert value == "useralpha", f"AC-3: expected 'useralpha', got {value!r}"
+    input_el.fill("newclaim")
+    save_btn.click()
+    page.wait_for_timeout(600)
 
-    _screenshot(page, "ac3-username-field")
+    assert patched["body"] is not None, (
+        "AC-2: PATCH /api/profile was not fired on the first-claim save"
+    )
+    assert patched["body"].get("username") == "newclaim", (
+        f"AC-2: expected the typed username in the PATCH body, got {patched['body']!r}"
+    )
+
+    _screenshot(page, "ac2-claim-form-first-claim-save")
 
 
 def test_ac3_settings_perfil_renders_avatar(page: Page, base_url: str):
@@ -1485,6 +1631,185 @@ def test_ac10_settings_view_interactive_targets_24px(page: Page, base_url: str):
             )
 
     _screenshot(page, "ac10-settings-target-sizes")
+
+
+# ── AC-9 (immutable-username-after-claim): a11y — Perfil panel, both states ──
+
+# Scoped to the Perfil panel surface only (not the whole #settings-view), to
+# exclude pre-existing debt elsewhere in Ajustes (tester-bundle §7 / general.md
+# "scope axe to the AC surface"). Same panel renders in both the read-only and
+# claim states (settings.js:102 `<section aria-labelledby="settings-profile-title">`).
+_PERFIL_PANEL = "section[aria-labelledby='settings-profile-title']"
+
+
+def test_ac9_immutable_username_axe_readonly_desktop(page: Page, base_url: str):
+    """AC-9: Perfil panel (read-only-username state) passes axe WCAG 2.2 A/AA at 1280px."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _setup_settings_view(page, base_url)  # _PROFILE_A -> read-only state
+
+    _inject_axe(page, base_url)
+    violations = _run_axe(page, _PERFIL_PANEL)
+    _screenshot(page, "ac9-perfil-axe-readonly-desktop")
+
+    assert violations == [], (
+        f"AC-9: axe found {len(violations)} critical/serious violations in the "
+        f"Perfil panel (read-only, desktop 1280px): " + json.dumps(violations, indent=2)
+    )
+
+
+def test_ac9_immutable_username_axe_readonly_mobile(page: Page, base_url: str):
+    """AC-9: Perfil panel (read-only-username state) passes axe WCAG 2.2 A/AA at 375px."""
+    page.set_viewport_size({"width": 375, "height": 667})
+    _setup_settings_view(page, base_url)
+
+    page.evaluate(
+        """() => {
+            const sv = document.getElementById('settings-view');
+            if (sv) { sv.style.display = 'block'; sv.hidden = false; }
+        }"""
+    )
+    page.locator("#settings-view").wait_for(state="visible", timeout=5000)
+
+    _inject_axe(page, base_url)
+    violations = _run_axe(page, _PERFIL_PANEL)
+    _screenshot(page, "ac9-perfil-axe-readonly-mobile")
+
+    assert violations == [], (
+        f"AC-9: axe found {len(violations)} critical/serious violations in the "
+        f"Perfil panel (read-only, mobile 375px): " + json.dumps(violations, indent=2)
+    )
+
+
+def test_ac9_immutable_username_axe_claim_desktop(page: Page, base_url: str):
+    """AC-9: Perfil panel (no-username claim state) passes axe WCAG 2.2 A/AA at 1280px."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _setup_settings_view_claim_state(page, base_url)
+
+    _inject_axe(page, base_url)
+    violations = _run_axe(page, _PERFIL_PANEL)
+    _screenshot(page, "ac9-perfil-axe-claim-desktop")
+
+    assert violations == [], (
+        f"AC-9: axe found {len(violations)} critical/serious violations in the "
+        f"Perfil panel (claim state, desktop 1280px): " + json.dumps(violations, indent=2)
+    )
+
+
+def test_ac9_immutable_username_axe_claim_mobile(page: Page, base_url: str):
+    """AC-9: Perfil panel (no-username claim state) passes axe WCAG 2.2 A/AA at 375px."""
+    page.set_viewport_size({"width": 375, "height": 667})
+    _setup_settings_view_claim_state(page, base_url)
+
+    page.evaluate(
+        """() => {
+            const sv = document.getElementById('settings-view');
+            if (sv) { sv.style.display = 'block'; sv.hidden = false; }
+        }"""
+    )
+    page.locator("#settings-view").wait_for(state="visible", timeout=5000)
+
+    _inject_axe(page, base_url)
+    violations = _run_axe(page, _PERFIL_PANEL)
+    _screenshot(page, "ac9-perfil-axe-claim-mobile")
+
+    assert violations == [], (
+        f"AC-9: axe found {len(violations)} critical/serious violations in the "
+        f"Perfil panel (claim state, mobile 375px): " + json.dumps(violations, indent=2)
+    )
+
+
+def _assert_perfil_panel_keyboard_operable(page: Page):
+    """Shared assertion: focus the first interactive control inside the Perfil
+    panel and verify it has a visible focus indicator (AC-9)."""
+    first_control = page.locator(
+        f"{_PERFIL_PANEL} input, {_PERFIL_PANEL} button, {_PERFIL_PANEL} a"
+    ).first
+    assert first_control.count() > 0, "AC-9: no interactive control found in the Perfil panel"
+    first_control.focus()
+
+    focused_tag = page.evaluate("() => document.activeElement.tagName")
+    assert focused_tag in ("BUTTON", "INPUT", "A", "SELECT", "TEXTAREA"), (
+        f"AC-9: expected an interactive element in the Perfil panel, got {focused_tag}"
+    )
+    in_panel = page.evaluate(
+        f"() => !!document.activeElement.closest(\"{_PERFIL_PANEL}\")"
+    )
+    assert in_panel, "AC-9: focused element is not inside the Perfil panel"
+
+    outline = page.evaluate(
+        "() => window.getComputedStyle(document.activeElement).outlineWidth"
+    )
+    shadow = page.evaluate(
+        "() => window.getComputedStyle(document.activeElement).boxShadow"
+    )
+    has_focus = outline not in ("0px", "") or shadow not in ("none", "")
+    assert has_focus, (
+        f"AC-9: no visible focus indicator in the Perfil panel: outline={outline}, shadow={shadow}"
+    )
+
+
+def test_ac9_immutable_username_keyboard_operable_readonly(page: Page, base_url: str):
+    """AC-9: Perfil panel (read-only-username state) is keyboard-operable with a
+    visible focus indicator."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _setup_settings_view(page, base_url)
+    _assert_perfil_panel_keyboard_operable(page)
+    _screenshot(page, "ac9-perfil-keyboard-readonly")
+
+
+def test_ac9_immutable_username_keyboard_operable_claim(page: Page, base_url: str):
+    """AC-9: Perfil panel (no-username claim state) is keyboard-operable with a
+    visible focus indicator."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _setup_settings_view_claim_state(page, base_url)
+    _assert_perfil_panel_keyboard_operable(page)
+    _screenshot(page, "ac9-perfil-keyboard-claim")
+
+
+def test_ac9_immutable_username_target_sizes_readonly(page: Page, base_url: str):
+    """AC-9: interactive targets in the Perfil panel (read-only state) are >= 24px
+    (WCAG 2.5.8) — the /u/<username> link and the three visibility toggles."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _setup_settings_view(page, base_url)
+
+    for field in ("is_public", "show_collection", "show_stats"):
+        toggle_label = page.locator("label.sharing-toggle").filter(
+            has=page.locator(f"[data-settings-toggle='{field}']")
+        )
+        assert toggle_label.count() == 1, f"AC-9: toggle label for {field!r} not found"
+        box = toggle_label.bounding_box()
+        if box:
+            assert box["height"] >= 24, (
+                f"AC-9: {field!r} toggle target height {box['height']}px < 24px"
+            )
+
+    _screenshot(page, "ac9-perfil-target-sizes-readonly")
+
+
+def test_ac9_immutable_username_target_sizes_claim(page: Page, base_url: str):
+    """AC-9: interactive targets in the Perfil panel (claim state) are >= 24px
+    (WCAG 2.5.8) — the save-username button and the three visibility toggles."""
+    page.set_viewport_size({"width": 1280, "height": 800})
+    _setup_settings_view_claim_state(page, base_url)
+
+    save_btn = page.locator("[data-settings-action='save-username']")
+    assert save_btn.count() == 1, "AC-9: save-username button not found in claim state"
+    box = save_btn.bounding_box()
+    if box:
+        assert box["height"] >= 24, f"AC-9: save-username button height {box['height']}px < 24px"
+
+    for field in ("is_public", "show_collection", "show_stats"):
+        toggle_label = page.locator("label.sharing-toggle").filter(
+            has=page.locator(f"[data-settings-toggle='{field}']")
+        )
+        assert toggle_label.count() == 1, f"AC-9: toggle label for {field!r} not found"
+        box = toggle_label.bounding_box()
+        if box:
+            assert box["height"] >= 24, (
+                f"AC-9: {field!r} toggle target height {box['height']}px < 24px"
+            )
+
+    _screenshot(page, "ac9-perfil-target-sizes-claim")
 
 
 # ── XSS defence-in-depth (threat model) ───────────────────────────────────────

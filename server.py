@@ -2480,6 +2480,15 @@ class Handler(SimpleHTTPRequestHandler):
             if norm is None:
                 return self._json(400, {"ok": False,
                                         "error": "Nombre de usuario inválido (3-30, a-z 0-9 _ - y no reservado)"})
+            # Write-once (ADR-024): un username ya establecido es inmutable. Solo la
+            # primera reclamación (cur_username vacío) o un reenvío idéntico proceden;
+            # un valor distinto se rechaza sin escribir nada (guard antes del UPSERT).
+            # El servidor es la autoridad — el render read-only en Ajustes es solo
+            # conveniencia (AZ-014). No es una denegación de seguridad, es validación,
+            # así que no emite auditoría (consistente con los otros 400 de este handler).
+            if cur_username and norm != cur_username:
+                return self._json(400, {"ok": False,
+                                        "error": "El nombre de usuario no se puede cambiar una vez elegido"})
             new_username = norm
             username_changed = (norm != cur_username)
             cols.append("username"); vals.append(norm)
