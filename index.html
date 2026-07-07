@@ -368,6 +368,47 @@
         <button id="login-toggle" class="login-toggle-btn" type="button">
           ¿No tienes cuenta? <span>Regístrate</span>
         </button>
+        <button id="login-forgot-link" class="login-toggle-btn login-forgot-link" type="button">
+          <span>¿Olvidaste tu contraseña?</span>
+        </button>
+        <form id="password-reset-form" class="login-form" novalidate hidden>
+          <div class="login-field">
+            <label class="login-label" for="reset-email">Email</label>
+            <input class="login-input" type="email" id="reset-email" placeholder="tu@email.com" autocomplete="email" required>
+          </div>
+          <p id="reset-hint" class="login-hint" role="status" aria-live="polite"></p>
+          <button id="reset-submit" class="btn login-btn" type="submit">Enviar enlace de recuperación</button>
+          <button id="reset-back" class="login-toggle-btn" type="button">
+            <span>Volver a iniciar sesión</span>
+          </button>
+        </form>
+      </div>
+    </div>
+
+    <div id="password-recovery-screen" class="login-screen" hidden>
+      <div class="login-card">
+        <div class="login-brand">
+          <span class="login-brand-mark" aria-hidden="true">
+            <svg viewBox="0 0 32 32"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
+          </span>
+          <span class="login-brand-name">CINE<strong>PHORA</strong></span>
+        </div>
+        <h2 class="login-heading">Nueva contraseña</h2>
+        <form id="password-recovery-form" class="login-form" novalidate>
+          <div class="login-field">
+            <label class="login-label" for="recovery-new-password">Nueva contraseña</label>
+            <input class="login-input" type="password" id="recovery-new-password" placeholder="••••••••" autocomplete="new-password" required>
+          </div>
+          <div class="login-field">
+            <label class="login-label" for="recovery-new-password-repeat">Repite la contraseña</label>
+            <input class="login-input" type="password" id="recovery-new-password-repeat" placeholder="••••••••" autocomplete="new-password" required>
+          </div>
+          <p id="recovery-hint" class="login-hint" role="status" aria-live="polite"></p>
+          <button id="recovery-submit" class="btn login-btn" type="submit">Guardar contraseña</button>
+        </form>
+        <button id="recovery-request-again" class="login-toggle-btn" type="button" hidden>
+          <span>Pedir un nuevo enlace</span>
+        </button>
       </div>
     </div>
 
