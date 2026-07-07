@@ -115,6 +115,12 @@ function renderSettingsView() {
             <p class="muted smuted-sm settings-avatar-help">PNG, JPEG o WebP, máximo 5 MB. Se recorta a un cuadrado.</p>
           </div>
         </div>
+        ${hasUsername ? `
+        <div class="settings-username-readonly">
+          <span class="control-label">Nombre de usuario</span>
+          <p class="settings-username-value"><code>${esc(p.username)}</code></p>
+          <p class="sharing-hint muted smuted-sm">Este es tu nombre permanente; no se puede cambiar una vez elegido. Tu perfil está disponible en <a class="sharing-link settings-username-link" href="${esc(profileLink)}">${esc(profileLink)}</a></p>
+        </div>` : `
         <form id="settings-username-form" class="sharing-form" novalidate>
           <label class="control-label" for="settings-username-input">Nombre de usuario</label>
           <div class="sharing-username-row">
@@ -123,10 +129,9 @@ function renderSettingsView() {
                    value="${esc(p.username || "")}" aria-describedby="settings-username-hint">
             <button class="btn" type="submit" data-settings-action="save-username">Guardar</button>
           </div>
-          <p id="settings-username-hint" class="sharing-hint muted smuted-sm" role="status">${hasUsername ? "Tu perfil está disponible en " + esc(profileLink) : "Elige un nombre para poder publicar tu perfil."}</p>
+          <p id="settings-username-hint" class="sharing-hint muted smuted-sm" role="status">Elige un nombre para poder publicar tu perfil.</p>
         </form>
-
-        ${hasUsername ? "" : `<p class="muted smuted-sm">Guarda primero un nombre de usuario para poder publicar tu perfil.</p>`}
+        <p class="muted smuted-sm">Guarda primero un nombre de usuario para poder publicar tu perfil.</p>`}
         <div class="sharing-toggles" role="group" aria-label="Opciones de visibilidad del perfil">
           ${_toggleHtml("is_public", "Perfil público", p.is_public, !hasUsername)}
           ${_toggleHtml("show_collection", "Mostrar mi colección", p.show_collection, false)}

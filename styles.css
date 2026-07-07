@@ -3243,6 +3243,32 @@ h2 {
 }
 .settings-avatar-help { margin-top: 6px; }
 
+/* ── Ajustes → Perfil: username read-only (immutable-username-after-claim) ──
+   Cuando el username ya está reclamado se muestra fijo (sin input/Guardar).
+   El único objetivo interactivo es el enlace /u/<username>: se dimensiona a
+   ≥ 24 px y expone un indicador de foco visible por teclado (AC-9). */
+.settings-username-readonly { margin-top: 12px; }
+.settings-username-value {
+  margin: 4px 0 0;
+  font-size: 1rem;
+  font-weight: 600;
+  word-break: break-all;
+}
+.settings-username-value code {
+  font-family: inherit;
+  color: var(--text);
+}
+.settings-username-link {
+  display: inline-flex;
+  align-items: center;
+  min-height: 24px;
+}
+.settings-username-link:focus-visible {
+  outline: 2px solid var(--red-2, #ff6b6b);
+  outline-offset: 2px;
+  border-radius: 4px;
+}
+
 /* ── Ajustes → Cuenta: email (text-only) + cerrar sesión ── */
 .settings-account-row {
   display: flex;
