@@ -40,8 +40,10 @@ function renderResults() {
           <div class="card-year">${esc(m.year) || "—"}</div>
         </div>
         <div class="card-actions">
-          <button class="btn-secondary btn-sm" data-action="add" data-status="pendiente" type="button">+ Por ver</button>
-          <button class="btn btn-sm" data-action="add" data-status="vista" type="button">✓ Vista</button>
+          ${_guestMode
+            ? `<button class="btn-secondary btn-sm" data-action="guest-signup" type="button">Regístrate para guardar</button>`
+            : `<button class="btn-secondary btn-sm" data-action="add" data-status="pendiente" type="button">+ Por ver</button>
+          <button class="btn btn-sm" data-action="add" data-status="vista" type="button">✓ Vista</button>`}
         </div>
       </div>
     </article>`).join("");

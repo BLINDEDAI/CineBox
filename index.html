@@ -38,7 +38,10 @@
             <svg viewBox="0 0 32 32" aria-hidden="true"><circle cx="16" cy="16" r="13"/><path d="M13 10.5 22 16l-9 5.5z"/></svg>
             CINE<strong>PHORA</strong>
           </span>
-          <button type="button" class="landing-topbar-login" data-landing-auth="login">Iniciar sesión</button>
+          <span class="landing-topbar-actions">
+            <button type="button" class="landing-topbar-guest" data-guest-enter>Explorar sin cuenta</button>
+            <button type="button" class="landing-topbar-login" data-landing-auth="login">Iniciar sesión</button>
+          </span>
         </header>
 
         <!-- 2. Hero a dos columnas -->
@@ -49,6 +52,7 @@
             <div class="landing-cta-row">
               <button id="welcome-register" class="landing-btn-primary" type="button">Crear mi cuenta</button>
               <button id="welcome-login" class="landing-btn-secondary" type="button">Ya tengo cuenta</button>
+              <button class="landing-btn-ghost" type="button" data-guest-enter>Explorar sin cuenta</button>
             </div>
           </div>
           <div class="landing-hero-media" aria-hidden="true">
@@ -495,6 +499,10 @@
     </aside>
 
     <div class="app-shell">
+      <div class="guest-banner" id="guest-banner" role="region" aria-label="Modo invitado">
+        <span class="guest-banner-text">Estás explorando sin cuenta. Regístrate para guardar tu colección, valorar y seguir a otras personas.</span>
+        <button class="btn btn-sm guest-banner-cta" type="button" data-guest-auth="register">Crear cuenta gratis</button>
+      </div>
       <main class="content">
         <div id="message" class="alert" role="status" hidden></div>
 
@@ -670,6 +678,22 @@
     </div>
 
     <div id="list-picker" class="list-picker" hidden></div>
+
+    <!-- Diálogo de registro (guest-explore-mode): reutiliza el patrón de diálogo
+         accesible + focus-trap del #username-gate. El título se rellena con la
+         intención es-ES desde _promptSignup(); su cableado vive en app.js. -->
+    <div id="signup-prompt" class="signup-prompt" hidden>
+      <div class="signup-prompt-backdrop" data-signup-close></div>
+      <div class="signup-prompt-card" role="dialog" aria-modal="true" aria-labelledby="signup-prompt-title">
+        <button class="signup-prompt-close" type="button" data-signup-close aria-label="Cerrar">✕</button>
+        <h2 class="signup-prompt-title" id="signup-prompt-title">Regístrate</h2>
+        <p class="signup-prompt-text">Crea una cuenta gratis para guardar títulos, valorarlos, seguir series episodio a episodio y seguir a otras personas.</p>
+        <div class="signup-prompt-actions">
+          <button class="btn signup-prompt-btn" id="signup-prompt-register" type="button" data-signup-action="register">Crear cuenta</button>
+          <button class="btn-secondary signup-prompt-btn" type="button" data-signup-action="login">Iniciar sesión</button>
+        </div>
+      </div>
+    </div>
 
     <script src="api.js" defer></script>
     <script src="ui.js" defer></script>

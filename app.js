@@ -10,6 +10,17 @@ let _authMode = "login"; // "login" | "register"
 // contraseña. Literal — no referencia ningún global, seguro en tiempo de carga (PS-003).
 let _passwordRecovery = false;
 
+// ── Modo invitado (guest-explore-mode, ADR-025) ─────────────────────────────
+// Preview transitorio, solo-cliente y de solo-lectura: un visitante anonimo
+// explora Descubrir/busqueda/detalle sin cuenta. NADA se persiste (BR-4). Literal
+// — no referencia ningun global, seguro en tiempo de carga (PS-003). Al entrar se
+// marca `document.body.dataset.guest = "1"` para que styles.css oculte el cromo de
+// cuenta y revele el banner por selector de atributo (sin toggling JS por elemento).
+let _guestMode = false;
+// Elemento con foco antes de abrir el dialogo de registro, para devolverlo al
+// cerrar (patron del #username-gate). Solo se usa en cuerpos de funcion (PS-003).
+let _signupPromptLastFocus = null;
+
 // ── Username validation (mirror of server-side _normalize_username) ──────────
 // Client-side mirror of server.py's _USERNAME_RE + RESERVED_USERNAMES. Advisory
 // only — the authoritative validation + uniqueness is the PATCH /api/profile
@@ -320,6 +331,13 @@ async function _submitUsernameGate() {
 }
 
 function showView(viewId) {
+  // Modo invitado (guest-explore-mode, AC-5): solo "discover-view" es un destino
+  // funcional. Cualquier otra vista de cuenta (Coleccion/Estadisticas/Mis listas/
+  // Actividad/Ajustes) enruta al diálogo de registro en lugar de mostrarse. Guarda
+  // ARRIBA del todo, antes de mutar el DOM, para que un clic en un enlace de nav
+  // (que sigue visible) abra el prompt y no haga nada mas. Todo click de .side-link
+  // y [data-view-target] pasa por aqui, asi que este unico guard cubre las cinco.
+  if (_guestMode && viewId !== "discover-view") return _promptSignup(intentForView(viewId));
   document.body.dataset.activeView = viewId;
   document.querySelectorAll(".view").forEach((view) => {
     const active = view.id === viewId;
@@ -346,6 +364,78 @@ function showView(viewId) {
   if (viewId === "lists-view") showListsView();
   if (viewId === "settings-view") showSettingsView();
   if (viewId === "activity-view") showActivityView();
+}
+
+// ── Modo invitado: entrada, enrutado y diálogo de registro ───────────────────
+// Todas son declaraciones de funcion (hoisted) y solo se INVOCAN en tiempo de
+// llamada, asi que showView (arriba) puede referenciarlas y no hay problema de
+// orden de carga (PS-003). No introducen ningun global de tiempo de carga nuevo
+// mas alla de los dos literales de arriba.
+
+// Entra en modo invitado desde la landing (AC-4). Marca el estado + el body,
+// oculta landing y login, NO pone `cinephora-authed`, NO llama a ningun cargador
+// de cuenta (loadMovies/loadLevel/…) y enruta a Descubrir (que dispara
+// loadTrending()). El unico trafico que genera son las lecturas publicas de TMDB
+// + /api/config; ninguna peticion user-scoped (AC-7).
+function _enterGuestMode() {
+  _guestMode = true;
+  document.body.dataset.guest = "1";
+  _hideLanding();
+  _hideLoginScreen();
+  showView("discover-view");
+}
+
+// Etiqueta es-ES de la intencion por vista de cuenta, para el copy del prompt
+// "Registrate para {intencion}" (AC-5/AC-6). Valor por defecto defensivo.
+function intentForView(viewId) {
+  const intents = {
+    "collection-view": "guardar tu coleccion",
+    "stats-view": "ver tus estadisticas",
+    "lists-view": "crear tus listas",
+    "activity-view": "seguir a otras personas",
+    "settings-view": "gestionar tu cuenta",
+  };
+  return intents[viewId] || "usar esta funcion";
+}
+
+// Muestra el diálogo de registro accesible (#signup-prompt) — reutiliza el patron
+// de diálogo + focus-trap del #username-gate. El titulo lleva la intencion es-ES;
+// nunca se inyecta HTML de usuario (textContent). Guarda el foco previo para
+// devolverlo al cerrar (AC-11). Retorna undefined (falsy) para poder usarse como
+// `return _promptSignup(...)` en los backstops de accion.
+function _promptSignup(intentLabel) {
+  const dialog = document.getElementById("signup-prompt");
+  if (!dialog) return;
+  const title = document.getElementById("signup-prompt-title");
+  if (title) title.textContent = "Regístrate para " + (intentLabel || "continuar");
+  _signupPromptLastFocus = document.activeElement;
+  dialog.hidden = false;
+  dialog.classList.add("is-open");
+  const first = document.getElementById("signup-prompt-register");
+  if (first) first.focus();
+}
+
+function _closeSignupPrompt() {
+  const dialog = document.getElementById("signup-prompt");
+  if (!dialog || dialog.hidden) return;
+  dialog.classList.remove("is-open");
+  dialog.hidden = true;
+  if (_signupPromptLastFocus && typeof _signupPromptLastFocus.focus === "function") {
+    _signupPromptLastFocus.focus();
+  }
+  _signupPromptLastFocus = null;
+}
+
+// Puerta de un solo sentido a registro/login (BR-6, AC-6/AC-8): limpia el estado
+// invitado + el marcador del body, fija el modo de login y muestra la pantalla de
+// login. Tras autenticarse, el aterrizaje normal de onAuthStateChange corre igual.
+function _leaveGuestToAuth(mode) {
+  _guestMode = false;
+  delete document.body.dataset.guest;
+  _closeSignupPrompt();
+  _setLoginMode(mode);
+  _hideLanding();
+  _showLoginScreen();
 }
 
 // ---- Eventos ----
@@ -430,8 +520,14 @@ resultsEl.addEventListener("click", (e) => {
     openDetail(tmdb, type, hint);
     return;
   }
+  // Modo invitado (AC-6): la tarjeta renderiza un CTA de registro en vez de los
+  // botones de alta; abrir el detalle (lectura publica) sigue permitido arriba.
+  const guestBtn = e.target.closest("[data-action='guest-signup']");
+  if (guestBtn) { _promptSignup("guardar tu coleccion"); return; }
   const btn = e.target.closest("[data-action='add']");
   if (!btn) return;
+  // Backstop defensivo: en modo invitado nunca se emite el POST de alta (AC-6).
+  if (_guestMode) return _promptSignup("guardar tu coleccion");
   const idx = +btn.closest(".card").dataset.idx;
   addItem(lastResults[idx], btn.dataset.status);
 });
@@ -540,6 +636,49 @@ if (usernameGateEl) {
   });
 }
 
+// Cableado del diálogo de registro (guest-explore-mode). #signup-prompt es
+// estatico en index.html; los manejadores llaman a funciones de app.js en tiempo
+// de llamada (PS-003-safe). Focus-trap real (mantiene Tab dentro) + Escape para
+// cerrar — mismo patron que #username-gate pero SI es descartable (AC-6/AC-11).
+const signupPromptEl = document.getElementById("signup-prompt");
+if (signupPromptEl) {
+  signupPromptEl.addEventListener("click", (e) => {
+    if (e.target.closest("[data-signup-close]")) { _closeSignupPrompt(); return; }
+    const action = e.target.closest("[data-signup-action]");
+    if (action) {
+      _leaveGuestToAuth(action.getAttribute("data-signup-action") === "register" ? "register" : "login");
+    }
+  });
+  signupPromptEl.addEventListener("keydown", (e) => {
+    if (signupPromptEl.hidden) return;
+    if (e.key === "Escape") { e.preventDefault(); e.stopPropagation(); _closeSignupPrompt(); return; }
+    if (e.key !== "Tab") return;
+    const focusable = signupPromptEl.querySelectorAll(
+      'a[href], button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+    );
+    if (!focusable.length) return;
+    const first = focusable[0];
+    const last = focusable[focusable.length - 1];
+    if (e.shiftKey && document.activeElement === first) {
+      e.preventDefault();
+      last.focus();
+    } else if (!e.shiftKey && document.activeElement === last) {
+      e.preventDefault();
+      first.focus();
+    }
+  });
+}
+
+// CTA de registro del cromo invitado (banner + sidebar): un [data-guest-auth]
+// dentro del app-shell lleva directo a registro/login (BR-6). Delegado en document
+// una sola vez; solo actua en modo invitado. Los CTA de la landing usan su propio
+// delegador (data-landing-auth / data-guest-enter) y no colisionan con este.
+document.addEventListener("click", (e) => {
+  const t = e.target.closest("[data-guest-auth]");
+  if (!t || !_guestMode) return;
+  _leaveGuestToAuth(t.getAttribute("data-guest-auth") === "login" ? "login" : "register");
+});
+
 document.body.dataset.activeView = "collection-view";
 renderGenreChips();
 
@@ -643,8 +782,11 @@ async function initApp() {
     if (reg) reg.addEventListener("click", () => _leaveWelcome("register"));
     const log = document.getElementById("welcome-login");
     if (log) log.addEventListener("click", () => _leaveWelcome("login"));
-    // CTAs adicionales (topbar/banda/footer) marcados con data-landing-auth.
+    // CTAs adicionales (topbar/banda/footer) marcados con data-landing-auth, mas
+    // el nuevo "Explorar sin cuenta" (data-guest-enter) que entra en modo invitado.
     welcomeScreen.addEventListener("click", (e) => {
+      const guest = e.target.closest("[data-guest-enter]");
+      if (guest) { _enterGuestMode(); return; }
       const t = e.target.closest("[data-landing-auth]");
       if (!t) return;
       const mode = t.getAttribute("data-landing-auth") === "register" ? "register" : "login";
