@@ -123,6 +123,9 @@ async function loadMovies() {
 }
 
 async function addItem(item, status) {
+  // Backstop de modo invitado (AC-6): nunca una escritura user-scoped desde un
+  // invitado. _guestMode/_promptSignup viven en app.js (tiempo de llamada, PS-003).
+  if (_guestMode) { _promptSignup("guardar tu coleccion"); return false; }
   const { ok, data } = await api("/api/movies", {
     method: "POST", headers: { "Content-Type": "application/json" },
     body: JSON.stringify({ ...item, status }),
@@ -134,6 +137,7 @@ async function addItem(item, status) {
 }
 
 async function patchMovie(id, payload) {
+  if (_guestMode) { _promptSignup("gestionar tu coleccion"); return false; }
   const { ok, data } = await api(`/api/movies/${id}`, {
     method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
   });
@@ -145,11 +149,13 @@ async function patchMovie(id, payload) {
 
 
 async function deleteMovie(id) {
+  if (_guestMode) { _promptSignup("gestionar tu coleccion"); return; }
   const { ok } = await api(`/api/movies/${id}`, { method: "DELETE" });
   if (ok) await loadMovies();
 }
 
 function pickTonight() {
+  if (_guestMode) return _promptSignup("guardar tu coleccion");
   const typeLabel = { todo: "", movie: " (película)", tv: " (serie)" }[collectionMediaFilter] || "";
   const pendientes = movies.filter((m) =>
     m.status === "pendiente" &&

@@ -108,12 +108,15 @@ async function openDetail(tmdbId, type, hint = {}) {
       </div>
     </div>
     <div class="modal-body">
-      ${!existing ? `
+      ${!existing ? (_guestMode ? `
+      <div class="modal-add-btns modal-guest-cta" id="modal-guest-cta">
+        <button class="btn btn-sm" type="button" data-guest-signup="guardar en tu coleccion">Regístrate para guardar</button>
+      </div>` : `
       <div class="modal-add-btns" id="modal-add-btns">
         <button class="btn btn-sm" data-add-status="pendiente">+ Por ver</button>
         <button class="btn btn-sm btn-success" data-add-status="vista">✓ Vista</button>
         <button class="btn-secondary btn-sm" type="button" id="modal-add-to-list">+ Añadir a lista</button>
-      </div>` : ""}
+      </div>`) : ""}
       ${existing ? `<div class="modal-edit-section" id="modal-edit-section"></div>` : ""}
       ${d.trailer ? `<div class="modal-trailer"><a class="btn btn-sm" href="${esc(d.trailer)}" target="_blank" rel="noopener">▶ Ver tráiler</a></div>` : ""}
       ${providersHtml}
@@ -121,10 +124,10 @@ async function openDetail(tmdbId, type, hint = {}) {
       <div class="modal-overview"><p>${overviewHtml}</p></div>
       ${castHtml}
       <div class="modal-similar" id="modal-similar-section"></div>
-      ${existing && existing.media_type === "tv" && existing.tmdb_id ? `<div class="modal-episodes-section" id="modal-episodes-section"></div>` : ""}
+      ${(existing && existing.media_type === "tv" && existing.tmdb_id) || (_guestMode && type === "tv") ? `<div class="modal-episodes-section" id="modal-episodes-section"></div>` : ""}
     </div>`;
   if (existing) _rerenderModalEditSection();
-  if (existing && existing.media_type === "tv" && existing.tmdb_id) _rerenderModalEpisodesSection();
+  if ((existing && existing.media_type === "tv" && existing.tmdb_id) || (_guestMode && type === "tv")) _rerenderModalEpisodesSection();
   const addBtns = document.getElementById("modal-add-btns");
   if (addBtns) {
     addBtns.addEventListener("click", (e) => {
@@ -132,9 +135,23 @@ async function openDetail(tmdbId, type, hint = {}) {
       if (btn) addFromModal(btn.dataset.addStatus);
     });
   }
+  // Modo invitado: el bloque de alta se sustituye por un CTA de registro (AC-6).
+  // Abrir el detalle sigue permitido (lectura publica); solo el alta pide cuenta.
+  // _promptSignup vive en app.js (cargado despues) — se invoca en el cuerpo del
+  // manejador (tiempo de llamada), PS-003-safe.
+  const guestCta = document.getElementById("modal-guest-cta");
+  if (guestCta) {
+    guestCta.addEventListener("click", (e) => {
+      const btn = e.target.closest("[data-guest-signup]");
+      if (btn) _promptSignup(btn.getAttribute("data-guest-signup") || "guardar en tu coleccion");
+    });
+  }
   const addToListBtn = document.getElementById("modal-add-to-list");
   if (addToListBtn) {
     addToListBtn.addEventListener("click", () => {
+      // Backstop defensivo: este boton no se renderiza en modo invitado, pero si
+      // se alcanzara, pide cuenta en vez de abrir el selector user-scoped (AC-6).
+      if (_guestMode) return _promptSignup("anadir a una lista");
       if (!modalContext) return;
       // Cuerpo de manejador → tiempo de llamada (PS-003); openAddToListPicker vive en sharing.js.
       openAddToListPicker({
@@ -178,6 +195,9 @@ async function openDetail(tmdbId, type, hint = {}) {
 }
 
 async function addFromModal(status) {
+  // Backstop de modo invitado (AC-6): nunca se emite el POST de alta; se abre el
+  // prompt de registro. _promptSignup/_guestMode viven en app.js (tiempo de llamada).
+  if (_guestMode) return _promptSignup("guardar en tu coleccion");
   if (!modalContext) return;
   const added = await addItem({
     title:      modalContext.title,
@@ -275,7 +295,15 @@ function _modalEpisodesSectionHtml(m) {
 function _rerenderModalEpisodesSection() {
   const container = document.getElementById("modal-episodes-section");
   if (!container) return;
-  const movie = movies.find((x) => x.id === modalEditId);
+  // Modo invitado (AC-7): no hay título en la colección (movies vacío, modalEditId
+  // null por diseño — ningún cargador de cuenta corre). El navegador de temporadas/
+  // episodios se alimenta del contexto de detalle (modalContext.tmdbId), en solo
+  // lectura: el backend devuelve watched:false en cada episodio (sin marcas de
+  // visto) y no hay sección de edición. Las acciones de marcado siguen tras
+  // _promptSignup en el delegador de #modal-content (un invitado navega, no marca).
+  const movie = _guestMode
+    ? { tmdb_id: modalContext && modalContext.tmdbId, media_type: "tv" }
+    : movies.find((x) => x.id === modalEditId);
   if (!movie || movie.media_type !== "tv" || !movie.tmdb_id) { container.innerHTML = ""; return; }
   container.innerHTML = _modalEpisodesSectionHtml(movie);
   const active = container.querySelector("[data-action='ep-season-select'].is-active");
@@ -523,6 +551,10 @@ modalContent.addEventListener("click", (e) => {
   if (!actionEl) return;
   const action = actionEl.dataset.action;
   if (!action || !(action.startsWith("edit-") || action.startsWith("ep-"))) return;
+  // Backstop de modo invitado (AC-6): la seccion de edicion/episodios nunca se
+  // renderiza para un invitado (no hay titulos en coleccion), pero si un camino
+  // la alcanzara, pide cuenta en vez de emitir una escritura user-scoped.
+  if (_guestMode) return _promptSignup("gestionar tu coleccion");
   const movie = movies.find((x) => x.id === modalEditId);
   if (!movie) { closeModal(); return; }
   const id = movie.id;

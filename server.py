@@ -1102,10 +1102,11 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, **compute_level(points)})
 
     def _search(self):
-        user_id = self._get_user_id()
-        if not user_id:
-            return self._json(401, {"ok": False, "error": "No autenticado"})
-        if self._rate_limited(user_id):
+        user_id = self._get_user_id()          # puede ser None — anónimo permitido en estos seis
+        if user_id:
+            if self._rate_limited(user_id):    # autenticado: limiter TMDB por-usuario — SIN CAMBIOS
+                return
+        elif self._public_rate_limited():      # anónimo: limiter por IP (per-IP + global)
             return
         query = (self._qs().get("q", [""])[0]).strip()
         if not query:
@@ -1136,10 +1137,11 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "results": pack(mv, "movie") + pack(tv, "tv")})
 
     def _trending(self):
-        user_id = self._get_user_id()
-        if not user_id:
-            return self._json(401, {"ok": False, "error": "No autenticado"})
-        if self._rate_limited(user_id):
+        user_id = self._get_user_id()          # puede ser None — anónimo permitido en estos seis
+        if user_id:
+            if self._rate_limited(user_id):    # autenticado: limiter TMDB por-usuario — SIN CAMBIOS
+                return
+        elif self._public_rate_limited():      # anónimo: limiter por IP (per-IP + global)
             return
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return self._json(200, {"ok": False, "needs_key": True})
@@ -1175,10 +1177,11 @@ class Handler(SimpleHTTPRequestHandler):
     }
 
     def _discover(self):
-        user_id = self._get_user_id()
-        if not user_id:
-            return self._json(401, {"ok": False, "error": "No autenticado"})
-        if self._rate_limited(user_id):
+        user_id = self._get_user_id()          # puede ser None — anónimo permitido en estos seis
+        if user_id:
+            if self._rate_limited(user_id):    # autenticado: limiter TMDB por-usuario — SIN CAMBIOS
+                return
+        elif self._public_rate_limited():      # anónimo: limiter por IP (per-IP + global)
             return
         q = self._qs()
         genre_id_str = (q.get("genre_id", [""])[0]).strip()
@@ -1244,10 +1247,11 @@ class Handler(SimpleHTTPRequestHandler):
         self._json(200, {"ok": True, "results": results, "page": page, "has_more": has_more})
 
     def _details(self):
-        user_id = self._get_user_id()
-        if not user_id:
-            return self._json(401, {"ok": False, "error": "No autenticado"})
-        if self._rate_limited(user_id):
+        user_id = self._get_user_id()          # puede ser None — anónimo permitido en estos seis
+        if user_id:
+            if self._rate_limited(user_id):    # autenticado: limiter TMDB por-usuario — SIN CAMBIOS
+                return
+        elif self._public_rate_limited():      # anónimo: limiter por IP (per-IP + global)
             return
         q   = self._qs()
         tid = (q.get("id",   [""])[0]).strip()
@@ -1291,7 +1295,7 @@ class Handler(SimpleHTTPRequestHandler):
         # compartida. Permite pintar «N/M episodios» en la recarga, sin esperar a una
         # marca de la sesión. 0 para películas (BR-1: no tienen episodios).
         watched_count = 0
-        if mt == "tv":
+        if user_id and mt == "tv":
             with get_db() as cur:
                 cur.execute(
                     "SELECT count(*) AS n FROM episode_progress "
@@ -1329,10 +1333,11 @@ class Handler(SimpleHTTPRequestHandler):
         }})
 
     def _similar(self):
-        user_id = self._get_user_id()
-        if not user_id:
-            return self._json(401, {"ok": False, "error": "No autenticado"})
-        if self._rate_limited(user_id):
+        user_id = self._get_user_id()          # puede ser None — anónimo permitido en estos seis
+        if user_id:
+            if self._rate_limited(user_id):    # autenticado: limiter TMDB por-usuario — SIN CAMBIOS
+                return
+        elif self._public_rate_limited():      # anónimo: limiter por IP (per-IP + global)
             return
         q   = self._qs()
         tid = (q.get("id",   [""])[0]).strip()
@@ -1365,10 +1370,11 @@ class Handler(SimpleHTTPRequestHandler):
         las marcas de vista del usuario. Autenticado (PS-001) y rate-limited (PS-005:
         pega a TMDB). Proyección allow-list; `watched` por episodio deriva de las
         marcas. Error crudo de TMDB nunca se serializa (invariants → 502 genérico)."""
-        user_id = self._get_user_id()
-        if not user_id:
-            return self._json(401, {"ok": False, "error": "No autenticado"})
-        if self._rate_limited(user_id):
+        user_id = self._get_user_id()          # puede ser None — anónimo permitido en estos seis
+        if user_id:
+            if self._rate_limited(user_id):    # autenticado: limiter TMDB por-usuario — SIN CAMBIOS
+                return
+        elif self._public_rate_limited():      # anónimo: limiter por IP (per-IP + global)
             return
         if not os.environ.get("TMDB_API_KEY", "").strip():
             return self._json(200, {"ok": False, "needs_key": True})
@@ -1378,12 +1384,14 @@ class Handler(SimpleHTTPRequestHandler):
             return self._json(502, {"ok": False, "error": "No se pudo consultar TMDB."})
         # Marcas del usuario para esta temporada en UNA query (PS-002), scoped por
         # user_id (PS-001). Set de episodios vistos para el flag `watched`.
-        with get_db() as cur:
-            cur.execute(
-                "SELECT season, episode FROM episode_progress "
-                "WHERE user_id = %s AND tmdb_id = %s AND season = %s",
-                (user_id, tmdb_id, season))
-            watched = {r["episode"] for r in cur.fetchall()}
+        watched = set()
+        if user_id:
+            with get_db() as cur:
+                cur.execute(
+                    "SELECT season, episode FROM episode_progress "
+                    "WHERE user_id = %s AND tmdb_id = %s AND season = %s",
+                    (user_id, tmdb_id, season))
+                watched = {r["episode"] for r in cur.fetchall()}
         episodes = [
             {
                 "episode_number": e.get("episode_number"),

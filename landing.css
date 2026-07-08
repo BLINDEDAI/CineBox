@@ -61,6 +61,20 @@ html.cinephora-authed #welcome-screen { display: none; }
   transition: color 120ms ease, border-color 120ms ease;
 }
 .landing-topbar-login:hover { color: #fff; border-color: rgba(255,255,255,0.55); }
+/* Acciones de la topbar: "Explorar sin cuenta" (guest-explore-mode) + login. */
+.landing-topbar-actions { display: flex; align-items: center; gap: 10px; }
+.landing-topbar-guest {
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 40px;
+  color: rgba(255, 255, 255, 0.72);
+  cursor: pointer;
+  font-size: 0.92rem;
+  font-weight: 600;
+  padding: 9px 16px;
+  transition: color 120ms ease;
+}
+.landing-topbar-guest:hover { color: #fff; }
 
 /* ── Contenedor de secciones ─────────────────────────────────── */
 .landing-section {
@@ -147,6 +161,21 @@ html.cinephora-authed #welcome-screen { display: none; }
 }
 .landing-btn-secondary:hover { color: #fff; border-color: rgba(255,255,255,0.55); }
 .landing-btn-secondary:active { transform: scale(0.97); }
+
+/* "Explorar sin cuenta" del hero (guest-explore-mode): CTA terciario/ghost. */
+.landing-btn-ghost {
+  padding: 14px 26px;
+  font-size: 0.98rem;
+  font-weight: 700;
+  color: rgba(255, 255, 255, 0.7);
+  background: transparent;
+  border: 1px solid transparent;
+  border-radius: 50px;
+  cursor: pointer;
+  transition: color 120ms ease, border-color 120ms ease;
+}
+.landing-btn-ghost:hover { color: #fff; border-color: rgba(255, 255, 255, 0.28); }
+.landing-btn-ghost:active { transform: scale(0.97); }
 
 /* Collage de pósters (decorativo). Fallback: gradiente rojo/oscuro si la imagen
    externa (image.tmdb.org) no carga. */
@@ -576,7 +605,7 @@ html.cinephora-authed #welcome-screen { display: none; }
   .landing-section { padding: 52px 20px; }
   .landing-footer-cols { grid-template-columns: 1fr; }
   .landing-cta-row { width: 100%; }
-  .landing-btn-primary, .landing-btn-secondary { width: 100%; text-align: center; }
+  .landing-btn-primary, .landing-btn-secondary, .landing-btn-ghost { width: 100%; text-align: center; }
   .landing-stats { grid-template-columns: 1fr; }
 }
 

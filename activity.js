@@ -179,6 +179,10 @@ async function showActivityView() {
 // el estado del botón (aria-pressed + corazón) y actualiza el contador con el
 // count autoritativo del servidor.
 async function _toggleLike(btn) {
+  // Backstop de modo invitado (AC-6): la vista Actividad no es alcanzable para un
+  // invitado (showView la bloquea), pero si lo fuera, pide cuenta en vez de emitir
+  // el POST/DELETE user-scoped. _guestMode/_promptSignup viven en app.js (call-time).
+  if (_guestMode) return _promptSignup("dar me gusta");
   if (btn.disabled) return;
   const movieId = Number(btn.dataset.movieId) || 0;
   if (!movieId) return;

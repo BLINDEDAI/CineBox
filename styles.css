@@ -3588,6 +3588,108 @@ h2 {
 }
 
 
+/* ═══ Modo invitado (guest-explore-mode) ═══
+   Cromo revelado por el marcador body[data-guest] (sin toggling JS por elemento).
+   No hay ninguna regla que oculte .sidebar/.app-shell para :root:not(.cinephora-authed)
+   (verificado): la landing es un overlay fixed z-index 9999 que cubre el shell, y
+   _enterGuestMode la oculta — el shell queda visible sin necesidad de override. */
+
+/* Banner persistente arriba del app-shell; oculto salvo en modo invitado. */
+.guest-banner { display: none; }
+body[data-guest] .guest-banner {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  flex-wrap: wrap;
+  margin: 0 0 4px;
+  padding: 12px 20px;
+  border-bottom: 1px solid var(--border-strong);
+  background: linear-gradient(135deg, rgba(255, 68, 61, 0.16), rgba(8, 11, 20, 0.6));
+  color: var(--text, #e7eaf1);
+}
+.guest-banner-text {
+  flex: 1 1 260px;
+  font-size: 0.92rem;
+  line-height: 1.4;
+}
+.guest-banner-cta {
+  flex: 0 0 auto;
+  min-height: 40px;
+}
+
+/* Diálogo de registro (#signup-prompt) — reusa el patrón del #username-gate. */
+.signup-prompt {
+  position: fixed;
+  inset: 0;
+  z-index: 120; /* por encima de login screen + list-picker (90) + modal (80) */
+  display: grid;
+  place-items: center;
+  padding: 22px;
+  opacity: 0;
+  visibility: hidden;
+  transition: opacity 200ms ease, visibility 200ms ease;
+}
+.signup-prompt[hidden] { display: none; }
+.signup-prompt.is-open {
+  opacity: 1;
+  visibility: visible;
+}
+.signup-prompt-backdrop {
+  position: absolute;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.82);
+  backdrop-filter: blur(8px);
+}
+.signup-prompt-card {
+  position: relative;
+  width: min(440px, 100%);
+  max-height: 88vh;
+  overflow: auto;
+  padding: 28px;
+  border: 1px solid var(--border-strong);
+  border-radius: 18px;
+  background: linear-gradient(180deg, rgba(17, 23, 38, 0.98), rgba(8, 11, 20, 0.98));
+  box-shadow: var(--shadow);
+  transform: scale(0.96) translateY(14px);
+  transition: transform 220ms cubic-bezier(0.22, 1, 0.36, 1);
+}
+.signup-prompt.is-open .signup-prompt-card {
+  transform: scale(1) translateY(0);
+}
+.signup-prompt-close {
+  position: absolute;
+  top: 12px;
+  right: 12px;
+  width: 38px;
+  height: 38px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(0, 0, 0, 0.5);
+  color: #fff;
+  cursor: pointer;
+}
+.signup-prompt-title {
+  margin: 0 0 8px;
+  font-size: 1.2rem;
+  letter-spacing: -0.01em;
+}
+.signup-prompt-text {
+  margin: 0 0 18px;
+  font-size: 0.9rem;
+  line-height: 1.5;
+  color: var(--text-soft);
+}
+.signup-prompt-actions {
+  display: flex;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.signup-prompt-btn {
+  flex: 1 1 140px;
+  min-height: 44px;
+}
+
+
 /* ═══ Feed "Actividad" (SPA autenticado) — activity.js ═══ */
 .activity-head {
   margin: 8px 0 24px;

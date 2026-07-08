@@ -512,18 +512,33 @@ _SEASON_PAYLOAD = {
 
 
 class SeasonEndpointUnit(unittest.TestCase):
-    """AC-1/AC-2/AC-12: 401 w/o JWT, 429 when rate-limited, needs_key degrade,
-    marks-merge sets `watched`, allow-list projection shape."""
+    """AC-1/AC-2/AC-12: anonymous 200 (never 401, guest-explore-mode overturns
+    the old auth gate), 429 when rate-limited, needs_key degrade, marks-merge
+    sets `watched`, allow-list projection shape."""
 
-    def test_unauth_returns_401_no_tmdb_or_db_call(self):
+    def test_unauth_returns_200_not_401_no_db_call_needs_key_degrade(self):
+        """guest-explore-mode AC-1/AC-7: an anonymous caller (no user_id) is now
+        ALLOWED on _season — it must never 401. This test intentionally
+        overturns the pre-guest-explore-mode contract asserted by the previous
+        version of this test (test_unauth_returns_401_no_tmdb_or_db_call),
+        which the guest-explore-mode backend Developer flagged as obsolete
+        (backend-reviewer-handoff.md / backend-dev-handoff.md § For the Next
+        Agent). With no TMDB_API_KEY the handler still takes the needs_key
+        early-return (200) before any TMDB/DB call, so this also proves no
+        get_db() call occurs for an anonymous request in the no-key case."""
         h, responses = make_handler(user_id=None)
         h.path = "/api/tv/550/season/1"
+        h._public_rate_limited = lambda: False
         tmdb_calls = []
         h._tmdb = lambda *a, **k: tmdb_calls.append(1)
         cur = FakeCursor()
-        with patch_db(cur):
-            h._season(550, 1)
-        self.assertEqual(responses[-1][0], 401)
+        with mock.patch.dict(os.environ, {}, clear=False):
+            os.environ.pop("TMDB_API_KEY", None)
+            with patch_db(cur):
+                h._season(550, 1)
+        status, payload = responses[-1]
+        self.assertEqual(status, 200)
+        self.assertTrue(payload.get("needs_key"))
         self.assertEqual(tmdb_calls, [])
         self.assertEqual(cur.calls, [])
 
