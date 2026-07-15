@@ -303,6 +303,7 @@ TMDB_CACHE_TTL = int(os.environ.get("TMDB_CACHE_TTL", 900))  # s; 0 = desactiva 
 # TTL propio (~24 h) que anula TMDB_CACHE_TTL solo en esa llamada (CA-*, BR-3).
 SEASON_CACHE_TTL = int(os.environ.get("SEASON_CACHE_TTL", 86400))  # s; override por-llamada
 TMDB_CACHE_MAX = 500        # tope duro de entradas; purga expiradas + desaloja FIFO al superarlo
+DISCOVER_MAX_PAGE = 100     # tope de paginación de /api/discover (TMDB admite hasta 500)
 
 
 def init_db():
@@ -1191,7 +1192,7 @@ class Handler(SimpleHTTPRequestHandler):
         if media_type not in ("movie", "tv", "all"):
             return self._json(400, {"ok": False, "error": "type debe ser movie, tv o all"})
         page_str  = (q.get("page", ["1"])[0]).strip()
-        page      = max(1, min(int(page_str) if page_str.isdigit() else 1, 20))
+        page      = max(1, min(int(page_str) if page_str.isdigit() else 1, DISCOVER_MAX_PAGE))
         sort_key  = (q.get("sort", ["popular"])[0]).strip()
         genre_id  = int(genre_id_str)
         tv_genre  = str(self._MOVIE_TO_TV_GENRE.get(genre_id, genre_id))
@@ -1244,6 +1245,9 @@ class Handler(SimpleHTTPRequestHandler):
                 has_more = page < (tv_data.get("total_pages") or 1)
         except Exception:
             return self._json(502, {"ok": False, "error": "No se pudo consultar TMDB."})
+        # Al llegar al tope de paginación no se puede avanzar más: apagar has_more
+        # para que el cliente oculte "Ver más" en vez de repetir la última página.
+        has_more = has_more and page < DISCOVER_MAX_PAGE
         self._json(200, {"ok": True, "results": results, "page": page, "has_more": has_more})
 
     def _details(self):
