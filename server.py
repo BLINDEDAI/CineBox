@@ -304,6 +304,7 @@ TMDB_CACHE_TTL = int(os.environ.get("TMDB_CACHE_TTL", 900))  # s; 0 = desactiva 
 SEASON_CACHE_TTL = int(os.environ.get("SEASON_CACHE_TTL", 86400))  # s; override por-llamada
 TMDB_CACHE_MAX = 500        # tope duro de entradas; purga expiradas + desaloja FIFO al superarlo
 DISCOVER_MAX_PAGE = 100     # tope de paginación de /api/discover (TMDB admite hasta 500)
+DISCOVER_RECENT_MIN_VOTES = 50  # orden "recientes": mínimo de votos para filtrar el long tail de micro-estrenos
 
 
 def init_db():
@@ -1208,8 +1209,16 @@ class Handler(SimpleHTTPRequestHandler):
         base = {"include_adult": "false", "page": str(page)}
         if sort_key == "rating":
             base["vote_count.gte"] = "100"
+        elif sort_key == "recent":
+            # Filtra el long tail de micro-estrenos sin votos (mucho cine regional nicho).
+            base["vote_count.gte"] = str(DISCOVER_RECENT_MIN_VOTES)
         mv_extra = {**base, "sort_by": mv_sort, "with_genres": genre_id_str}
         tv_extra = {**base, "sort_by": tv_sort, "with_genres": tv_genre}
+        if sort_key == "recent":
+            # Descarta títulos con fecha futura/placeholder que se cuelan arriba del orden por fecha.
+            today = date.today().isoformat()
+            mv_extra["primary_release_date.lte"] = today
+            tv_extra["first_air_date.lte"] = today
 
         def pack_item(m, mt):
             poster = m.get("poster_path")
