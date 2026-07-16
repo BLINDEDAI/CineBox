@@ -3175,6 +3175,26 @@ h2 {
 }
 .sharing-item-title { flex: 1 1 auto; }
 
+/* Envoltorio clicable carátula+título de un item de lista: abre el modal de
+   detalle. Reset de <button> para que la fila se vea igual que la estática. */
+.sharing-item-open {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex: 1 1 auto;
+  min-width: 0;
+  background: none;
+  border: 0;
+  padding: 0;
+  margin: 0;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.sharing-item-open:hover .sharing-item-title,
+.sharing-item-open:focus-visible .sharing-item-title { text-decoration: underline; }
+
 /* ── Ajustes → Perfil: avatar generado (reusa el gradiente del chip) ── */
 .settings-profile-head {
   display: flex;

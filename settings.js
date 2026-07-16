@@ -570,12 +570,26 @@ function _renderExpandedItems() {
     container.innerHTML = `<p class="muted smuted-sm">Esta lista está vacía. Añade títulos desde el detalle de un título.</p>`;
     return;
   }
-  container.innerHTML = sharingExpandedItems.map((it) => `
+  container.innerHTML = sharingExpandedItems.map((it) => {
+    const label = `${esc(it.title)}${it.year ? " (" + esc(it.year) + ")" : ""}`;
+    // Con tmdb_id el item abre el modal de detalle (mismo patrón data-tmdb/data-type
+    // que Descubrir/colección); sin tmdb_id se queda como fila estática.
+    const body = it.tmdb_id
+      ? `<button class="sharing-item-open" type="button" data-settings-action="open-item"
+            data-tmdb="${esc(it.tmdb_id)}" data-type="${esc(it.media_type)}"
+            data-title="${esc(it.title)}" data-poster="${esc(it.poster_url || "")}" data-year="${esc(it.year || "")}"
+            aria-label="Ver detalle de ${esc(it.title)}">
+          <span class="sharing-item-poster">${posterHtml(it)}</span>
+          <span class="sharing-item-title">${label}</span>
+        </button>`
+      : `<span class="sharing-item-poster">${posterHtml(it)}</span>
+         <span class="sharing-item-title">${label}</span>`;
+    return `
     <div class="sharing-item" data-item-id="${esc(it.id)}">
-      <span class="sharing-item-poster">${posterHtml(it)}</span>
-      <span class="sharing-item-title">${esc(it.title)}${it.year ? " (" + esc(it.year) + ")" : ""}</span>
+      ${body}
       <button class="icon-btn" type="button" data-settings-action="remove-item" aria-label="Quitar ${esc(it.title)}">✕</button>
-    </div>`).join("");
+    </div>`;
+  }).join("");
 }
 
 // ── Acciones ──────────────────────────────────────────────────────────────
@@ -1221,6 +1235,16 @@ if (listsViewEl) {
     else if (action === "remove-item" && listId) {
       const itemId = btn.closest(".sharing-item")?.dataset.itemId;
       if (itemId) _removeItem(listId, itemId);
+    }
+    else if (action === "open-item") {
+      const tmdb = +btn.dataset.tmdb;
+      // openDetail (modal.js) muestra "+ Por ver"/"✓ Vista" si el título no está
+      // en la colección, o la sección de edición si ya está (ADR-016).
+      if (tmdb) openDetail(tmdb, btn.dataset.type || "movie", {
+        title:      btn.dataset.title  || "",
+        poster_url: btn.dataset.poster || "",
+        year:       btn.dataset.year   || "",
+      });
     }
   });
 }
