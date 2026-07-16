@@ -630,7 +630,11 @@ def _should_alert(redacted_tb):
     sig = redacted_tb[-300:]
     now = time.monotonic()
     with _ALERT_LOCK:
-        if now - _ALERT_LAST.get(sig, 0.0) < _ALERT_COOLDOWN:
+        # Centinela None = "nunca alertado". No usar 0.0: time.monotonic() arranca
+        # cerca de 0 en máquinas recién arrancadas (CI, post-deploy) y el cooldown
+        # silenciaría todas las alertas de los primeros 5 minutos del proceso.
+        last = _ALERT_LAST.get(sig)
+        if last is not None and now - last < _ALERT_COOLDOWN:
             return False
         _ALERT_LAST[sig] = now
         if len(_ALERT_LAST) > 256:      # poda para acotar memoria
