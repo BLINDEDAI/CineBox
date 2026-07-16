@@ -20,13 +20,19 @@ Cinephora uses a dark noir theme: near-black background (`#050915`), a deep red 
 - **5-star rating** and personal notes per title
 - **Watched date** — log when you actually saw it (defaults to today when marking as watched)
 - **Platform tracking** — record where you watched it (Netflix, HBO Max, Prime Video, Disney+, Movistar+, Cinema, Other)
-- **Episode progress** for TV shows (current season and episode)
+- **Episode progress** for TV shows (current season and episode, with per-season progress)
 - **Filter and search** your collection by status, media type, and title
-- **Statistics view** — a quick overview of your collection breakdown
+- **Statistics view** — collection breakdown plus a **points & levels system** (Espectador → Maestro), computed entirely server-side
 - **Discover tab** — weekly trending titles plus browse-by-genre (movies and TV), with sorting by popularity, rating, or release date
+- **Guest explore mode** — browse Discover, search, and details anonymously (no signup wall), behind per-IP rate limiting
 - **Detail panel** — synopsis, director/creator, cast, trailer link, similar titles, and streaming providers
+- **Public profiles** — claim a username, share your profile and lists; custom avatar upload (Supabase Storage)
+- **Social layer** — follow other users, activity feed, public reviews with likes
+- **Custom lists** — group titles into shareable lists
+- **Account settings** — change password, default preferences, full data export/import (JSON round-trip), and GDPR-friendly account deletion (DB rows, avatar, and Supabase Auth user purged)
 - **Discord notifications** — webhook alerts with embed and poster when you add or change a title's status
 - **Owner-only notifications** — filter Discord alerts to a single Supabase user via `DISCORD_OWNER_ID`
+- **Error alerting** — unhandled server errors post a **redacted** traceback to a Discord webhook, throttled per error signature
 - **Supabase authentication** — email/password login and registration, JWT-validated on every request
 - **Per-user data isolation** — each user only ever sees and modifies their own collection
 
@@ -51,12 +57,13 @@ Cinephora uses a dark noir theme: near-black background (`#050915`), a deep red 
 The backend is small but hardened for real traffic on a free tier:
 
 - **Bounded connection pool** — DB connections are taken from a `ThreadedConnectionPool` gated by a semaphore of the same size (`DB_POOL_MAX`, default 10). Under a traffic spike, surplus threads queue for up to 10 s instead of exhausting the Supabase pooler; if no slot frees up, the endpoint returns `503` cleanly.
-- **Rate limiting** — the five endpoints that spend our TMDB key (`/api/search`, `/api/trending`, `/api/discover`, `/api/details`, `/api/similar`) run a sliding-window limiter: per-user (60/min) plus a global cap (300/min) that protects the shared key from abuse across accounts. Over the limit → `429` + `Retry-After`.
+- **Rate limiting** — the six endpoints that spend our TMDB key (`/api/search`, `/api/trending`, `/api/discover`, `/api/details`, `/api/similar`, `/api/tv/{id}/season/{n}`) run a sliding-window limiter: per-user (60/min) plus a global cap (300/min) that protects the shared key from abuse across accounts. Anonymous (guest-mode) traffic gets its own per-IP limiter (60/min per IP, 600/min global). Over the limit → `429` + `Retry-After`.
 - **TMDB response caching** — TMDB data is user-independent, so responses are cached in memory with a TTL (`TMDB_CACHE_TTL`, default 900 s), cutting API calls, latency, and quota pressure.
 - **Asymmetric JWT only** — tokens are verified against the Supabase JWKS public keys (ES256/RS256). There is no HS256 shared-secret fallback; `aud` and `role` are both checked.
 - **Supply-chain integrity** — the Supabase JS client is self-hosted (not loaded from a CDN) and pinned with Subresource Integrity; the browser refuses to run a tampered bundle. The CSP is `script-src 'self'` (fail-closed, no fallback).
 - **Request hardening** — security headers on every response (CSP, `X-Frame-Options: DENY`, `X-Content-Type-Options: nosniff`), a 64 KB request-body cap, and a 15 s per-socket timeout that blunts Slowloris-style slow requests.
 - **Per-user isolation** — every DB query is filtered by the `user_id` extracted from the verified token, never from the client.
+- **Redacted error alerts** — unhandled exceptions are reported to Discord with secrets (tokens, connection strings, JWTs, keys) stripped from the traceback before it leaves the process, throttled to one alert per error signature per 5 minutes.
 
 ---
 
@@ -113,6 +120,17 @@ CREATE POLICY "Users manage own movies"
     WITH CHECK (auth.uid() = user_id);
 ```
 
+Then run the migrations in [migrations/](migrations/) **in order** (they add public profiles, lists, the social layer, and episode progress):
+
+```
+migrations/001_public_profiles_and_lists.sql
+migrations/002_social_follows_and_activity.sql
+migrations/003_social_reviews_and_likes.sql
+migrations/004_series_episode_progress.sql
+```
+
+For custom avatars, also create a **public Storage bucket** named `avatars` in Supabase (Storage → New bucket).
+
 ### 4. Configure environment variables
 
 ```bash
@@ -151,16 +169,19 @@ Copy `.env.example` to `.env` and set these values. The server reads `.env` at s
 | `DATABASE_URL` | Yes | PostgreSQL connection string from Supabase (Settings → Database → Connection string → URI) |
 | `SUPABASE_URL` | Yes | Your Supabase project URL (Settings → API → Project URL) |
 | `SUPABASE_ANON_KEY` | Yes | Supabase anonymous/public key (Settings → API → Project API keys) |
+| `SUPABASE_SERVICE_KEY` | For account deletion & avatars | Supabase `service_role` key — used server-side only, for account deletion (Supabase Auth admin API) and avatar storage cleanup. Never sent to the client or logged |
 | `TMDB_API_KEY` | Recommended | TMDB v3 API key — without it, search and trending are disabled |
 | `DISCORD_WEBHOOK_URL` | Optional | Single Discord webhook for all status changes (fallback) |
+| `DISCORD_WEBHOOK_ERRORS` | Optional | Webhook for redacted server-error alerts (throttled per error signature) |
 | `DISCORD_WEBHOOK_PENDIENTE` | Optional | Webhook for titles added to the watchlist |
 | `DISCORD_WEBHOOK_VISTA` | Optional | Webhook for titles marked as watched |
 | `DISCORD_OWNER_ID` | Optional | Supabase UUID of the account that should trigger Discord notifications — all other users are silenced |
 | `DB_POOL_MAX` | Optional | Max DB connections in the pool, per process (default: `10`). With N instances the total is N × this value — raise only if the Supabase pooler can take it |
 | `TMDB_CACHE_TTL` | Optional | TTL in seconds for the in-memory TMDB cache (default: `900`; `0` disables caching) |
+| `SEASON_CACHE_TTL` | Optional | TTL in seconds for TV season metadata (default: `86400`) |
 | `PORT` | Optional | HTTP port (default: `8000`) |
 
-> `SUPABASE_SERVICE_KEY` and `SUPABASE_JWT_SECRET` may appear in `.env.example` but are **not used at runtime** (the HS256 fallback was removed — JWT verification is asymmetric-only). They are kept for reference and can be left empty.
+> `SUPABASE_JWT_SECRET` may appear in `.env.example` but is **not used at runtime** (the HS256 fallback was removed — JWT verification is asymmetric-only). It can be left empty.
 
 ---
 
@@ -169,9 +190,10 @@ Copy `.env.example` to `.env` and set these values. The server reads `.env` at s
 ### Supabase (database and auth)
 
 1. Create a free project at [supabase.com](https://supabase.com).
-2. Run the SQL above in **SQL Editor** to create the `movies` table.
-3. In **Settings → API**, copy your Project URL and anon key.
-4. In **Settings → Database**, copy the connection string (URI mode).
+2. Run the SQL above in **SQL Editor** to create the `movies` table, then the four files in `migrations/` in order.
+3. Create a public Storage bucket named `avatars` (for custom avatar upload).
+4. In **Settings → API**, copy your Project URL, anon key, and `service_role` key.
+5. In **Settings → Database**, copy the connection string (URI mode).
 
 ### Render (backend + static files)
 
