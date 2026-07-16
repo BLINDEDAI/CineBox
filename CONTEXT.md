@@ -4,7 +4,7 @@ Estado de trabajo entre sesiones. Se lee al inicio de cada sesión y se actualiz
 
 ---
 
-## Estado actual (snapshot) — 2026-06-27
+## Estado actual (snapshot) — 2026-07-16
 
 Resumen consolidado del proyecto. El **registro por sesiones** está más abajo.
 
@@ -22,13 +22,21 @@ frontend vanilla JS sin bundler, PostgreSQL en Supabase, deploy en Render. Auth 
 - **Estadísticas + sistema de niveles**: 6 niveles por puntos (vista=10, rating=5, nota=5); cálculo
   100% en backend (`compute_level` / constante `LEVELS`). Barras de progreso vía CSSOM (CSP estricta).
 - **Notificaciones Discord** async (vista / pendiente) en threads, filtradas al owner.
+- **Ola de features de julio** (sesiones en worktrees, no registradas aquí; ver README/specs):
+  perfiles públicos con username + avatar personalizado (bucket Supabase `avatars`), listas,
+  capa social (follows + feed de actividad + reseñas públicas con likes), modo invitado
+  (Descubrir/search/details anónimos tras limiter por IP), Ajustes completos (cambiar contraseña,
+  borrar cuenta con purga GDPR, export/import JSON, preferencias por defecto), progreso por
+  temporada, alertas de error a Discord con traceback redactado, migraciones `migrations/001-004`.
 
 ### Endpoints (server.py)
 - `GET` — `/api/config`, `/api/movies`, `/api/level`, `/api/search`, `/api/trending`,
-  `/api/discover`, `/api/details`, `/api/similar`, `/health`
-- `POST /api/movies` · `PATCH /api/movies/{id}` · `DELETE /api/movies/{id}`
-- Todos los que tocan DB exigen JWT válido (`aud`/`role=authenticated`). Los 5 que pegan a TMDB pasan
-  por rate limiting (60/usuario + 300/global por 60s → 429).
+  `/api/discover`, `/api/details`, `/api/similar`, `/api/feed`, `/api/follows`, `/api/lists`,
+  `/api/profile`, `/api/public/username-available`, `/api/tv/{id}/season/{n}`, `/health`
+- `POST /api/movies` · `PATCH /api/movies/{id}` · `DELETE /api/movies/{id}` · `/api/account/{delete,export,import}` · follows/likes/listas con sus verbos
+- Todos los que tocan DB exigen JWT válido (`aud`/`role=authenticated`). Los **6** que pegan a TMDB
+  pasan por rate limiting (60/usuario + 300/global por 60s → 429); el perímetro público anónimo
+  tiene limiter propio por IP (60/IP + 600 global).
 
 ### Hardening vigente
 JWT asimétrico-only · pool DB acotado y gateado (503 si saturado) **+ conexión validada viva antes
@@ -59,6 +67,50 @@ en hit.
    hoy inofensivo porque `server.py` siempre setea `status`). Cambio de DB menor → sesión nueva.
 4. **`REVOKE EXECUTE` en `rls_auto_enable`** para `anon`/`authenticated` (higiene, baja prioridad; es un
    event-trigger que solo *activa* RLS, severidad real baja).
+
+---
+
+## Sesión — 2026-07-16 (2 fixes de Descubrir + fix alertas/CI + README al día)
+
+Sesión de quick-fixes disparada por un bug reportado por el usuario en Descubrir. 4 commits,
+todos pusheados a `origin/main` (deploy Render). Cada cambio de código pasó los 4 gates
+(reviewer sonnet → security opus → tester sonnet → dod-checker haiku); el README, solo dod-checker.
+
+### Hecho hoy
+- **Fix "Ver más" repetía las mismas películas** (`02caf59`): `/api/discover` recortaba `page` a
+  un máximo de 20 dejando `has_more=true` → al superar el tope el cliente repetía la página 20 para
+  siempre. Fix: constante `DISCOVER_MAX_PAGE = 100` + `has_more = has_more and page < DISCOVER_MAX_PAGE`
+  (el botón se oculta al llegar al tope en vez de repetir). Frontend sin tocar.
+- **Filtro de ruido en "Más recientes"** (`e54e9b2`): ese orden (`primary_release_date.desc` /
+  `first_air_date.desc`) no tenía ningún colador → long tail global (Bollywood nicho, micro-estrenos,
+  fechas futuras placeholder). Solo para `sort=recent`: `vote_count.gte=50` (`DISCOVER_RECENT_MIN_VOTES`)
+  + cota `primary_release_date.lte` / `first_air_date.lte` = hoy. "popular" y "rating" intactos.
+  Decisión del usuario: NO sesgo de idioma/región (opción más agresiva, descartada de momento).
+- **Fix alertas Discord silenciadas + CI `unit` rojo** (`21387ff`): el throttle de `_should_alert`
+  usaba `_ALERT_LAST.get(sig, 0.0)`; con `time.monotonic()` (segundos desde boot) < 300 en máquinas
+  recién arrancadas (runner de CI, Render post-deploy) **toda** alerta primeriza quedaba suprimida →
+  los 3 tests de `test_error_alerts.py` rojos en CI desde 2026-07-05 (pasaban en local por uptime alto).
+  Fix: centinela `None`. **CI `unit` verde de nuevo** (verificado: run success en 38s tras el push).
+  Bonus prod: los errores de los primeros 5 min post-deploy ya no se pierden.
+- **README puesto al día** (`bb842c3`): features de julio, corregido el claim falso de que
+  `SUPABASE_SERVICE_KEY` no se usa en runtime, +`DISCORD_WEBHOOK_ERRORS`/`SEASON_CACHE_TTL`,
+  6 endpoints rate-limited + limiter por IP, setup con `migrations/001-004` y bucket `avatars`.
+- **Snapshot de este archivo actualizado** — llevaba desde el 27-06 sin reflejar la ola de julio.
+
+### Decisiones / notas
+- Los agentes del pipeline requieren `model` explícito (hook): reviewer/tester=sonnet,
+  security=opus, dod-checker=haiku (leído del `## Model` de cada `ALEXANDRIA/agents/*.md`).
+- Follow-up opcional no aplicado (reviewer, DISC-01): mensaje "no hay más resultados" cuando
+  `has_more` se apaga por tope de paginación vs. resultados agotados de verdad.
+- Si tras probar "Más recientes" sigue habiendo ruido: subir umbral (50→100) o valorar el
+  sesgo de idioma/región (más agresivo, recorta diversidad).
+- Queda sin trackear `.github/workflows/cloudflare-purge.yml` (de otra tarea, no se tocó).
+
+### Para empezar la próxima sesión
+1. Leer este CONTEXT.md.
+2. Verificar en producción los dos fixes de Descubrir: paginar "Ver más" a fondo (el botón debe
+   desaparecer, sin repetir) y ojear "Más recientes" (menos ruido, sin fechas futuras).
+3. Si el usuario reporta que "Más recientes" sigue sucio → ajustar umbral o retomar la opción de idioma.
 
 ---
 
