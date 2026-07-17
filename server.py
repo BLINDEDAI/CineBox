@@ -509,6 +509,7 @@ def _public_collection_projection(rows):
     """Proyección pública allow-list de la colección: SOLO campos consentidos.
     NUNCA serializa note, email ni user_id (GD-001 / minimización de datos)."""
     return [{
+        "tmdb_id":        r["tmdb_id"],   # id PÚBLICO del título en TMDB (no es dato personal)
         "title":          r["title"],
         "poster_url":     r["poster_url"],
         "status":         r["status"],
@@ -2832,7 +2833,7 @@ class Handler(SimpleHTTPRequestHandler):
             # AC-4: la colección solo si show_collection.
             if prof["show_collection"]:
                 cur.execute(
-                    "SELECT title, poster_url, status, rating, media_type, "
+                    "SELECT tmdb_id, title, poster_url, status, rating, media_type, "
                     "       current_season, total_seasons "
                     "FROM movies WHERE user_id = %s ORDER BY created_at DESC",
                     (owner_id,))

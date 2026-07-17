@@ -107,6 +107,7 @@ class PublicCollectionProjectionUnit(unittest.TestCase):
     def _make_row(self, **overrides):
         """Return a dict that looks like a DB row from the movies table."""
         row = {
+            "tmdb_id": 27205,
             "title": "Inception",
             "poster_url": "https://image.tmdb.org/t/p/w342/x.jpg",
             "status": "vista",
@@ -139,10 +140,11 @@ class PublicCollectionProjectionUnit(unittest.TestCase):
 
     def test_keeps_allowed_fields(self):
         """AC-4/AC-5: all allowed fields are present and correct."""
-        row = self._make_row(title="Dune", rating=5, status="viendo",
+        row = self._make_row(tmdb_id=438631, title="Dune", rating=5, status="viendo",
                              media_type="tv", current_season=1, total_seasons=3)
         result = _public_collection_projection([row])
         r = result[0]
+        self.assertEqual(r["tmdb_id"], 438631)
         self.assertEqual(r["title"], "Dune")
         self.assertEqual(r["poster_url"], "https://image.tmdb.org/t/p/w342/x.jpg")
         self.assertEqual(r["status"], "viendo")
@@ -151,12 +153,14 @@ class PublicCollectionProjectionUnit(unittest.TestCase):
         self.assertEqual(r["current_season"], 1)
         self.assertEqual(r["total_seasons"], 3)
 
-    def test_projection_has_exactly_seven_fields(self):
-        """Projection contains exactly the 7 allowed fields - no extras can sneak in."""
+    def test_projection_has_exactly_eight_fields(self):
+        """Projection contains exactly the 8 allowed fields - no extras can sneak in.
+        tmdb_id is the PUBLIC TMDB id of the title (not personal data); note/email/
+        user_id stay excluded (GD-001)."""
         result = _public_collection_projection([self._make_row()])
         self.assertEqual(
             set(result[0].keys()),
-            {"title", "poster_url", "status", "rating", "media_type",
+            {"tmdb_id", "title", "poster_url", "status", "rating", "media_type",
              "current_season", "total_seasons"},
         )
 
@@ -451,7 +455,7 @@ class PublicProfileIntegration(unittest.TestCase):
             "is_public": True, "show_collection": True, "show_stats": False,
         }
         collection_rows = [
-            {"title": "Dune", "poster_url": "https://image.tmdb.org/x.jpg",
+            {"tmdb_id": 438631, "title": "Dune", "poster_url": "https://image.tmdb.org/x.jpg",
              "status": "vista", "rating": 5, "media_type": "movie",
              "current_season": None, "total_seasons": None},
         ]
@@ -494,7 +498,7 @@ class PublicProfileIntegration(unittest.TestCase):
         }
         # The DB row includes note (as a real DB row would)
         collection_rows = [
-            {"title": "Film", "poster_url": "https://image.tmdb.org/x.jpg",
+            {"tmdb_id": 550, "title": "Film", "poster_url": "https://image.tmdb.org/x.jpg",
              "status": "vista", "rating": 4, "media_type": "movie",
              "current_season": None, "total_seasons": None,
              "note": "SECRET NOTE", "email": "u@e.com", "user_id": "uid-1"},
