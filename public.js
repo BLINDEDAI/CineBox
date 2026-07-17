@@ -177,7 +177,10 @@
     const grid = elem("div", { className: "pub-grid", attrs: { role: "list" } });
     for (const item of items) {
       const card = elem("article", { className: "pub-card", attrs: { role: "listitem" } });
-      card.appendChild(posterNode(item));
+
+      // Contenido visual (póster + badges + cuerpo), común a la tarjeta clicable
+      // y a la estática.
+      const poster = posterNode(item);
 
       const badges = elem("div", { className: "pub-card-badges" });
       if (item.status) {
@@ -187,7 +190,6 @@
         }));
       }
       badges.appendChild(elem("span", { className: "pub-media-badge", text: mediaIcon(item.media_type), attrs: { "aria-hidden": "true" } }));
-      card.appendChild(badges);
 
       const body = elem("div", { className: "pub-card-body" });
       body.appendChild(elem("div", { className: "pub-card-title", text: item.title || "" }));
@@ -208,10 +210,185 @@
       }
       if (meta.childNodes.length) body.appendChild(meta);
 
-      card.appendChild(body);
+      // Con tmdb_id la tarjeta abre la ficha de solo lectura (modal); sin él, se
+      // queda estática. openPubDetail está declarada más abajo (hoisting en el IIFE).
+      if (item.tmdb_id) {
+        const btn = elem("button", {
+          className: "pub-card-open",
+          attrs: { type: "button", "aria-label": "Ver ficha de " + (item.title || "título") },
+        });
+        btn.appendChild(poster);
+        btn.appendChild(badges);
+        btn.appendChild(body);
+        btn.addEventListener("click", function () { openPubDetail(item); });
+        card.appendChild(btn);
+      } else {
+        card.appendChild(poster);
+        card.appendChild(badges);
+        card.appendChild(body);
+      }
+
       grid.appendChild(card);
     }
     return grid;
+  }
+
+  // ── Modal de ficha (solo lectura, anónimo) ────────────────────────────────
+  // Esta página no carga modal.js del SPA; construimos un modal propio, mínimo y
+  // sin acciones de colección, colgado de <body> para que clearRoot() no lo borre.
+  let _pubModal = null;   // { overlay, panel, body, lastFocus }
+  let _pubReqSeq = 0;     // secuencia de peticiones: solo la última pinta (evita respuestas fuera de orden)
+
+  function ensurePubModal() {
+    if (_pubModal) return _pubModal;
+    const overlay = elem("div", { className: "pub-modal", attrs: { hidden: "" } });
+    const panel = elem("div", {
+      className: "pub-modal-panel",
+      attrs: { role: "dialog", "aria-modal": "true", "aria-label": "Ficha del título", tabindex: "-1" },
+    });
+    const closeBtn = elem("button", {
+      className: "pub-modal-close", text: "✕",
+      attrs: { type: "button", "aria-label": "Cerrar" },
+    });
+    const body = elem("div", { className: "pub-modal-body" });
+    panel.appendChild(closeBtn);
+    panel.appendChild(body);
+    overlay.appendChild(panel);
+    document.body.appendChild(overlay);
+
+    closeBtn.addEventListener("click", closePubModal);
+    overlay.addEventListener("click", function (e) { if (e.target === overlay) closePubModal(); });
+    document.addEventListener("keydown", function (e) {
+      if (e.key === "Escape" && !overlay.hidden) closePubModal();
+    });
+
+    _pubModal = { overlay, panel, body, lastFocus: null };
+    return _pubModal;
+  }
+
+  function closePubModal() {
+    if (!_pubModal || _pubModal.overlay.hidden) return;
+    _pubModal.overlay.hidden = true;
+    while (_pubModal.body.firstChild) _pubModal.body.removeChild(_pubModal.body.firstChild);
+    const lf = _pubModal.lastFocus;
+    _pubModal.lastFocus = null;
+    if (lf && typeof lf.focus === "function") lf.focus();
+  }
+
+  async function openPubDetail(item) {
+    const m = ensurePubModal();
+    const myReq = ++_pubReqSeq;   // esta invocación es ahora la petición vigente
+    // Solo fijamos el foco de retorno la primera vez (no al re-abrir sobre un
+    // modal ya abierto), para no perder la tarjeta de origen.
+    if (m.overlay.hidden) m.lastFocus = document.activeElement;
+    while (m.body.firstChild) m.body.removeChild(m.body.firstChild);
+    m.body.appendChild(elem("p", { className: "pub-modal-loading", text: "Cargando..." }));
+    m.overlay.hidden = false;
+    m.panel.focus();
+
+    const type = item.media_type === "tv" ? "tv" : "movie";
+    const result = await fetchPublic(
+      "/api/details?id=" + encodeURIComponent(item.tmdb_id) + "&type=" + encodeURIComponent(type));
+
+    // No pintar si el modal se cerró, o si llegó una respuesta más nueva (el
+    // usuario abrió otro título mientras este cargaba) — última petición gana.
+    if (m.overlay.hidden || myReq !== _pubReqSeq) return;
+    while (m.body.firstChild) m.body.removeChild(m.body.firstChild);
+    if (!result.data || !result.data.details) {
+      m.body.appendChild(elem("p", {
+        className: "pub-modal-error",
+        text: result.rateLimited
+          ? "Demasiadas solicitudes. Inténtalo en un momento."
+          : "No se pudo cargar la ficha.",
+      }));
+      return;
+    }
+    renderPubDetail(m.body, item, result.data.details);
+  }
+
+  // Pinta la ficha (solo lectura) dentro del cuerpo del modal. Todo con
+  // textContent / setAttribute — nunca innerHTML de datos (XSS-safe).
+  function renderPubDetail(container, item, d) {
+    const head = elem("div", { className: "pub-modal-head" });
+    head.appendChild(posterNode(item));
+
+    const info = elem("div", { className: "pub-modal-info" });
+    const yearText = item.year ? " (" + item.year + ")" : "";
+    info.appendChild(elem("h2", { className: "pub-modal-title", text: (d.title || item.title || "") + yearText }));
+
+    const metaBits = [];
+    if (d.vote_average) metaBits.push("★ " + d.vote_average);
+    if (d.runtime) metaBits.push(d.runtime + " min");
+    if (Array.isArray(d.genres) && d.genres.length) metaBits.push(d.genres.slice(0, 3).join(", "));
+    if (metaBits.length) info.appendChild(elem("p", { className: "pub-modal-meta", text: metaBits.join(" · ") }));
+
+    if (Array.isArray(d.directors) && d.directors.length) {
+      info.appendChild(elem("p", {
+        className: "pub-modal-dir",
+        text: (d.dir_label || "Dirección") + ": " + d.directors.join(", "),
+      }));
+    }
+    head.appendChild(info);
+    container.appendChild(head);
+
+    if (d.overview) {
+      container.appendChild(elem("p", { className: "pub-modal-overview", text: d.overview }));
+    }
+
+    const cast = Array.isArray(d.cast) ? d.cast : [];
+    if (cast.length) {
+      const castWrap = elem("div", { className: "pub-modal-cast" });
+      castWrap.appendChild(elem("h3", { className: "pub-modal-subtitle", text: "Reparto" }));
+      const row = elem("div", { className: "pub-modal-cast-row" });
+      for (const c of cast) {
+        const member = elem("div", { className: "pub-cast-member" });
+        if (c.profile_path) {
+          const img = elem("img", { className: "pub-cast-photo", attrs: { alt: "", loading: "lazy" } });
+          img.setAttribute("src", "https://image.tmdb.org/t/p/w185" + c.profile_path); // origen TMDB fijo
+          member.appendChild(img);
+        } else {
+          member.appendChild(elem("div", {
+            className: "pub-cast-photo pub-cast-photo-fallback",
+            text: (c.name || "?").slice(0, 1), attrs: { "aria-hidden": "true" },
+          }));
+        }
+        member.appendChild(elem("span", { className: "pub-cast-name", text: c.name || "" }));
+        row.appendChild(member);
+      }
+      castWrap.appendChild(row);
+      container.appendChild(castWrap);
+    }
+
+    const providers = Array.isArray(d.providers) ? d.providers : [];
+    const provWrap = elem("div", { className: "pub-modal-providers" });
+    provWrap.appendChild(elem("span", { className: "pub-modal-providers-label", text: "Dónde ver en España" }));
+    if (providers.length) {
+      const logos = elem("div", { className: "pub-modal-providers-logos" });
+      for (const p of providers) {
+        // El logo es una URL de TMDB; se valida el origen antes de fijar src.
+        if (p.logo && /^https:\/\/image\.tmdb\.org\//.test(p.logo)) {
+          const img = elem("img", {
+            className: "pub-provider-logo",
+            attrs: { alt: p.name || "", title: p.name || "", loading: "lazy" },
+          });
+          img.setAttribute("src", p.logo);
+          logos.appendChild(img);
+        } else {
+          logos.appendChild(elem("span", { className: "pub-provider-name", text: p.name || "" }));
+        }
+      }
+      provWrap.appendChild(logos);
+    } else {
+      provWrap.appendChild(elem("span", { className: "pub-modal-providers-empty", text: "No disponible en streaming" }));
+    }
+    container.appendChild(provWrap);
+
+    if (d.trailer && /^https:\/\/www\.youtube\.com\/watch\?v=/.test(d.trailer)) {
+      container.appendChild(elem("a", {
+        className: "pub-modal-trailer btn", text: "Ver tráiler",
+        attrs: { href: d.trailer, target: "_blank", rel: "noopener" },
+      }));
+    }
   }
 
   // ── Render: panel de estadísticas (proyección de compute_level) ───────────

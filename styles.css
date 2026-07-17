@@ -2993,6 +2993,104 @@ h2 {
 }
 .pub-card-stars { color: var(--gold); letter-spacing: 1px; }
 
+/* Tarjeta clicable (abre la ficha de solo lectura): reset del <button> para que
+   se vea igual que la tarjeta estática. */
+.pub-card-open {
+  display: block;
+  width: 100%;
+  padding: 0;
+  margin: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.pub-card-open .pub-poster { transition: transform 0.18s ease; }
+.pub-card-open:hover .pub-card-title,
+.pub-card-open:focus-visible .pub-card-title { color: var(--accent); }
+.pub-card-open:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+
+/* ── Modal de ficha en la página pública (solo lectura) ── */
+.pub-modal {
+  position: fixed;
+  inset: 0;
+  z-index: 100;
+  display: flex;
+  align-items: flex-start;
+  justify-content: center;
+  padding: 24px 16px;
+  overflow-y: auto;
+  background: rgba(3, 6, 14, 0.72);
+  backdrop-filter: blur(3px);
+}
+.pub-modal[hidden] { display: none; }
+.pub-modal-panel {
+  position: relative;
+  width: 100%;
+  max-width: 640px;
+  margin: auto;
+  padding: 22px;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-lg);
+  background: linear-gradient(180deg, var(--surface-2), var(--surface));
+  box-shadow: 0 24px 60px rgba(0, 0, 0, 0.5);
+}
+.pub-modal-close {
+  position: absolute;
+  top: 12px; right: 12px;
+  width: 34px; height: 34px;
+  border: 1px solid var(--border-strong);
+  border-radius: 999px;
+  background: rgba(5, 9, 21, 0.82);
+  color: var(--text-soft);
+  font-size: 1rem;
+  cursor: pointer;
+}
+.pub-modal-close:hover { color: var(--text); border-color: var(--accent); }
+.pub-modal-loading, .pub-modal-error { color: var(--text-muted); padding: 8px 0; }
+.pub-modal-head { display: flex; gap: 16px; padding-right: 34px; }
+.pub-modal-head .pub-poster {
+  flex: 0 0 120px;
+  width: 120px;
+  border-radius: var(--radius);
+  overflow: hidden;
+}
+.pub-modal-info { flex: 1 1 auto; min-width: 0; }
+.pub-modal-title { font-size: 1.25rem; font-weight: 700; line-height: 1.2; }
+.pub-modal-meta { margin-top: 6px; color: var(--text-muted); font-size: 0.85rem; }
+.pub-modal-dir { margin-top: 8px; font-size: 0.9rem; }
+.pub-modal-overview { margin-top: 16px; line-height: 1.5; color: var(--text-soft); }
+.pub-modal-subtitle { margin: 18px 0 8px; font-size: 0.95rem; font-weight: 600; }
+.pub-modal-cast-row { display: flex; flex-wrap: wrap; gap: 12px; }
+.pub-cast-member { width: 64px; text-align: center; }
+.pub-cast-photo {
+  width: 64px; height: 64px;
+  border-radius: 50%;
+  object-fit: cover;
+  display: block;
+  margin: 0 auto 4px;
+  background: var(--surface-3);
+}
+.pub-cast-photo-fallback {
+  display: flex; align-items: center; justify-content: center;
+  font-size: 1.2rem; color: var(--text-muted);
+}
+.pub-cast-name { font-size: 0.72rem; color: var(--text-muted); line-height: 1.2; }
+.pub-modal-providers { margin-top: 18px; }
+.pub-modal-providers-label { display: block; font-size: 0.8rem; color: var(--text-muted); margin-bottom: 8px; }
+.pub-modal-providers-logos { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.pub-provider-logo { width: 34px; height: 34px; border-radius: 8px; object-fit: cover; }
+.pub-provider-name { font-size: 0.8rem; color: var(--text-soft); }
+.pub-modal-providers-empty { font-size: 0.85rem; color: var(--text-muted); }
+.pub-modal-trailer { display: inline-block; margin-top: 18px; }
+
+@media (max-width: 520px) {
+  .pub-modal-head { flex-direction: column; }
+  .pub-modal-head .pub-poster { flex-basis: auto; width: 130px; }
+}
+
 .pub-level-head {
   display: flex; justify-content: space-between; align-items: baseline;
   margin-bottom: 8px;
